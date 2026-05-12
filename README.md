@@ -1,69 +1,83 @@
-# Mi Container — Home v3 (Refactor 2026)
+# Mi Container — v4 (Brand-compliant + autogestión)
 
-Refactor profundo del frontend de Mi Container. Tipografía editorial moderna, bento layout, motion gobernado, grain texture, modal de reserva inline.
+Reskin completo respetando el **Manual de Marca · Junio 2022** + sistema **autogestivo end-to-end**: wizard de reserva online + portal cliente con credencial QR.
 
-**Live preview:** https://augusto-pmd.github.io/Micofrontend/
+**Live:** https://augusto-pmd.github.io/Micofrontend/
 
 ## Stack
 
-HTML estático + React 18 (via CDN) + Babel standalone (in-browser). Sin build step. GitHub Pages-ready.
+HTML estático + React 18 (CDN) + Babel standalone in-browser. Sin build step. GitHub Pages-ready. Persistencia en `localStorage` (mock hasta integrar backend).
 
 ## Estructura
 
 ```
 .
-├── index.html    # Entry — fuentes 2026, meta, OG, favicon, grain
-├── home.jsx      # React (Hero, Sizes, How, Guarantees, Testi, FAQ, BigCTA, Footer, Modal)
-├── styles.css    # Tokens + bento + motion + responsive
+├── index.html    # Entry — Roboto + meta + isologo SVG inline + grain
+├── home.jsx      # App completa: router + home + wizard + portal + store
+├── styles.css    # Tokens brand + wizard + portal + responsive
 └── assets/       # Imágenes
 ```
 
-## Cambios respecto de v2
+## Cambios respecto de v3
 
-### Tipografía
-- **Bricolage Grotesque** (variable, `opsz` 12–96) reemplaza Montserrat para display
-- **Inter Tight** para body
-- **Instrument Serif italic** para énfasis editorial
-- **JetBrains Mono** para data/eyebrows
-- Tabular-nums global · `text-wrap: balance/pretty`
+### Brand compliance (Manual de Marca · Junio 2022)
+- **Tipografía:** Roboto (Regular/Bold/Black) + Roboto Condensed (Bold/Black) + Roboto Mono. Salieron Bricolage Grotesque, Inter Tight, Instrument Serif.
+- **Paleta exacta:**
+  - Verde `#5ECA00` (Pantone 802 C) — acción
+  - Violeta `#3D3083` (Pantone Violet) — identidad/gestión
+  - Verde oscuro `#679340` — secundario
+  - Negro `#0a0a0a` (Pantone Black, ajustado para pantalla)
+- **Isologo nuevo:** dos cuadrados intersectados (violeta + negro) con cuadrado verde central que contiene la **cerradura** — fiel a la "metáfora de la contención" del manual.
+- **Logotipo:** "m**i**container" con la "i" en verde como acento, según especifica el manual.
 
-### Layout
-- **Bento grid** asimétrico para garantías (1 hero dark + 3 medianas + 1 CTA inline)
-- **1 + 2** para testimonios (hero card + 2 secundarias) en vez de 3 iguales
-- **How** sin aurora gradient: paper plano + timeline numerado
-- **Big CTA** sobre dark ink con grain + radial verde sutil
+### Sistema de color funcional
+- **Verde** = acción (CTAs primarias, badges activos, "reservar")
+- **Violeta** = identidad/gestión (portal cliente, progreso del wizard, eyebrows secundarios, "acceso clientes", QR del cliente)
+- **Negro** = texto y superficies oscuras
+- **Cream `#f7f4ec`** = paper base
 
-### Motion
-- `IntersectionObserver` con stagger (`data-reveal`)
-- Reveal del hero título línea por línea (clip + translateY)
-- Hover springs (`cubic-bezier(0.34, 1.56, 0.64, 1)`)
-- `prefers-reduced-motion` respetado
+### Autogestión (la app ahora es funcional, no solo landing)
 
-### Surfaces
-- Grain texture SVG inline (turbulence + colorMatrix) sobre body + dark CTA
-- Colored shadows (verde-tintadas en CTAs)
+**Wizard de reserva — 4 pasos:**
+1. Elegir tamaño (4 opciones, cards seleccionables)
+2. Fecha de inicio + duración estimada
+3. Add-ons opcionales: retiro a domicilio, kit de embalaje, candado, seguro
+4. Datos del cliente (nombre, email, teléfono, DNI) + resumen con total + forma de pago + confirmación
 
-### UX
-- Modal de reserva inline (reemplaza `alert()`) con deep-link a WhatsApp pre-cargado
-- Sticky bottom-bar solo mobile
-- Un único FAB en desktop (WhatsApp "Hablemos")
-- FAQ chevron animado + barra de acento verde lateral
+**Portal cliente** (`#/portal`):
+- Login mágico por email (mock, sin contraseña)
+- Dashboard con reservas activas + resumen (cantidad, mensual total, email)
+- Detalle de reserva (`#/portal/r/:id`) con:
+  - Datos completos
+  - **Credencial digital QR** generada en violeta brand sobre cream
+  - Acciones: descargar factura, cambiar tamaño, pausar, cancelar
 
-### Accesibilidad
-- Skip link · Semantic HTML
-- ARIA (`aria-expanded`, `aria-modal`, focus visible)
-- Keyboard handlers en rows
-- Alt text honesto
+**Persistencia:** todo se guarda en `localStorage` (`mc.user`, `mc.reservations`). Hasta tener backend, el flujo completo funciona client-side: una persona puede reservar, salir, volver, y encontrar su reserva en el portal.
 
-## Correr en local
+### Hash routing
+- `#/` → home
+- `#/reservar` → home con wizard abierto
+- `#/portal` → dashboard o login
+- `#/portal/r/MC-XXXX-XXXX` → detalle de reserva
+
+### Nuevas secciones en la home
+- **"Empresa autogestiva"** — dos cards lado a lado: Reservar (violeta gradient) + Portal (negro con halo violeta)
+- **Hero retitulado:** "Tu espacio, cuando lo necesites." con énfasis en autogestión
+- **FAQ ampliado:** preguntas sobre acceso por QR, cambiar de tamaño desde el portal, etc.
+
+## Cómo correr local
 
 ```bash
 npx serve@latest .
 ```
 
-## Paleta
+Después `http://localhost:3000` (o el puerto que asigne).
 
-- **Verde primary:** `#5eca00` (deep `#3f8a09`, ink `#1f4504`, mist `#e7f5d0`)
-- **Violet accent:** `#4a1cc4`
-- **Ink scale:** `#0f0d18` → `#c7c3d2` (warm violet-tinted, sin negro puro)
-- **Paper:** `#f7f4ec` (warm cream)
+## Roadmap (lo que falta para producción)
+
+- Backend real (Node/Postgres o Firebase) para reservas, usuarios, facturación
+- Integración real con Mercado Pago / Stripe en el paso 4 del wizard
+- Email transaccional (Resend / Postmark) con credencial + recibo
+- Autenticación real (magic link OTP por email)
+- QR firmado para validar acceso físico (HMAC + timestamp)
+- Panel admin para gestionar inventario, ocupación, contratos
