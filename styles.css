@@ -85,6 +85,86 @@ a { text-decoration: none; cursor: pointer; }
   border-radius: 4px;
 }
 
+/* ════════════════════════════════════════════════════════════════ */
+/* PROMO STRIP (top of page)                                          */
+/* ════════════════════════════════════════════════════════════════ */
+.mc-promo-strip {
+  position: relative; z-index: 40;
+  background: var(--mc-black);
+  color: white;
+  font-family: var(--font-mono);
+}
+.mc-promo-strip-inner {
+  max-width: 1280px; margin: 0 auto;
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 20px;
+  position: relative;
+}
+.mc-promo-strip-list {
+  flex: 1; min-width: 0;
+  display: flex; gap: 28px;
+  overflow: hidden;
+  align-items: center;
+}
+.mc-promo-pill {
+  display: inline-flex; align-items: baseline; gap: 8px;
+  white-space: nowrap;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+.mc-promo-pill .lbl {
+  display: inline-block;
+  padding: 2px 8px; border-radius: 999px;
+  font-weight: 700; letter-spacing: 0.04em;
+  font-size: 10px; text-transform: uppercase;
+}
+.mc-promo-pill.green .lbl  { background: var(--mc-green); color: var(--mc-black); }
+.mc-promo-pill.violet .lbl { background: var(--mc-violet); color: white; }
+.mc-promo-pill .dsc {
+  color: rgba(255, 255, 255, 0.78);
+  font-family: var(--font-body); font-weight: 400;
+  letter-spacing: 0;
+}
+.mc-promo-close {
+  width: 28px; height: 28px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: rgba(255, 255, 255, 0.6);
+  transition: background 0.18s var(--ease-out), color 0.18s var(--ease-out);
+  flex-shrink: 0;
+}
+.mc-promo-close:hover { background: rgba(255, 255, 255, 0.1); color: white; }
+
+@media (max-width: 900px) {
+  .mc-promo-strip-list { gap: 16px; flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .mc-promo-strip-list::-webkit-scrollbar { display: none; }
+  .mc-promo-pill .dsc { display: none; }
+  .mc-promo-strip-inner { padding: 8px 16px; }
+}
+
+/* ════════════════════════════════════════════════════════════════ */
+/* PROMO BADGES (on size cards, in wizard)                            */
+/* ════════════════════════════════════════════════════════════════ */
+.mc-promo-badge {
+  display: inline-flex; align-items: center;
+  padding: 3px 9px; border-radius: 999px;
+  font-family: var(--font-mono); font-weight: 700;
+  font-size: 10px; letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.mc-promo-badge.green  { background: var(--mc-green); color: var(--mc-black); }
+.mc-promo-badge.violet { background: var(--mc-violet); color: white; }
+.mc-promo-badge.tiny   { font-size: 9px; padding: 2px 7px; }
+.mc-promo-badge.inline { margin-left: 8px; vertical-align: middle; }
+
+.mc-size-promos {
+  display: flex; gap: 6px; flex-wrap: wrap;
+  margin-top: 6px;
+}
+.mc-promo-line {
+  display: flex; gap: 6px; flex-wrap: wrap;
+  margin-top: 4px;
+}
+
 /* Skip link */
 .mc-skip {
   position: absolute; top: -100px; left: 12px; z-index: 1000;
@@ -545,6 +625,110 @@ section { position: relative; z-index: 2; }
   transform: scale(1.08) rotate(-8deg);
   background: var(--mc-green); color: var(--mc-black);
 }
+
+/* ════════════════════════════════════════════════════════════════ */
+/* SUCURSALES                                                         */
+/* ════════════════════════════════════════════════════════════════ */
+.mc-sucs { padding: 120px 0 80px; }
+.mc-sucs-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
+}
+.mc-suc-card {
+  background: var(--mc-card);
+  border: 1px solid var(--mc-line);
+  border-radius: var(--mc-r-lg);
+  padding: 28px 24px 24px;
+  display: flex; flex-direction: column;
+  transition: transform 0.25s var(--ease-out), box-shadow 0.25s var(--ease-out), border-color 0.18s var(--ease-out);
+}
+.mc-suc-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--mc-shadow-card);
+  border-color: color-mix(in oklab, var(--mc-violet) 30%, transparent);
+}
+.mc-suc-num {
+  font-family: var(--font-mono); font-size: 11px;
+  color: var(--mc-violet); font-weight: 600;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  margin-bottom: 14px;
+}
+.mc-suc-card h3 {
+  font-family: var(--font-cond);
+  font-size: 28px; font-weight: 900; letter-spacing: -0.03em;
+  margin-bottom: 4px;
+}
+.mc-suc-card .hood {
+  font-family: var(--font-mono); font-size: 11px;
+  color: var(--mc-green-ink); font-weight: 600;
+  letter-spacing: 0.06em; text-transform: uppercase;
+}
+.mc-suc-card .addr {
+  margin-top: 12px; font-size: 14px;
+  color: var(--mc-ink-2); line-height: 1.45;
+}
+.mc-suc-meta {
+  display: flex; flex-direction: column; gap: 6px;
+  margin: 18px 0 22px;
+  padding: 14px 0;
+  border-top: 1px solid var(--mc-line);
+  border-bottom: 1px solid var(--mc-line);
+  font-family: var(--font-mono); font-size: 11px;
+  color: var(--mc-ink-2); letter-spacing: 0.04em;
+}
+.mc-suc-meta b { color: var(--mc-black); font-weight: 700; }
+.mc-suc-meta .avail.alta b      { color: var(--mc-green-ink); }
+.mc-suc-meta .avail.media b     { color: #b58200; }
+.mc-suc-meta .avail.limitada b  { color: #a91f0a; }
+.mc-suc-card .mc-btn { margin-top: auto; align-self: stretch; justify-content: center; }
+
+@media (max-width: 900px) {
+  .mc-sucs { padding: 64px 0 56px; }
+  .mc-sucs-grid { grid-template-columns: 1fr 1fr; gap: 12px; }
+  .mc-suc-card { padding: 22px 18px 18px; }
+  .mc-suc-card h3 { font-size: 22px; }
+}
+
+/* Wizard: sucursal cards (slimmer) */
+.mc-wiz-options.sucursales { grid-template-columns: 1fr 1fr; }
+.mc-wiz-option .pill-avail {
+  display: inline-flex; align-self: flex-start; margin-top: 6px;
+  padding: 3px 9px; border-radius: 999px;
+  font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  background: var(--mc-green-mist); color: var(--mc-green-ink);
+}
+.mc-wiz-option .pill-avail.media     { background: #fff2d0; color: #8a6100; }
+.mc-wiz-option .pill-avail.limitada  { background: #fde0db; color: #a91f0a; }
+
+/* Promo card inside wizard step 3 (duration) */
+.mc-wiz-promo-card {
+  margin-top: 18px;
+  display: flex; align-items: center; gap: 14px;
+  padding: 16px 18px;
+  background: var(--mc-green-mist);
+  border-radius: var(--mc-r-md);
+  border: 1px solid color-mix(in oklab, var(--mc-green) 24%, transparent);
+}
+.mc-wiz-promo-card p {
+  font-size: 13px; color: var(--mc-ink-2);
+  margin: 0; flex: 1;
+}
+
+/* Wizard: promos applied row inside summary */
+.mc-wiz-promos-applied {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 0 4px;
+  margin-top: 4px;
+}
+.mc-wiz-promos-applied .lbl {
+  font-family: var(--font-mono); font-size: 10px;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--mc-ink-3); font-weight: 600;
+}
+
+/* Addon free state */
+.mc-wiz-addon .cost s { color: var(--mc-ink-4); font-weight: 500; margin-right: 6px; }
+.mc-wiz-addon .cost b { color: var(--mc-green-ink); font-weight: 800; letter-spacing: 0.05em; }
 
 /* ════════════════════════════════════════════════════════════════ */
 /* HOW                                                                */
@@ -1317,6 +1501,102 @@ section { position: relative; z-index: 2; }
   max-width: 1100px; margin: -60px auto 0;
   padding: 0 32px 80px;
   position: relative; z-index: 3;
+}
+
+/* Google button + divider */
+.mc-google-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  width: 100%;
+  padding: 13px 22px;
+  background: white;
+  color: #1f1f1f;
+  border: 1.5px solid #dadce0;
+  border-radius: 999px;
+  font-family: var(--font-body);
+  font-size: 14px; font-weight: 500;
+  cursor: pointer;
+  transition: background 0.18s var(--ease-out), border-color 0.18s var(--ease-out), box-shadow 0.18s var(--ease-out), transform 0.18s var(--ease-out);
+  margin-bottom: 4px;
+}
+.mc-google-btn:hover {
+  background: #f8f9fa;
+  border-color: #d2e3fc;
+  box-shadow: 0 2px 6px rgba(60, 64, 67, 0.15);
+}
+.mc-google-btn:active { transform: scale(0.99); }
+.mc-google-real { width: 100%; min-height: 44px; display: flex; justify-content: center; }
+.mc-google-real > div { width: 100% !important; }
+
+.mc-login-divider {
+  display: flex; align-items: center; gap: 14px;
+  margin: 22px 0;
+  font-family: var(--font-mono); font-size: 11px;
+  color: var(--mc-ink-3); letter-spacing: 0.1em;
+  text-transform: uppercase; font-weight: 500;
+}
+.mc-login-divider::before, .mc-login-divider::after {
+  content: ''; flex: 1; height: 1px; background: var(--mc-line-2);
+}
+
+.mc-modal-demo {
+  width: 100%; max-width: 420px;
+  background: var(--mc-paper);
+  border-radius: var(--mc-r-lg);
+  padding: 28px 30px;
+  box-shadow: 0 40px 100px -20px rgba(10, 10, 10, 0.5);
+  position: relative;
+  animation: pop 0.4s var(--ease-spring);
+}
+.mc-modal-demo .head {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 6px;
+}
+.mc-modal-demo .head b {
+  font-family: var(--font-cond);
+  font-weight: 700; font-size: 20px;
+  color: var(--mc-black); letter-spacing: -0.015em;
+  flex: 1;
+}
+.mc-modal-demo .demo-tag {
+  padding: 2px 8px; border-radius: 999px;
+  background: var(--mc-violet-mist); color: var(--mc-violet);
+  font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+  letter-spacing: 0.08em; text-transform: uppercase;
+}
+.mc-modal-demo .sub {
+  font-size: 13px; color: var(--mc-ink-3);
+  margin: 0 0 20px;
+}
+
+/* Reservation status pill (in detail) */
+.mc-res-status {
+  display: inline-flex; align-items: center;
+  padding: 6px 14px; border-radius: 999px;
+  font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase;
+}
+.mc-res-status.active     { background: var(--mc-green-mist); color: var(--mc-green-ink); }
+.mc-res-status.pending    { background: var(--mc-violet-mist); color: var(--mc-violet); }
+.mc-res-status.cancelled  { background: #fde0db; color: #a91f0a; }
+
+.mc-res-card .info .badge.cancelled { background: #fde0db; color: #a91f0a; }
+.mc-res-card .info .promos-row {
+  display: flex; gap: 4px; flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.mc-res-promos {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 0 0 20px;
+  padding: 12px 14px;
+  background: var(--mc-green-mist);
+  border-radius: var(--mc-r-md);
+  border: 1px solid color-mix(in oklab, var(--mc-green) 18%, transparent);
+}
+.mc-res-promos .lbl {
+  font-family: var(--font-mono); font-size: 10px;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--mc-green-ink); font-weight: 700;
 }
 
 /* Login card */

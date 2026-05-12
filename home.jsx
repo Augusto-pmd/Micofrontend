@@ -1,16 +1,34 @@
-// Mi Container v4 — Brand Manual compliant + self-service
-// Roboto · #5ECA00 · #3D3083 · Hash-router · Reservation wizard · Client portal
+// Mi Container v5 — Multi-sucursal + promos + Google login
+// Brand: Roboto · #5ECA00 · #3D3083 · Manual de Marca Junio 2022
 
 const { useState, useEffect, useMemo, useRef, useCallback } = React;
 
 const PHONE = '(011) 4301-6001';
 const WHATSAPP = 'https://wa.me/5491143016001';
 
+// ─────────────────────────────────────────────────────────────────
+// Google OAuth Client ID — pegá acá el de console.cloud.google.com
+// Mientras esté vacío, el botón usa el flujo demo (mock).
+// Para producción:
+//   1. console.cloud.google.com → APIs & Services → Credentials
+//   2. Create OAuth 2.0 Client ID → Web Application
+//   3. Authorized origins: https://augusto-pmd.github.io  (+ http://localhost:5173 para dev)
+//   4. Copiar el Client ID y pegarlo abajo
+// ─────────────────────────────────────────────────────────────────
+const GOOGLE_CLIENT_ID = '';
+
 const SIZES = [
-  { key: 'chico',   label: 'Pequeño', range: '1–3 m²',  from: 13500, blurb: 'Cajas, bicis, archivo personal.',     fits: ['~20 cajas', '2 bicis', 'Objetos estacionales'] },
-  { key: 'mediano', label: 'Mediano', range: '3–9 m²',  from: 24900, blurb: 'Un monoambiente o estudio.',          fits: ['Monoambiente', 'Electrodomésticos', 'Muebles de un cuarto'] },
-  { key: 'grande',  label: 'Grande',  range: '9–15 m²', from: 42000, blurb: 'Casa de 2 ambientes o stock PyME.',   fits: ['Casa 2 ambientes', 'Stock e-commerce', '3–5 pallets'] },
-  { key: 'xl',      label: 'XL',      range: '15+ m²',  from: 68000, blurb: 'Mudanzas completas, logística.',      fits: ['Casa familiar', 'Operación logística', 'A medida'] },
+  { key: 'chico',   label: 'Pequeño', range: '1–3 m²',  from: 13500, m2max: 3,  blurb: 'Cajas, bicis, archivo personal.',     fits: ['~20 cajas', '2 bicis', 'Objetos estacionales'] },
+  { key: 'mediano', label: 'Mediano', range: '3–9 m²',  from: 24900, m2max: 9,  blurb: 'Un monoambiente o estudio.',          fits: ['Monoambiente', 'Electrodomésticos', 'Muebles de un cuarto'] },
+  { key: 'grande',  label: 'Grande',  range: '9–15 m²', from: 42000, m2max: 15, blurb: 'Casa de 2 ambientes o stock PyME.',   fits: ['Casa 2 ambientes', 'Stock e-commerce', '3–5 pallets'] },
+  { key: 'xl',      label: 'XL',      range: '15+ m²',  from: 68000, m2max: 25, blurb: 'Mudanzas completas, logística.',      fits: ['Casa familiar', 'Operación logística', 'A medida'] },
+];
+
+const SUCURSALES = [
+  { id: 'palermo',  name: 'Palermo',         hood: 'CABA',      address: 'Av. Córdoba 4500',  hours: 'Acceso 24/7', availability: 'Alta'     },
+  { id: 'crespo',   name: 'Villa Crespo',    hood: 'CABA',      address: 'Av. Warnes 1280',   hours: 'Acceso 24/7', availability: 'Media'    },
+  { id: 'vlopez',   name: 'Vicente López',   hood: 'GBA Norte', address: 'Av. Maipú 2840',    hours: 'Acceso 24/7', availability: 'Alta'     },
+  { id: 'tigre',    name: 'Tigre Centro',    hood: 'GBA Norte', address: 'Av. Cazón 1500',    hours: 'Acceso 24/7', availability: 'Limitada' },
 ];
 
 const ADDONS = [
@@ -20,23 +38,90 @@ const ADDONS = [
   { key: 'insure',   name: 'Seguro extendido',    desc: 'Cobertura hasta $2.000.000 por daños.',   cost: 3900 },
 ];
 
+// ─────────────────────────────────────────────────────────────────
+// Promos — sistema declarativo. Agregar/sacar promos editando esta lista.
+// Cada promo:
+//   - key: identificador
+//   - badge: texto corto para badges
+//   - name + description: para el banner y el wizard
+//   - color: 'green' | 'violet'
+//   - eligible(data): true si la reserva califica
+//   - apply(totals): muta los totales (devuelve patch)
+//   - bannerOrder: prioridad para el banner del home (0 = arriba)
+// ─────────────────────────────────────────────────────────────────
+const PROMOS = [
+  {
+    key: 'first-month-free',
+    badge: '1° mes gratis',
+    name: 'Primer mes gratis',
+    description: 'Tu primer mes sin cargo. Válido en todas las sucursales y tamaños.',
+    color: 'green',
+    bannerOrder: 0,
+    eligible: () => true,
+    apply: (t) => ({ ...t, monthlyDiscount: t.monthly }),
+  },
+  {
+    key: 'free-pickup-10m2',
+    badge: 'Mudanza gratis',
+    name: 'Mudanza gratis desde 10 m²',
+    description: 'Retiro a domicilio bonificado al alquilar 10 m² o más.',
+    color: 'violet',
+    bannerOrder: 1,
+    eligible: (d) => d.size.m2max >= 10 && d.addons.includes('pickup'),
+    apply: (t) => ({ ...t, pickupDiscount: ADDONS.find((a) => a.key === 'pickup').cost }),
+  },
+  {
+    key: 'annual-20',
+    badge: '20% off anual',
+    name: '20% off al pagar anual',
+    description: 'Pagás 12 meses por adelantado y te ahorrás un 20%.',
+    color: 'green',
+    bannerOrder: 2,
+    eligible: (d) => d.duration >= 12,
+    apply: (t) => ({ ...t, annualPctOff: 0.2 }),
+  },
+];
+
+function activePromos(data) {
+  return PROMOS.filter((p) => p.eligible(data));
+}
+
+function computeTotals(data) {
+  const monthly = data.size.from;
+  const addonOneOff = data.addons
+    .filter((k) => k !== 'pickup')
+    .reduce((s, k) => s + ADDONS.find((a) => a.key === k).cost, 0);
+  const pickupCost = data.addons.includes('pickup') ? ADDONS.find((a) => a.key === 'pickup').cost : 0;
+
+  let t = {
+    monthly,
+    monthlyDiscount: 0,
+    pickupCost,
+    pickupDiscount: 0,
+    addonOneOff,
+    annualPctOff: 0,
+  };
+
+  activePromos(data).forEach((p) => { t = p.apply(t); });
+
+  const monthlyEff = Math.max(0, t.monthly - t.monthlyDiscount);
+  const pickupEff = Math.max(0, t.pickupCost - t.pickupDiscount);
+  const firstMonth = monthlyEff + pickupEff + t.addonOneOff;
+
+  return { ...t, monthlyEff, pickupEff, firstMonth };
+}
+
 /* ════════════════════════════════════════════════════════════════ */
-/* Store — localStorage data layer                                    */
+/* Store                                                              */
 /* ════════════════════════════════════════════════════════════════ */
 const store = {
-  getUser() {
-    try { return JSON.parse(localStorage.getItem('mc.user') || 'null'); }
-    catch { return null; }
-  },
+  getUser() { try { return JSON.parse(localStorage.getItem('mc.user') || 'null'); } catch { return null; } },
   setUser(user) {
     if (user) localStorage.setItem('mc.user', JSON.stringify(user));
     else localStorage.removeItem('mc.user');
     window.dispatchEvent(new Event('mc:user-change'));
   },
-  getReservations() {
-    try { return JSON.parse(localStorage.getItem('mc.reservations') || '[]'); }
-    catch { return []; }
-  },
+  getReservations() { try { return JSON.parse(localStorage.getItem('mc.reservations') || '[]'); } catch { return []; } },
   addReservation(r) {
     const all = store.getReservations();
     all.unshift(r);
@@ -48,6 +133,8 @@ const store = {
     localStorage.setItem('mc.reservations', JSON.stringify(all));
     window.dispatchEvent(new Event('mc:reservations-change'));
   },
+  isPromoDismissed() { return localStorage.getItem('mc.promo-dismissed') === '1'; },
+  dismissPromo() { localStorage.setItem('mc.promo-dismissed', '1'); window.dispatchEvent(new Event('mc:promo-change')); },
 };
 
 function generateCode() {
@@ -77,21 +164,10 @@ function useHashRoute() {
   return route;
 }
 
-function navigate(hash) {
-  window.location.hash = hash;
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-}
-
-/* ════════════════════════════════════════════════════════════════ */
-/* Reveal hook                                                        */
-/* ════════════════════════════════════════════════════════════════ */
 function useReveal(deps = []) {
   useEffect(() => {
     const els = document.querySelectorAll('[data-reveal]');
-    if (!('IntersectionObserver' in window)) {
-      els.forEach((el) => el.classList.add('in'));
-      return;
-    }
+    if (!('IntersectionObserver' in window)) { els.forEach((el) => el.classList.add('in')); return; }
     const io = new IntersectionObserver(
       (entries) => entries.forEach((e) => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }),
       { threshold: 0.18, rootMargin: '0px 0px -40px 0px' }
@@ -102,15 +178,13 @@ function useReveal(deps = []) {
 }
 
 /* ════════════════════════════════════════════════════════════════ */
-/* Isologo (brand mark — 2 squares + lock)                            */
+/* Isologo                                                            */
 /* ════════════════════════════════════════════════════════════════ */
 function Isologo({ size = 36 }) {
   return (
     <svg viewBox="0 0 40 40" width={size} height={size} aria-hidden="true">
-      {/* Two squares intersecting */}
       <rect x="3"  y="3"  width="24" height="24" rx="1" fill="none" stroke="#3D3083" strokeWidth="2.4" />
       <rect x="13" y="13" width="24" height="24" rx="1" fill="none" stroke="#0a0a0a" strokeWidth="2.4" />
-      {/* Center square (intersection) — green with lock */}
       <rect x="13" y="13" width="14" height="14" fill="#5ECA00" />
       <path d="M17.5 19v-1.2a2.5 2.5 0 015 0V19" stroke="#0a0a0a" strokeWidth="1.6" fill="none" strokeLinecap="round" />
       <rect x="16.5" y="19" width="7" height="5" rx="0.6" fill="#0a0a0a" />
@@ -119,7 +193,38 @@ function Isologo({ size = 36 }) {
 }
 
 /* ════════════════════════════════════════════════════════════════ */
-/* NAV                                                                */
+/* Promo banner                                                       */
+/* ════════════════════════════════════════════════════════════════ */
+function PromoBanner() {
+  const [dismissed, setDismissed] = useState(store.isPromoDismissed());
+  useEffect(() => {
+    const onChange = () => setDismissed(store.isPromoDismissed());
+    window.addEventListener('mc:promo-change', onChange);
+    return () => window.removeEventListener('mc:promo-change', onChange);
+  }, []);
+  if (dismissed) return null;
+  const featured = [...PROMOS].sort((a, b) => a.bannerOrder - b.bannerOrder).slice(0, 3);
+  return (
+    <div className="mc-promo-strip" role="region" aria-label="Promociones vigentes">
+      <div className="mc-promo-strip-inner">
+        <div className="mc-promo-strip-list">
+          {featured.map((p) => (
+            <span key={p.key} className={`mc-promo-pill ${p.color}`}>
+              <span className="lbl">{p.badge}</span>
+              <span className="dsc">{p.description}</span>
+            </span>
+          ))}
+        </div>
+        <button className="mc-promo-close" onClick={() => { store.dismissPromo(); setDismissed(true); }} aria-label="Cerrar promociones">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════ */
+/* Nav                                                                */
 /* ════════════════════════════════════════════════════════════════ */
 function Nav({ onReserve, route, user }) {
   const [scrolled, setScrolled] = useState(false);
@@ -130,17 +235,15 @@ function Nav({ onReserve, route, user }) {
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
-
   const goSection = (id) => {
     if (route.name !== 'home') {
-      navigate('#/');
+      window.location.hash = '#/';
       setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' }), 60);
     } else {
       document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
     }
     setOpen(false);
   };
-
   return (
     <header className={`mc-nav ${scrolled ? 'is-scrolled' : ''}`}>
       <div className="mc-nav-inner">
@@ -148,13 +251,12 @@ function Nav({ onReserve, route, user }) {
           <span className="mc-logo-mark"><Isologo size={36} /></span>
           <span className="mc-logo-type">m<span className="i">i</span><b>container</b></span>
         </a>
-
         <nav className={`mc-links ${open ? 'open' : ''}`} aria-label="Principal">
+          <a onClick={() => goSection('sucursales')}>Sucursales</a>
           <a onClick={() => goSection('sizes')}>Espacios</a>
           <a onClick={() => goSection('how')}>Cómo funciona</a>
           <a onClick={() => goSection('faq')}>Preguntas</a>
         </nav>
-
         <div className="mc-nav-right">
           <a className="mc-nav-phone" href="tel:+541143016001">{PHONE}</a>
           <a className="mc-nav-portal" href="#/portal">
@@ -168,12 +270,9 @@ function Nav({ onReserve, route, user }) {
             <span>Reservar</span>
             <span className="arrow">→</span>
           </button>
-          <button
-            className={`mc-burger ${open ? 'open' : ''}`}
-            onClick={() => setOpen(!open)}
-            aria-label={open ? 'Cerrar menú' : 'Abrir menú'}
-            aria-expanded={open}
-          ><span /><span /><span /></button>
+          <button className={`mc-burger ${open ? 'open' : ''}`} onClick={() => setOpen(!open)} aria-label={open ? 'Cerrar menú' : 'Abrir menú'} aria-expanded={open}>
+            <span /><span /><span />
+          </button>
         </div>
       </div>
     </header>
@@ -181,13 +280,13 @@ function Nav({ onReserve, route, user }) {
 }
 
 /* ════════════════════════════════════════════════════════════════ */
-/* HOME — sections                                                    */
+/* Hero                                                               */
 /* ════════════════════════════════════════════════════════════════ */
 function Hero({ onReserve }) {
   return (
     <section className="mc-hero mc-container" id="top">
       <div className="mc-hero-meta" data-reveal>
-        <span className="pill"><span className="dot" />Self-storage · Buenos Aires</span>
+        <span className="pill"><span className="dot" />4 sucursales · CABA + GBA Norte</span>
         <span>Desde 2019 · +2.300 clientes</span>
       </div>
 
@@ -204,8 +303,7 @@ function Hero({ onReserve }) {
 
       <div className="mc-hero-grid" data-reveal>
         <p className="mc-hero-lead">
-          Reservá, accedé y gestioná todo desde la web — sin papeleo, sin llamados,
-          sin esperar. Self-storage flexible mes a mes.
+          Reservá, accedé y gestioná todo desde la web — sin papeleo, sin llamados, sin esperar. Self-storage flexible mes a mes.
         </p>
         <div className="mc-hero-actions">
           <div className="row">
@@ -233,16 +331,53 @@ function Hero({ onReserve }) {
           <div className="sub">Acceso todos los días del año, sin reservar turno.</div>
         </div>
         <div className="item">
-          <b>5'</b>
-          <div className="sub">Eso tarda reservar online. Sin papeleo, sin firma.</div>
+          <b>4</b>
+          <div className="sub">Sucursales en CABA + GBA Norte. Elegís la más cercana.</div>
         </div>
       </div>
     </section>
   );
 }
 
+/* ════════════════════════════════════════════════════════════════ */
+/* Sucursales (section + map-ish list)                                */
+/* ════════════════════════════════════════════════════════════════ */
+function Sucursales({ onReserve }) {
+  return (
+    <section className="mc-sucs mc-container" id="sucursales">
+      <div className="mc-sec-head" data-reveal>
+        <span className="mc-eyebrow violet">Sucursales</span>
+        <h2>Cuatro <span className="v">ubicaciones</span> en Buenos Aires.</h2>
+        <p>Elegí la más cercana a tu casa, oficina o depósito. Mismas tarifas, mismos servicios, mismo acceso 24/7.</p>
+      </div>
+
+      <div className="mc-sucs-grid" data-reveal>
+        {SUCURSALES.map((s, i) => (
+          <article key={s.id} className="mc-suc-card">
+            <div className="mc-suc-num">0{i + 1}</div>
+            <h3>{s.name}</h3>
+            <span className="hood">{s.hood}</span>
+            <p className="addr">{s.address}</p>
+            <div className="mc-suc-meta">
+              <span><b>{s.hours}</b></span>
+              <span className={`avail ${s.availability.toLowerCase()}`}>Disponibilidad: <b>{s.availability}</b></span>
+            </div>
+            <button className="mc-btn mc-btn-green" onClick={() => onReserve(s)}>
+              <span>Reservar acá</span>
+              <span className="arrow">→</span>
+            </button>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════ */
+/* Ticker                                                             */
+/* ════════════════════════════════════════════════════════════════ */
 function Ticker() {
-  const items = ['Sin depósito', 'Sin anticipo', 'Sin permanencia', 'Seguridad 24/7', 'Acceso 24/7', 'Gestión online', 'Coworking incluido'];
+  const items = ['Sin depósito', 'Sin permanencia', '1° mes gratis', 'Mudanza gratis +10m²', '20% off anual', 'Acceso 24/7', 'Gestión online'];
   const run = [...items, ...items, ...items];
   return (
     <div className="mc-ticker" aria-hidden="true">
@@ -253,6 +388,9 @@ function Ticker() {
   );
 }
 
+/* ════════════════════════════════════════════════════════════════ */
+/* Sizes                                                              */
+/* ════════════════════════════════════════════════════════════════ */
 function Sizes({ onReserveSize }) {
   return (
     <section className="mc-sizes mc-container" id="sizes">
@@ -261,44 +399,56 @@ function Sizes({ onReserveSize }) {
         <h2>Cuatro tamaños,<br /><span className="g">precios claros</span>.</h2>
         <p>Pagás mes a mes. Cambiás de tamaño cuando quieras, sin penalidades ni tarifas ocultas.</p>
       </div>
-
       <div className="mc-sizes-list" data-reveal>
-        {SIZES.map((s, i) => (
-          <article
-            key={s.key}
-            className="mc-size-row"
-            role="button"
-            tabIndex={0}
-            onClick={() => onReserveSize(s)}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onReserveSize(s); } }}
-          >
-            <div className="mc-size-num">0{i + 1} ──</div>
-            <div className="mc-size-name">
-              <h3>{s.label}</h3>
-              <span>{s.range}</span>
-            </div>
-            <div className="mc-size-blurb">
-              <p>{s.blurb}</p>
-              <div className="mc-size-fits">{s.fits.map((f, j) => <span key={j}>{f}</span>)}</div>
-            </div>
-            <div className="mc-size-price">
-              <span className="from">Desde</span>
-              <b>${s.from.toLocaleString('es-AR')}</b>
-              <span className="unit">por mes</span>
-            </div>
-            <div className="mc-size-go" aria-hidden="true">→</div>
-          </article>
-        ))}
+        {SIZES.map((s, i) => {
+          const promosForSize = PROMOS.filter((p) => p.eligible({ size: s, duration: 12, addons: ['pickup'] }));
+          return (
+            <article
+              key={s.key}
+              className="mc-size-row"
+              role="button"
+              tabIndex={0}
+              onClick={() => onReserveSize(s)}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onReserveSize(s); } }}
+            >
+              <div className="mc-size-num">0{i + 1} ──</div>
+              <div className="mc-size-name">
+                <h3>{s.label}</h3>
+                <span>{s.range}</span>
+                {promosForSize.length > 0 && (
+                  <div className="mc-size-promos">
+                    {promosForSize.map((p) => (
+                      <span key={p.key} className={`mc-promo-badge ${p.color}`}>{p.badge}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="mc-size-blurb">
+                <p>{s.blurb}</p>
+                <div className="mc-size-fits">{s.fits.map((f, j) => <span key={j}>{f}</span>)}</div>
+              </div>
+              <div className="mc-size-price">
+                <span className="from">Desde</span>
+                <b>${s.from.toLocaleString('es-AR')}</b>
+                <span className="unit">por mes</span>
+              </div>
+              <div className="mc-size-go" aria-hidden="true">→</div>
+            </article>
+          );
+        })}
       </div>
     </section>
   );
 }
 
+/* ════════════════════════════════════════════════════════════════ */
+/* How                                                                */
+/* ════════════════════════════════════════════════════════════════ */
 function How() {
   const steps = [
-    { n: '01', t: 'Elegí tu tamaño',   d: 'Cuatro opciones transparentes, mes a mes.' },
-    { n: '02', t: 'Reservá online',    d: 'Cinco minutos. Sin depósito ni anticipo.' },
-    { n: '03', t: 'Gestioná desde tu cuenta', d: 'Pagos, accesos, facturación — todo en el portal cliente.' },
+    { n: '01', t: 'Elegí sucursal y tamaño', d: 'Cuatro ubicaciones, cuatro tamaños. Todo transparente.' },
+    { n: '02', t: 'Reservá online',          d: 'Cinco minutos. Sin depósito, sin anticipo.' },
+    { n: '03', t: 'Gestioná desde tu cuenta', d: 'Pagos, accesos, facturación — todo en el portal.' },
   ];
   return (
     <section className="mc-how" id="how">
@@ -327,6 +477,9 @@ function How() {
   );
 }
 
+/* ════════════════════════════════════════════════════════════════ */
+/* Guarantees                                                         */
+/* ════════════════════════════════════════════════════════════════ */
 function Guarantees({ onReserve }) {
   return (
     <section className="mc-guard mc-container">
@@ -334,7 +487,6 @@ function Guarantees({ onReserve }) {
         <span className="mc-eyebrow green">Lo que te prometemos</span>
         <h2><span className="g">Cuatro cosas</span><br />que nunca van a cambiar.</h2>
       </div>
-
       <div className="mc-bento">
         <article className="mc-bento-item mc-bento-1" data-reveal>
           <span className="icon" aria-hidden="true">
@@ -345,21 +497,18 @@ function Guarantees({ onReserve }) {
           </span>
           <span className="n">01 / Garantía</span>
           <h3>Sin <span className="g">depósito</span>,<br />sin permanencia.</h3>
-          <p>Arrancás con el primer mes y ya. Cancelás con 7 días de aviso, sin penalidades ni cargos ocultos. Pagás solo el tiempo que usás.</p>
+          <p>Arrancás con el primer mes y ya. Cancelás con 7 días de aviso, sin penalidades ni cargos ocultos.</p>
         </article>
-
         <article className="mc-bento-item mc-bento-2" data-reveal="2">
           <span className="n">02 / Acceso</span>
           <h3>Acceso 24/7</h3>
           <p>Entrás cuando quieras, los 365 días del año, con tu credencial digital desde el portal.</p>
         </article>
-
         <article className="mc-bento-item mc-bento-3" data-reveal="3">
           <span className="n">03 / Seguridad</span>
           <h3>Vigilancia activa</h3>
           <p>Cámaras 24/7, control biométrico y monitoreo presencial en cada acceso.</p>
         </article>
-
         <article className="mc-bento-item mc-bento-4" data-reveal="2">
           <span className="n">04 / Bonus</span>
           <h3>Coworking incluido</h3>
@@ -367,7 +516,6 @@ function Guarantees({ onReserve }) {
           <div className="figure">$0</div>
           <div className="figure-sub">Costo adicional</div>
         </article>
-
         <article className="mc-bento-item mc-bento-5" data-reveal="3">
           <div>
             <h3>¿Listo para guardar?</h3>
@@ -383,6 +531,9 @@ function Guarantees({ onReserve }) {
   );
 }
 
+/* ════════════════════════════════════════════════════════════════ */
+/* SelfService                                                        */
+/* ════════════════════════════════════════════════════════════════ */
 function SelfService({ onReserve }) {
   return (
     <section className="mc-self mc-container">
@@ -391,15 +542,14 @@ function SelfService({ onReserve }) {
         <h2>Vos manejás <span className="v">tu espacio</span>.<br />Nosotros, la infraestructura.</h2>
         <p>Reservas, pagos, accesos, facturación, cambios de tamaño — todo desde la web, sin tener que llamar a nadie.</p>
       </div>
-
       <div className="mc-self-grid">
         <article className="mc-self-card mc-self-reserve" data-reveal>
           <span className="mc-eyebrow on-dark">Reserva online</span>
           <h3>Conseguí tu espacio en 5 minutos.</h3>
           <ul>
-            <li>Elegís tamaño, fecha de inicio y add-ons</li>
+            <li>Elegís sucursal, tamaño, fecha y add-ons</li>
             <li>Pagás online con tarjeta o transferencia</li>
-            <li>Recibís tu código de acceso al instante</li>
+            <li>Recibís tu credencial QR al instante</li>
             <li>Sin firmas, sin contratos físicos</li>
           </ul>
           <button className="mc-btn mc-btn-green" onClick={onReserve}>
@@ -407,12 +557,11 @@ function SelfService({ onReserve }) {
             <span className="arrow">→</span>
           </button>
         </article>
-
         <article className="mc-self-card mc-self-portal" data-reveal="2">
           <span className="mc-eyebrow on-dark">Portal cliente</span>
           <h3>Gestioná todo desde tu cuenta.</h3>
           <ul>
-            <li>Ver y descargar tus facturas</li>
+            <li>Múltiples reservas en distintas sucursales</li>
             <li>Acceso 24/7 con QR digital</li>
             <li>Cambiar de tamaño con un click</li>
             <li>Pausar o cancelar cuando quieras</li>
@@ -427,6 +576,9 @@ function SelfService({ onReserve }) {
   );
 }
 
+/* ════════════════════════════════════════════════════════════════ */
+/* Testimonials                                                       */
+/* ════════════════════════════════════════════════════════════════ */
 function Testimonials() {
   return (
     <section className="mc-testi mc-container">
@@ -434,36 +586,22 @@ function Testimonials() {
         <span className="mc-eyebrow violet">Nos eligen</span>
         <h2>Lo que <span className="v">dicen</span> de Mi Container.</h2>
       </div>
-
       <div className="mc-testi-grid">
         <figure className="mc-testi-main" data-reveal>
           <div className="stars" aria-label="5 estrellas">★★★★★</div>
-          <blockquote>
-            Lo contraté un miércoles y el jueves ya había mudado medio depósito. Cero vueltas, cero letra chica. Es lo más cercano a "mudarte sin mudarte" que probé.
-          </blockquote>
-          <figcaption>
-            <span className="avatar">JM</span>
-            <div><b>Julia M.</b><span>Fundadora · Tienda online</span></div>
-          </figcaption>
+          <blockquote>Lo contraté un miércoles y el jueves ya había mudado medio depósito. Cero vueltas, cero letra chica. Es lo más cercano a "mudarte sin mudarte" que probé.</blockquote>
+          <figcaption><span className="avatar">JM</span><div><b>Julia M.</b><span>Fundadora · Tienda online</span></div></figcaption>
         </figure>
-
         <div className="mc-testi-side">
           <figure data-reveal="2">
             <div className="stars" aria-label="5 estrellas">★★★★★</div>
-            <blockquote>El portal me ahorra llamados. Pago, accedo y veo facturas desde la web.</blockquote>
-            <figcaption>
-              <span className="avatar">TR</span>
-              <div><b>Tomás R.</b><span>PyME · Importación</span></div>
-            </figcaption>
+            <blockquote>Tengo dos boxes — uno en Palermo y otro en Vicente López. Los manejo desde la misma cuenta.</blockquote>
+            <figcaption><span className="avatar">TR</span><div><b>Tomás R.</b><span>PyME · Importación</span></div></figcaption>
           </figure>
-
           <figure data-reveal="3">
             <div className="stars" aria-label="5 estrellas">★★★★★</div>
-            <blockquote>Siempre impecable y el personal es buena onda. Lo uso hace dos años.</blockquote>
-            <figcaption>
-              <span className="avatar">CP</span>
-              <div><b>Carla P.</b><span>Particular</span></div>
-            </figcaption>
+            <blockquote>Aproveché el primer mes gratis y la mudanza bonificada. Cero gastos arrancando.</blockquote>
+            <figcaption><span className="avatar">CP</span><div><b>Carla P.</b><span>Particular</span></div></figcaption>
           </figure>
         </div>
       </div>
@@ -471,14 +609,18 @@ function Testimonials() {
   );
 }
 
+/* ════════════════════════════════════════════════════════════════ */
+/* FAQ                                                                */
+/* ════════════════════════════════════════════════════════════════ */
 function FAQ() {
   const [open, setOpen] = useState(0);
   const qa = [
     { q: '¿Necesito firmar un contrato largo?', a: 'No. Alquilás mes a mes y cancelás cuando quieras, sin permanencia mínima ni cargos por salida anticipada.' },
-    { q: '¿Cómo accedo al box?',                 a: 'Con un QR personal generado desde tu cuenta. Lo abrís en el celular, lo escaneás en el ingreso y entrás. Funciona 24/7.' },
+    { q: '¿Puedo tener más de un box?',          a: 'Sí. Podés tener tantas reservas como necesites, incluso en distintas sucursales. Las manejás todas desde la misma cuenta.' },
+    { q: '¿Cómo accedo al box?',                 a: 'Con un QR personal generado desde tu cuenta. Lo escaneás en el ingreso y entrás. Funciona 24/7.' },
+    { q: '¿Cómo aplican las promos?',            a: 'Se aplican automáticamente al hacer la reserva si cumplís los requisitos. El primer mes gratis aplica siempre; la mudanza gratis desde 10 m² al elegir "retiro a domicilio".' },
     { q: '¿Puedo cambiar de tamaño después?',    a: 'Sí. Desde el portal cambiás de tamaño sin penalidad. Si crece tu necesidad o si querés achicar, lo hacés con un click.' },
-    { q: '¿Retiran mis cosas de mi casa?',       a: 'Sí. Ofrecemos retiro opcional dentro de CABA y GBA. Lo agregás como add-on al hacer la reserva online.' },
-    { q: '¿Qué incluye el coworking?',           a: 'Escritorio, wifi y sala de reuniones reservable — sin cargo extra mientras alquilás un espacio.' },
+    { q: '¿Retiran mis cosas de mi casa?',       a: 'Sí. Ofrecemos retiro opcional dentro de CABA y GBA. Lo agregás como add-on al hacer la reserva online (gratis si alquilás 10 m² o más).' },
     { q: '¿Qué no puedo guardar?',               a: 'Materiales inflamables, tóxicos, alimentos perecederos, seres vivos y productos ilegales. El resto, todo.' },
   ];
   return (
@@ -494,9 +636,7 @@ function FAQ() {
             <button className="mc-faq-q" onClick={() => setOpen(open === i ? -1 : i)} aria-expanded={open === i}>
               <h3>{it.q}</h3>
               <span className="mc-faq-chev" aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M6 9l6 6 6-6" />
-                </svg>
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
               </span>
             </button>
             <div className="mc-faq-a"><p>{it.a}</p></div>
@@ -507,14 +647,14 @@ function FAQ() {
   );
 }
 
+/* ════════════════════════════════════════════════════════════════ */
+/* BigCTA + Footer                                                    */
+/* ════════════════════════════════════════════════════════════════ */
 function BigCTA({ onReserve }) {
   return (
     <section className="mc-bigcta" data-reveal>
       <div className="mc-bigcta-inner">
-        <h2>
-          <span>Empezá hoy.</span>
-          <span>Guardá mañana.</span>
-        </h2>
+        <h2><span>Empezá hoy.</span><span>Guardá mañana.</span></h2>
         <div className="mc-bigcta-actions">
           <button className="mc-btn mc-btn-green big" onClick={onReserve}>
             <span>Elegí tu espacio</span>
@@ -552,6 +692,7 @@ function Footer({ onReserve }) {
         <div className="mc-footer-cols">
           <div>
             <h5>Producto</h5>
+            <a onClick={() => document.getElementById('sucursales')?.scrollIntoView({ behavior: 'smooth' })}>Sucursales</a>
             <a onClick={() => document.getElementById('sizes')?.scrollIntoView({ behavior: 'smooth' })}>Espacios y precios</a>
             <a onClick={() => document.getElementById('how')?.scrollIntoView({ behavior: 'smooth' })}>Cómo funciona</a>
             <a href="#/portal">Portal cliente</a>
@@ -570,23 +711,21 @@ function Footer({ onReserve }) {
           </div>
         </div>
       </div>
-      <div className="mc-footer-base">
-        <span>© 2026 Mi Container</span>
-        <span>Hecho en Buenos Aires</span>
-      </div>
+      <div className="mc-footer-base"><span>© 2026 Mi Container</span><span>Hecho en Buenos Aires</span></div>
     </footer>
   );
 }
 
 /* ════════════════════════════════════════════════════════════════ */
-/* RESERVATION WIZARD                                                 */
+/* WIZARD — 5 steps                                                   */
 /* ════════════════════════════════════════════════════════════════ */
-function Wizard({ initialSize, user, onClose, onComplete }) {
-  const [step, setStep] = useState(0);
+function Wizard({ initialSize, initialSucursal, user, onClose }) {
+  const [step, setStep] = useState(initialSucursal ? 1 : 0);
   const [data, setData] = useState({
+    sucursal: initialSucursal || SUCURSALES[0],
     size: initialSize || SIZES[0],
     startDate: '',
-    duration: 3, // months
+    duration: 3,
     addons: [],
     name: user?.name || '',
     email: user?.email || '',
@@ -597,32 +736,20 @@ function Wizard({ initialSize, user, onClose, onComplete }) {
   const [errors, setErrors] = useState({});
 
   useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape' && step < 4) onClose(); };
+    const onKey = (e) => { if (e.key === 'Escape' && step < 5) onClose(); };
     document.addEventListener('keydown', onKey);
     document.body.style.overflow = 'hidden';
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = '';
-    };
+    return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = ''; };
   }, [step, onClose]);
 
-  const today = useMemo(() => {
-    const d = new Date(); d.setDate(d.getDate() + 1);
-    return d.toISOString().split('T')[0];
-  }, []);
-  useEffect(() => {
-    if (!data.startDate) setData((d) => ({ ...d, startDate: today }));
-  }, [today]);
+  const today = useMemo(() => { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().split('T')[0]; }, []);
+  useEffect(() => { if (!data.startDate) setData((d) => ({ ...d, startDate: today })); }, [today]);
 
-  const addonTotal = data.addons.reduce((sum, k) => sum + (ADDONS.find((a) => a.key === k)?.cost || 0), 0);
-  const monthly = data.size.from;
-  const setupFee = data.addons.includes('pickup') ? ADDONS.find((a) => a.key === 'pickup').cost : 0;
-  const oneOffAddons = data.addons.filter((k) => k !== 'pickup').reduce((sum, k) => sum + ADDONS.find((a) => a.key === k).cost, 0);
-  const firstMonth = monthly + setupFee + oneOffAddons;
+  const totals = useMemo(() => computeTotals(data), [data]);
+  const promos = activePromos(data);
 
   const toggleAddon = (k) => setData((d) => ({
-    ...d,
-    addons: d.addons.includes(k) ? d.addons.filter((x) => x !== k) : [...d.addons, k],
+    ...d, addons: d.addons.includes(k) ? d.addons.filter((x) => x !== k) : [...d.addons, k],
   }));
 
   const validateData = () => {
@@ -636,33 +763,34 @@ function Wizard({ initialSize, user, onClose, onComplete }) {
   };
 
   const next = () => {
-    if (step === 2) { setStep(3); return; }
-    if (step === 3) {
+    if (step === 4) {
       if (!validateData()) return;
-      // Save user + reservation
-      const user = {
+      const u = {
+        ...user,
         name: data.name.trim(),
         email: data.email.trim().toLowerCase(),
         phone: data.phone,
         dni: data.dni,
       };
-      store.setUser(user);
+      store.setUser(u);
       const code = generateCode();
       const reservation = {
         id: code,
-        userEmail: user.email,
+        userEmail: u.email,
         status: 'active',
+        sucursal: data.sucursal,
         size: data.size,
         startDate: data.startDate,
         duration: data.duration,
         addons: data.addons,
-        monthly,
-        firstMonth,
+        monthly: totals.monthlyEff,
+        monthlyBase: data.size.from,
+        firstMonth: totals.firstMonth,
+        promosApplied: promos.map((p) => ({ key: p.key, badge: p.badge, name: p.name })),
         createdAt: new Date().toISOString(),
       };
       store.addReservation(reservation);
-      setStep(4);
-      onComplete && onComplete(reservation);
+      setStep(5);
       return;
     }
     setStep(step + 1);
@@ -670,13 +798,13 @@ function Wizard({ initialSize, user, onClose, onComplete }) {
 
   const back = () => setStep(Math.max(0, step - 1));
 
-  const totalSteps = 4;
-  const progress = step >= 4 ? 100 : Math.round(((step + 1) / totalSteps) * 100);
+  const totalSteps = 5;
+  const progress = step >= 5 ? 100 : Math.round(((step + 1) / totalSteps) * 100);
 
   return (
-    <div className="mc-wiz-back" onClick={step < 4 ? onClose : undefined} role="dialog" aria-modal="true" aria-labelledby="wiz-title">
+    <div className="mc-wiz-back" onClick={step < 5 ? onClose : undefined} role="dialog" aria-modal="true" aria-labelledby="wiz-title">
       <div className="mc-wiz" onClick={(e) => e.stopPropagation()}>
-        {step < 4 && (
+        {step < 5 && (
           <>
             <div className="mc-wiz-head">
               <div className="step-info">Paso <b>{step + 1}</b> de <b>{totalSteps}</b> · Reservar online</div>
@@ -691,20 +819,20 @@ function Wizard({ initialSize, user, onClose, onComplete }) {
         <div className="mc-wiz-body">
           {step === 0 && (
             <>
-              <h2 id="wiz-title">¿Qué tamaño necesitás?</h2>
-              <p className="lead">Elegí el espacio. Después podés cambiarlo cuando quieras desde el portal.</p>
-              <div className="mc-wiz-options">
-                {SIZES.map((s) => (
+              <h2 id="wiz-title">¿En qué sucursal?</h2>
+              <p className="lead">Elegí la más cercana. Todas tienen los mismos servicios y tarifas.</p>
+              <div className="mc-wiz-options sucursales">
+                {SUCURSALES.map((s) => (
                   <button
-                    key={s.key}
+                    key={s.id}
                     type="button"
-                    className={`mc-wiz-option ${data.size.key === s.key ? 'selected' : ''}`}
-                    onClick={() => setData({ ...data, size: s })}
+                    className={`mc-wiz-option ${data.sucursal.id === s.id ? 'selected' : ''}`}
+                    onClick={() => setData({ ...data, sucursal: s })}
                   >
-                    <span className="name">{s.label}</span>
-                    <span className="range">{s.range}</span>
-                    <span className="desc">{s.blurb}</span>
-                    <span className="price">${s.from.toLocaleString('es-AR')} <small>/ mes</small></span>
+                    <span className="name">{s.name}</span>
+                    <span className="range">{s.hood} · {s.address}</span>
+                    <span className="desc">{s.hours}</span>
+                    <span className={`pill-avail ${s.availability.toLowerCase()}`}>Disponibilidad: {s.availability}</span>
                   </button>
                 ))}
               </div>
@@ -712,6 +840,36 @@ function Wizard({ initialSize, user, onClose, onComplete }) {
           )}
 
           {step === 1 && (
+            <>
+              <h2 id="wiz-title">¿Qué tamaño necesitás?</h2>
+              <p className="lead">Después podés cambiar de tamaño desde el portal sin penalidad.</p>
+              <div className="mc-wiz-options">
+                {SIZES.map((s) => {
+                  const eligible = PROMOS.filter((p) => p.eligible({ size: s, duration: 12, addons: ['pickup'] }));
+                  return (
+                    <button
+                      key={s.key}
+                      type="button"
+                      className={`mc-wiz-option ${data.size.key === s.key ? 'selected' : ''}`}
+                      onClick={() => setData({ ...data, size: s })}
+                    >
+                      <span className="name">{s.label}</span>
+                      <span className="range">{s.range}</span>
+                      <span className="desc">{s.blurb}</span>
+                      <span className="price">${s.from.toLocaleString('es-AR')} <small>/ mes</small></span>
+                      {eligible.length > 0 && (
+                        <div className="mc-promo-line">
+                          {eligible.map((p) => <span key={p.key} className={`mc-promo-badge ${p.color}`}>{p.badge}</span>)}
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          {step === 2 && (
             <>
               <h2 id="wiz-title">¿Cuándo querés empezar?</h2>
               <p className="lead">Reservás la fecha y el espacio queda apartado a tu nombre.</p>
@@ -727,52 +885,98 @@ function Wizard({ initialSize, user, onClose, onComplete }) {
                     <option value={1}>1 mes</option>
                     <option value={3}>3 meses</option>
                     <option value={6}>6 meses</option>
-                    <option value={12}>1 año</option>
+                    <option value={12}>1 año (20% off)</option>
                     <option value={24}>2 años o más</option>
                   </select>
                   <span className="hint">Es solo una estimación. Cancelás cuando quieras.</span>
                 </div>
               </div>
-            </>
-          )}
-
-          {step === 2 && (
-            <>
-              <h2 id="wiz-title">¿Sumás algo más?</h2>
-              <p className="lead">Servicios opcionales. Todos los puede agregar más tarde desde el portal.</p>
-              {ADDONS.map((a) => (
-                <button
-                  key={a.key}
-                  type="button"
-                  className={`mc-wiz-addon ${data.addons.includes(a.key) ? 'selected' : ''}`}
-                  onClick={() => toggleAddon(a.key)}
-                  aria-pressed={data.addons.includes(a.key)}
-                >
-                  <span className="check">
-                    {data.addons.includes(a.key) && (
-                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5L20 7" /></svg>
-                    )}
-                  </span>
-                  <span className="body"><b>{a.name}</b><span>{a.desc}</span></span>
-                  <span className="cost">+${a.cost.toLocaleString('es-AR')}</span>
-                </button>
-              ))}
+              {data.duration >= 12 && (
+                <div className="mc-wiz-promo-card">
+                  <span className="mc-promo-badge green">20% off anual</span>
+                  <p>Al pagar 12 meses por adelantado te ahorrás un 20% sobre la mensualidad.</p>
+                </div>
+              )}
             </>
           )}
 
           {step === 3 && (
+            <>
+              <h2 id="wiz-title">¿Sumás algo más?</h2>
+              <p className="lead">Servicios opcionales. Todos los podés agregar más tarde desde el portal.</p>
+              {ADDONS.map((a) => {
+                const isFree = a.key === 'pickup' && data.size.m2max >= 10 && data.addons.includes('pickup');
+                return (
+                  <button
+                    key={a.key}
+                    type="button"
+                    className={`mc-wiz-addon ${data.addons.includes(a.key) ? 'selected' : ''}`}
+                    onClick={() => toggleAddon(a.key)}
+                    aria-pressed={data.addons.includes(a.key)}
+                  >
+                    <span className="check">
+                      {data.addons.includes(a.key) && (
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5L20 7" /></svg>
+                      )}
+                    </span>
+                    <span className="body">
+                      <b>{a.name}</b>
+                      <span>{a.desc}</span>
+                      {a.key === 'pickup' && data.size.m2max >= 10 && (
+                        <span className="mc-promo-badge violet inline">Mudanza gratis +10m²</span>
+                      )}
+                    </span>
+                    <span className="cost">
+                      {isFree ? (<><s>${a.cost.toLocaleString('es-AR')}</s> <b>GRATIS</b></>) : `+$${a.cost.toLocaleString('es-AR')}`}
+                    </span>
+                  </button>
+                );
+              })}
+            </>
+          )}
+
+          {step === 4 && (
             <>
               <h2 id="wiz-title">Tus datos</h2>
               <p className="lead">Te creamos la cuenta para que después gestiones todo desde el portal.</p>
 
               <div className="mc-wiz-summary">
                 <h4>Resumen</h4>
+                <div className="row"><span>Sucursal</span><b>{data.sucursal.name} · {data.sucursal.hood}</b></div>
                 <div className="row"><span>Tamaño</span><b>{data.size.label} · {data.size.range}</b></div>
                 <div className="row"><span>Inicio</span><b>{data.startDate || '—'}</b></div>
-                <div className="row"><span>Mensualidad</span><b>${monthly.toLocaleString('es-AR')}</b></div>
-                {data.addons.length > 0 && <div className="row"><span>Add-ons</span><b>+${addonTotal.toLocaleString('es-AR')}</b></div>}
+                <div className="row"><span>Duración estimada</span><b>{data.duration} {data.duration === 1 ? 'mes' : 'meses'}</b></div>
+
+                {totals.monthlyDiscount > 0 ? (
+                  <div className="row">
+                    <span>Mensualidad</span>
+                    <b><s style={{ color: 'var(--mc-ink-4)', fontWeight: 500 }}>${totals.monthly.toLocaleString('es-AR')}</s> ${totals.monthlyEff.toLocaleString('es-AR')}</b>
+                  </div>
+                ) : (
+                  <div className="row"><span>Mensualidad</span><b>${totals.monthly.toLocaleString('es-AR')}</b></div>
+                )}
+
+                {data.addons.length > 0 && (
+                  <div className="row">
+                    <span>Add-ons</span>
+                    <b>
+                      {totals.pickupDiscount > 0 && totals.pickupCost > 0
+                        ? <><s style={{ color: 'var(--mc-ink-4)', fontWeight: 500 }}>+${(totals.pickupCost + totals.addonOneOff).toLocaleString('es-AR')}</s> +${totals.addonOneOff.toLocaleString('es-AR')}</>
+                        : `+$${(totals.pickupCost + totals.addonOneOff).toLocaleString('es-AR')}`}
+                    </b>
+                  </div>
+                )}
+
+                {promos.length > 0 && (
+                  <div className="mc-wiz-promos-applied">
+                    <span className="lbl">Promos aplicadas</span>
+                    {promos.map((p) => <span key={p.key} className={`mc-promo-badge ${p.color}`}>{p.badge}</span>)}
+                  </div>
+                )}
+
                 <div className="total">
-                  <span>Primer pago</span><b>${firstMonth.toLocaleString('es-AR')}</b>
+                  <span>Primer pago</span>
+                  <b>${totals.firstMonth.toLocaleString('es-AR')}</b>
                 </div>
               </div>
 
@@ -812,7 +1016,7 @@ function Wizard({ initialSize, user, onClose, onComplete }) {
             </>
           )}
 
-          {step === 4 && (
+          {step === 5 && (
             <div className="mc-wiz-success">
               <div className="badge" aria-hidden="true">
                 <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5L20 7" /></svg>
@@ -821,25 +1025,20 @@ function Wizard({ initialSize, user, onClose, onComplete }) {
               <p>Te mandamos un email a <b>{data.email}</b> con tu credencial digital y el resumen.</p>
               <div className="code">{store.getReservations()[0]?.id}</div>
               <div className="actions">
-                <a className="mc-btn mc-btn-violet" href="#/portal">
-                  <span>Ir al portal</span>
-                  <span className="arrow">→</span>
-                </a>
-                <button className="mc-btn mc-btn-ghost" onClick={onClose}>
-                  <span>Cerrar</span>
-                </button>
+                <a className="mc-btn mc-btn-violet" href="#/portal"><span>Ir al portal</span><span className="arrow">→</span></a>
+                <button className="mc-btn mc-btn-ghost" onClick={onClose}><span>Cerrar</span></button>
               </div>
             </div>
           )}
         </div>
 
-        {step < 4 && (
+        {step < 5 && (
           <div className="mc-wiz-foot">
             {step > 0 ? (
               <button className="mc-btn mc-btn-ghost" onClick={back}><span>← Atrás</span></button>
             ) : <span />}
             <button className="mc-btn mc-btn-green" onClick={next}>
-              <span>{step === 3 ? 'Confirmar reserva' : 'Continuar'}</span>
+              <span>{step === 4 ? 'Confirmar reserva' : 'Continuar'}</span>
               <span className="arrow">→</span>
             </button>
           </div>
@@ -850,24 +1049,124 @@ function Wizard({ initialSize, user, onClose, onComplete }) {
 }
 
 /* ════════════════════════════════════════════════════════════════ */
-/* PORTAL                                                             */
+/* Google login                                                       */
+/* ════════════════════════════════════════════════════════════════ */
+function decodeJWT(token) {
+  try {
+    const payload = token.split('.')[1];
+    const padded = payload + '='.repeat((4 - payload.length % 4) % 4);
+    return JSON.parse(atob(padded.replace(/-/g, '+').replace(/_/g, '/')));
+  } catch { return null; }
+}
+
+function GoogleButton({ onSuccess }) {
+  const realRef = useRef(null);
+  const [demoOpen, setDemoOpen] = useState(false);
+
+  useEffect(() => {
+    if (!GOOGLE_CLIENT_ID) return;
+    let canceled = false;
+    const init = () => {
+      if (canceled || !window.google?.accounts?.id || !realRef.current) return;
+      try {
+        window.google.accounts.id.initialize({
+          client_id: GOOGLE_CLIENT_ID,
+          callback: (response) => {
+            const info = decodeJWT(response.credential);
+            if (!info) return;
+            onSuccess({ email: info.email, name: info.name, picture: info.picture, provider: 'google' });
+          },
+        });
+        window.google.accounts.id.renderButton(realRef.current, {
+          type: 'standard', theme: 'outline', size: 'large',
+          text: 'continue_with', shape: 'pill',
+          width: realRef.current.offsetWidth || 320,
+        });
+      } catch (e) { console.warn('GIS init failed', e); }
+    };
+    if (window.google?.accounts?.id) init();
+    else {
+      const t = setInterval(() => { if (window.google?.accounts?.id) { clearInterval(t); init(); } }, 200);
+      setTimeout(() => clearInterval(t), 5000);
+    }
+    return () => { canceled = true; };
+  }, [onSuccess]);
+
+  if (GOOGLE_CLIENT_ID) {
+    return <div ref={realRef} className="mc-google-real"></div>;
+  }
+
+  return (
+    <>
+      <button type="button" className="mc-google-btn" onClick={() => setDemoOpen(true)}>
+        <svg viewBox="0 0 48 48" width="18" height="18" aria-hidden="true">
+          <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.6-6 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.8 1.1 7.9 3l5.7-5.7C34.1 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.3-.4-3.5z" />
+          <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 16 19 13 24 13c3 0 5.8 1.1 7.9 3l5.7-5.7C34.1 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z" />
+          <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2c-2 1.5-4.5 2.4-7.2 2.4-5.3 0-9.7-3.4-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z" />
+          <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.1-4.1 5.6l6.2 5.2C41 35.5 44 30.2 44 24c0-1.3-.1-2.3-.4-3.5z" />
+        </svg>
+        <span>Continuar con Google</span>
+      </button>
+      {demoOpen && <GoogleDemoPicker onPick={onSuccess} onClose={() => setDemoOpen(false)} />}
+    </>
+  );
+}
+
+function GoogleDemoPicker({ onPick, onClose }) {
+  const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
+  const submit = (e) => {
+    e.preventDefault();
+    if (!/^\S+@\S+\.\S+$/.test(email)) return;
+    onPick({ email: email.toLowerCase().trim(), name: name.trim() || email.split('@')[0], provider: 'google' });
+    onClose();
+  };
+  return (
+    <div className="mc-wiz-back" onClick={onClose}>
+      <div className="mc-modal-demo" onClick={(e) => e.stopPropagation()}>
+        <div className="head">
+          <svg viewBox="0 0 48 48" width="20" height="20"><path fill="#4285F4" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.6-6 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.8 1.1 7.9 3l5.7-5.7C34.1 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.3-.4-3.5z" /></svg>
+          <b>Continuar con Google</b>
+          <span className="demo-tag">Demo</span>
+        </div>
+        <p className="sub">Esta es una simulación del flujo. En producción usás tu cuenta real de Google.</p>
+        <form onSubmit={submit}>
+          <div className="mc-wiz-field">
+            <label>Nombre</label>
+            <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Augusto Martínez" autoFocus />
+          </div>
+          <div className="mc-wiz-field">
+            <label>Email de Google</label>
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="vos@gmail.com" required />
+          </div>
+          <button type="submit" className="mc-btn mc-btn-violet full">
+            <span>Continuar</span>
+            <span className="arrow">→</span>
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════ */
+/* Portal                                                             */
 /* ════════════════════════════════════════════════════════════════ */
 function PortalLogin({ onLogin }) {
   const [email, setEmail] = useState('');
   const [err, setErr] = useState('');
 
-  const submit = (e) => {
+  const handleEmail = (e) => {
     e.preventDefault();
     if (!/^\S+@\S+\.\S+$/.test(email)) { setErr('Ingresá un email válido'); return; }
-    // Mock: any email logs in. If existing user, use their data.
-    const existing = store.getUser();
-    if (existing && existing.email === email.toLowerCase()) {
-      onLogin(existing);
-    } else {
-      const user = { email: email.toLowerCase(), name: email.split('@')[0] };
-      store.setUser(user);
-      onLogin(user);
-    }
+    const user = { email: email.toLowerCase(), name: email.split('@')[0], provider: 'email' };
+    store.setUser(user);
+    onLogin && onLogin(user);
+  };
+
+  const handleGoogle = (user) => {
+    store.setUser(user);
+    onLogin && onLogin(user);
   };
 
   return (
@@ -875,25 +1174,24 @@ function PortalLogin({ onLogin }) {
       <div className="mc-login-card">
         <span className="mc-eyebrow violet">Portal cliente</span>
         <h2>Entrá a <span className="v">tu cuenta</span>.</h2>
-        <p>Te enviamos un link mágico al email. Sin contraseñas.</p>
-        <form onSubmit={submit}>
+        <p>Iniciá sesión con Google o con tu email. Sin contraseñas.</p>
+
+        <GoogleButton onSuccess={handleGoogle} />
+
+        <div className="mc-login-divider"><span>o con tu email</span></div>
+
+        <form onSubmit={handleEmail}>
           <div className="mc-wiz-field">
             <label htmlFor="login-email">Email</label>
-            <input
-              id="login-email"
-              type="email"
-              value={email}
-              onChange={(e) => { setEmail(e.target.value); setErr(''); }}
-              placeholder="vos@email.com"
-              autoFocus
-            />
+            <input id="login-email" type="email" value={email} onChange={(e) => { setEmail(e.target.value); setErr(''); }} placeholder="vos@email.com" />
             {err && <span className="err">{err}</span>}
           </div>
-          <button type="submit" className="mc-btn mc-btn-violet full big">
-            <span>Continuar</span>
+          <button type="submit" className="mc-btn mc-btn-violet full">
+            <span>Continuar con email</span>
             <span className="arrow">→</span>
           </button>
         </form>
+
         <a className="mc-login-back" href="#/">← Volver al inicio</a>
       </div>
     </div>
@@ -901,8 +1199,9 @@ function PortalLogin({ onLogin }) {
 }
 
 function PortalDashboard({ user, reservations, onLogout, onReserve }) {
-  const activeCount = reservations.filter((r) => r.status === 'active').length;
-  const totalMonthly = reservations.filter((r) => r.status === 'active').reduce((sum, r) => sum + r.monthly, 0);
+  const active = reservations.filter((r) => r.status === 'active');
+  const totalMonthly = active.reduce((sum, r) => sum + r.monthly, 0);
+  const sucursalCount = new Set(active.map((r) => r.sucursal?.id || 'unknown')).size;
 
   return (
     <>
@@ -910,14 +1209,14 @@ function PortalDashboard({ user, reservations, onLogout, onReserve }) {
         <div className="mc-portal-hero-inner">
           <span className="mc-eyebrow on-dark">Portal cliente</span>
           <h1>Hola, <span className="g">{user.name || user.email.split('@')[0]}</span>.</h1>
-          <p>Acá vas a ver tus reservas activas, facturas, accesos y todo lo que necesites gestionar.</p>
+          <p>Acá vas a ver todas tus reservas, facturas y accesos. Podés tener varios boxes en distintas sucursales gestionados desde la misma cuenta.</p>
         </div>
       </section>
 
       <div className="mc-portal">
         <div className="mc-portal-grid">
           <div className="mc-portal-card">
-            <h3>Tus reservas <span className="lbl">{reservations.length} total</span></h3>
+            <h3>Tus reservas <span className="lbl">{reservations.length} total · {active.length} activas</span></h3>
             {reservations.length === 0 ? (
               <div className="mc-portal-empty">
                 <b>Todavía no tenés reservas</b>
@@ -933,9 +1232,15 @@ function PortalDashboard({ user, reservations, onLogout, onReserve }) {
                   <a key={r.id} className="mc-res-card" href={`#/portal/r/${r.id}`}>
                     <span className="num">0{i + 1}</span>
                     <div className="info">
-                      <b>Espacio {r.size.label} · {r.size.range}</b>
+                      <b>{r.size.label} · {r.size.range}</b>
+                      <span>{r.sucursal?.name || '—'} · {r.sucursal?.hood || ''}</span>
                       <span>Inicio: {r.startDate} · {r.id}</span>
-                      <span className={`badge ${r.status === 'active' ? 'active' : 'pending'}`}>{r.status === 'active' ? 'Activa' : 'Pendiente'}</span>
+                      <span className={`badge ${r.status === 'active' ? 'active' : r.status === 'cancelled' ? 'cancelled' : 'pending'}`}>{r.status === 'active' ? 'Activa' : r.status === 'cancelled' ? 'Cancelada' : 'Pendiente'}</span>
+                      {r.promosApplied && r.promosApplied.length > 0 && (
+                        <div className="promos-row">
+                          {r.promosApplied.map((p) => <span key={p.key} className="mc-promo-badge green tiny">{p.badge}</span>)}
+                        </div>
+                      )}
                     </div>
                     <div className="price">
                       ${r.monthly.toLocaleString('es-AR')}
@@ -945,6 +1250,12 @@ function PortalDashboard({ user, reservations, onLogout, onReserve }) {
                 ))}
               </div>
             )}
+            <div style={{ marginTop: 18, paddingTop: 18, borderTop: '1px solid var(--mc-line)' }}>
+              <button className="mc-btn mc-btn-green" onClick={onReserve}>
+                <span>+ Nueva reserva</span>
+                <span className="arrow">→</span>
+              </button>
+            </div>
           </div>
 
           <div className="mc-portal-card">
@@ -952,8 +1263,8 @@ function PortalDashboard({ user, reservations, onLogout, onReserve }) {
             <div className="mc-portal-stats">
               <div className="stat">
                 <span className="lbl">Reservas activas</span>
-                <b>{activeCount}</b>
-                <span className="sub">{activeCount === 1 ? 'espacio en uso' : 'espacios en uso'}</span>
+                <b>{active.length}</b>
+                <span className="sub">en {sucursalCount} {sucursalCount === 1 ? 'sucursal' : 'sucursales'}</span>
               </div>
               <div className="stat">
                 <span className="lbl">Mensual total</span>
@@ -961,13 +1272,12 @@ function PortalDashboard({ user, reservations, onLogout, onReserve }) {
                 <span className="sub">Próximo cobro el día 1</span>
               </div>
               <div className="stat">
-                <span className="lbl">Email</span>
+                <span className="lbl">Acceso · {user.provider === 'google' ? 'Google' : 'Email'}</span>
                 <b style={{ fontSize: '15px' }}>{user.email}</b>
               </div>
             </div>
             <div style={{ marginTop: 18, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              <button className="mc-btn mc-btn-green" onClick={onReserve}><span>Nueva reserva</span><span className="arrow">→</span></button>
-              <button className="mc-btn mc-btn-ghost" onClick={onLogout}><span>Salir</span></button>
+              <button className="mc-btn mc-btn-ghost" onClick={onLogout}><span>Cerrar sesión</span></button>
             </div>
           </div>
         </div>
@@ -988,10 +1298,8 @@ function ReservationDetail({ reservation, user, onUpdate }) {
       </div>
     );
   }
-
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(reservation.id + '|' + user.email)}&size=200x200&bgcolor=f7f4ec&color=3D3083&margin=0`;
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(reservation.id + '|' + user.email)}&size=220x220&bgcolor=f7f4ec&color=3D3083&margin=0`;
   const addonNames = reservation.addons.map((k) => ADDONS.find((a) => a.key === k)?.name).filter(Boolean);
-
   const cancel = () => {
     if (!confirm('¿Cancelar esta reserva? Va a quedar marcada como cancelada con efecto en 7 días.')) return;
     onUpdate(reservation.id, { status: 'cancelled' });
@@ -1002,7 +1310,7 @@ function ReservationDetail({ reservation, user, onUpdate }) {
       <section className="mc-portal-hero">
         <div className="mc-portal-hero-inner">
           <a className="mc-eyebrow on-dark" href="#/portal" style={{ marginBottom: 14 }}>← Tus reservas</a>
-          <h1>Espacio <span className="g">{reservation.size.label}</span></h1>
+          <h1>{reservation.size.label} <span className="g">· {reservation.sucursal?.name}</span></h1>
           <p>{reservation.size.blurb}</p>
         </div>
       </section>
@@ -1014,16 +1322,25 @@ function ReservationDetail({ reservation, user, onUpdate }) {
               <h2>{reservation.size.label} · {reservation.size.range}</h2>
               <div className="code">{reservation.id}</div>
             </div>
-            <span className={`mc-res-card`}>
-              <span className={`info`}>
-                <span className={`badge ${reservation.status === 'active' ? 'active' : 'pending'}`}>{reservation.status === 'active' ? 'Activa' : reservation.status}</span>
-              </span>
-            </span>
+            <span className={`mc-res-status ${reservation.status === 'active' ? 'active' : reservation.status === 'cancelled' ? 'cancelled' : 'pending'}`}>{reservation.status === 'active' ? 'Activa' : reservation.status === 'cancelled' ? 'Cancelada' : 'Pendiente'}</span>
           </div>
+
+          {reservation.promosApplied && reservation.promosApplied.length > 0 && (
+            <div className="mc-res-promos">
+              <span className="lbl">Promos aplicadas</span>
+              {reservation.promosApplied.map((p) => <span key={p.key} className="mc-promo-badge green">{p.badge}</span>)}
+            </div>
+          )}
 
           <div className="mc-res-detail-grid">
             <div className="col">
-              <h4>Detalles</h4>
+              <h4>Sucursal</h4>
+              <p>
+                <b>{reservation.sucursal?.name}</b> · {reservation.sucursal?.hood}<br />
+                {reservation.sucursal?.address}<br />
+                {reservation.sucursal?.hours}
+              </p>
+              <h4 style={{ marginTop: 20 }}>Detalles</h4>
               <p>
                 <b>Inicio:</b> {reservation.startDate}<br />
                 <b>Duración estimada:</b> {reservation.duration} {reservation.duration === 1 ? 'mes' : 'meses'}<br />
@@ -1033,12 +1350,11 @@ function ReservationDetail({ reservation, user, onUpdate }) {
                 <b>Creada:</b> {new Date(reservation.createdAt).toLocaleDateString('es-AR')}
               </p>
             </div>
-
             <div className="col">
               <h4>Credencial de acceso</h4>
               <div className="mc-res-qr">
-                <img src={qrUrl} alt="Código QR de acceso" width="200" height="200" />
-                <div className="lbl">Mostrá este QR al ingresar</div>
+                <img src={qrUrl} alt="Código QR de acceso" width="220" height="220" />
+                <div className="lbl">Mostrá este QR al ingresar a {reservation.sucursal?.name}</div>
               </div>
             </div>
           </div>
@@ -1058,7 +1374,7 @@ function ReservationDetail({ reservation, user, onUpdate }) {
 }
 
 /* ════════════════════════════════════════════════════════════════ */
-/* APP                                                                */
+/* App                                                                */
 /* ════════════════════════════════════════════════════════════════ */
 function App() {
   const route = useHashRoute();
@@ -1066,6 +1382,7 @@ function App() {
   const [reservations, setReservations] = useState(store.getReservations());
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardSize, setWizardSize] = useState(null);
+  const [wizardSucursal, setWizardSucursal] = useState(null);
 
   useEffect(() => {
     const onU = () => setUser(store.getUser());
@@ -1082,16 +1399,20 @@ function App() {
     if (route.openWizard) {
       setWizardOpen(true);
       setWizardSize(null);
+      setWizardSucursal(null);
       window.location.hash = '#/';
       return;
     }
-    // Close wizard when navigating to any non-home route
     if (route.name !== 'home') setWizardOpen(false);
   }, [route]);
 
   useReveal([route.name]);
 
-  const openWizard = (size = null) => { setWizardSize(size); setWizardOpen(true); };
+  const openWizard = (opts = {}) => {
+    setWizardSize(opts.size || null);
+    setWizardSucursal(opts.sucursal || null);
+    setWizardOpen(true);
+  };
   const closeWizard = () => setWizardOpen(false);
 
   const isPortal = route.name === 'portal' || route.name === 'reservation';
@@ -1100,13 +1421,15 @@ function App() {
 
   return (
     <>
+      {!isPortal && <PromoBanner />}
       <Nav onReserve={() => openWizard()} route={route} user={user} />
 
       {route.name === 'home' && (
         <main id="main">
           <Hero onReserve={() => openWizard()} />
           <Ticker />
-          <Sizes onReserveSize={(s) => openWizard(s)} />
+          <Sucursales onReserve={(s) => openWizard({ sucursal: s })} />
+          <Sizes onReserveSize={(s) => openWizard({ size: s })} />
           <How />
           <Guarantees onReserve={() => openWizard()} />
           <SelfService onReserve={() => openWizard()} />
@@ -1120,7 +1443,7 @@ function App() {
         <main id="main" className="mc-portal-bg">
           {user
             ? <PortalDashboard user={user} reservations={userReservations} onLogout={() => store.setUser(null)} onReserve={() => openWizard()} />
-            : <PortalLogin onLogin={() => {}} />
+            : <PortalLogin />
           }
         </main>
       )}
@@ -1129,7 +1452,7 @@ function App() {
         <main id="main" className="mc-portal-bg">
           {user
             ? <ReservationDetail reservation={userReservations.find((r) => r.id === route.params.id)} user={user} onUpdate={store.updateReservation} />
-            : <PortalLogin onLogin={() => {}} />
+            : <PortalLogin />
           }
         </main>
       )}
@@ -1157,7 +1480,7 @@ function App() {
         </div>
       )}
 
-      {wizardOpen && <Wizard initialSize={wizardSize} user={user} onClose={closeWizard} />}
+      {wizardOpen && <Wizard initialSize={wizardSize} initialSucursal={wizardSucursal} user={user} onClose={closeWizard} />}
     </>
   );
 }
