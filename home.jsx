@@ -1,60 +1,110 @@
-// Mi Container v5 — Multi-sucursal + promos + Google login
+// Mi Container v6 — categorías con opciones reales (Nordelta prices) + Mercado Pago + Google login
 // Brand: Roboto · #5ECA00 · #3D3083 · Manual de Marca Junio 2022
 
 const { useState, useEffect, useMemo, useRef, useCallback } = React;
 
-const PHONE = '(011) 4301-6001';
-const WHATSAPP = 'https://wa.me/5491143016001';
+// ─────────────────────────────────────────────────────────────────
+// Contacto real (del flyer Mayo 2026)
+// ─────────────────────────────────────────────────────────────────
+const PHONE = '+54 9 11 3620-7989';
+const PHONE_TEL = '+5491136207989';
+const WHATSAPP = 'https://wa.me/5491136207989';
 
 // ─────────────────────────────────────────────────────────────────
-// Google OAuth Client ID — pegá acá el de console.cloud.google.com
-// Mientras esté vacío, el botón usa el flujo demo (mock).
+// OAuth Google Client ID — vacío usa demo picker.
 // Para producción:
-//   1. console.cloud.google.com → APIs & Services → Credentials
-//   2. Create OAuth 2.0 Client ID → Web Application
-//   3. Authorized origins: https://augusto-pmd.github.io  (+ http://localhost:5173 para dev)
-//   4. Copiar el Client ID y pegarlo abajo
+//   console.cloud.google.com → APIs & Services → Credentials
+//   OAuth 2.0 Client ID (Web) · origins: https://augusto-pmd.github.io
+//   Pegar acá ↓
 // ─────────────────────────────────────────────────────────────────
 const GOOGLE_CLIENT_ID = '';
 
-const SIZES = [
-  { key: 'chico',   label: 'Pequeño', range: '1–3 m²',  from: 13500, m2max: 3,  blurb: 'Cajas, bicis, archivo personal.',     fits: ['~20 cajas', '2 bicis', 'Objetos estacionales'] },
-  { key: 'mediano', label: 'Mediano', range: '3–9 m²',  from: 24900, m2max: 9,  blurb: 'Un monoambiente o estudio.',          fits: ['Monoambiente', 'Electrodomésticos', 'Muebles de un cuarto'] },
-  { key: 'grande',  label: 'Grande',  range: '9–15 m²', from: 42000, m2max: 15, blurb: 'Casa de 2 ambientes o stock PyME.',   fits: ['Casa 2 ambientes', 'Stock e-commerce', '3–5 pallets'] },
-  { key: 'xl',      label: 'XL',      range: '15+ m²',  from: 68000, m2max: 25, blurb: 'Mudanzas completas, logística.',      fits: ['Casa familiar', 'Operación logística', 'A medida'] },
+// ─────────────────────────────────────────────────────────────────
+// Mercado Pago Public Key — vacío usa flujo demo.
+// Para producción:
+//   mercadopago.com.ar/developers → Tus integraciones → Crear aplicación
+//   Credenciales de producción → Public Key (prefijo APP_USR-...)
+//   Pegar acá ↓ (la integración real requiere backend para crear la preference)
+// ─────────────────────────────────────────────────────────────────
+const MERCADOPAGO_PUBLIC_KEY = '';
+
+// ─────────────────────────────────────────────────────────────────
+// Categorías con opciones reales (precios de Nordelta · Mayo 2026)
+// Cada categoría tiene un rango de m² + opciones específicas con precio
+// ─────────────────────────────────────────────────────────────────
+const CATEGORIES = [
+  {
+    key: 'pequeno',
+    label: 'Pequeño',
+    range: '1,5 – 3 m²',
+    blurb: 'Cajas, bicis, archivo personal.',
+    fits: ['~20 cajas', '2 bicis', 'Objetos estacionales'],
+    options: [
+      { m2: 1.50, monthly: 53550 },
+      { m2: 2.00, monthly: 71400 },
+      { m2: 3.00, monthly: 88200 },
+    ],
+  },
+  {
+    key: 'mediano',
+    label: 'Mediano',
+    range: '5 – 9 m²',
+    blurb: 'Un monoambiente o estudio.',
+    fits: ['Monoambiente', 'Electrodomésticos', 'Muebles de un cuarto'],
+    options: [
+      { m2: 5.10, monthly: 139230 },
+      { m2: 6.00, monthly: 151200 },
+      { m2: 8.00, monthly: 204120 },
+      { m2: 9.00, monthly: 207900 },
+    ],
+  },
+  {
+    key: 'grande',
+    label: 'Grande',
+    range: '11 – 13,5 m²',
+    blurb: 'Casa de 2 ambientes o stock PyME.',
+    fits: ['Casa 2 ambientes', 'Stock e-commerce', '3–5 pallets'],
+    options: [
+      { m2: 11.25, monthly: 259875 },
+      { m2: 13.50, monthly: 283500 },
+    ],
+  },
+  {
+    key: 'xl',
+    label: 'XL',
+    range: '15+ m²',
+    blurb: 'Mudanzas completas, logística.',
+    fits: ['Casa familiar', 'Operación logística', 'A medida'],
+    options: [
+      { m2: 15.00, monthly: 441000 },
+    ],
+  },
 ];
 
+const fromPrice = (cat) => Math.min(...cat.options.map((o) => o.monthly));
+const maxM2 = (cat) => Math.max(...cat.options.map((o) => o.m2));
+const formatM2 = (m2) => m2.toLocaleString('es-AR', { minimumFractionDigits: m2 % 1 === 0 ? 0 : 2 });
+
 const SUCURSALES = [
-  { id: 'palermo',  name: 'Palermo',         hood: 'CABA',      address: 'Av. Córdoba 4500',  hours: 'Acceso 24/7', availability: 'Alta'     },
-  { id: 'crespo',   name: 'Villa Crespo',    hood: 'CABA',      address: 'Av. Warnes 1280',   hours: 'Acceso 24/7', availability: 'Media'    },
-  { id: 'vlopez',   name: 'Vicente López',   hood: 'GBA Norte', address: 'Av. Maipú 2840',    hours: 'Acceso 24/7', availability: 'Alta'     },
-  { id: 'tigre',    name: 'Tigre Centro',    hood: 'GBA Norte', address: 'Av. Cazón 1500',    hours: 'Acceso 24/7', availability: 'Limitada' },
+  { id: 'nordelta',  name: 'Nordelta',        hood: 'GBA Norte', address: 'Av. de los Lagos 7250',  hours: 'Acceso 24/7', availability: 'Alta'     },
+  { id: 'palermo',   name: 'Palermo',         hood: 'CABA',      address: 'Av. Córdoba 4500',       hours: 'Acceso 24/7', availability: 'Alta'     },
+  { id: 'crespo',    name: 'Villa Crespo',    hood: 'CABA',      address: 'Av. Warnes 1280',        hours: 'Acceso 24/7', availability: 'Media'    },
+  { id: 'vlopez',    name: 'Vicente López',   hood: 'GBA Norte', address: 'Av. Maipú 2840',         hours: 'Acceso 24/7', availability: 'Limitada' },
 ];
 
 const ADDONS = [
-  { key: 'pickup',   name: 'Retiro a domicilio',  desc: 'Vamos a buscar tus cosas (CABA y GBA).', cost: 18900 },
-  { key: 'pack',     name: 'Kit de embalaje',     desc: 'Cajas, cinta y film stretch para 10 m³.', cost: 6500 },
-  { key: 'lock',     name: 'Candado certificado', desc: 'De acero, anti-corte. Lo dejás vos.',     cost: 4200 },
-  { key: 'insure',   name: 'Seguro extendido',    desc: 'Cobertura hasta $2.000.000 por daños.',   cost: 3900 },
+  { key: 'pickup',   name: 'Retiro a domicilio',  desc: 'Vamos a buscar tus cosas (CABA y GBA).', cost: 32500 },
+  { key: 'pack',     name: 'Kit de embalaje',     desc: 'Cajas, cinta y film stretch para 10 m³.', cost: 14500 },
+  { key: 'lock',     name: 'Candado certificado', desc: 'De acero, anti-corte. Lo dejás vos.',     cost: 9200  },
+  { key: 'insure',   name: 'Seguro extendido',    desc: 'Cobertura hasta $2.000.000 por daños.',   cost: 8900  },
 ];
 
-// ─────────────────────────────────────────────────────────────────
-// Promos — sistema declarativo. Agregar/sacar promos editando esta lista.
-// Cada promo:
-//   - key: identificador
-//   - badge: texto corto para badges
-//   - name + description: para el banner y el wizard
-//   - color: 'green' | 'violet'
-//   - eligible(data): true si la reserva califica
-//   - apply(totals): muta los totales (devuelve patch)
-//   - bannerOrder: prioridad para el banner del home (0 = arriba)
-// ─────────────────────────────────────────────────────────────────
 const PROMOS = [
   {
     key: 'first-month-free',
     badge: '1° mes gratis',
     name: 'Primer mes gratis',
-    description: 'Tu primer mes sin cargo. Válido en todas las sucursales y tamaños.',
+    description: 'Tu primer mes sin cargo. Aplica en todas las sucursales y tamaños.',
     color: 'green',
     bannerOrder: 0,
     eligible: () => true,
@@ -67,7 +117,7 @@ const PROMOS = [
     description: 'Retiro a domicilio bonificado al alquilar 10 m² o más.',
     color: 'violet',
     bannerOrder: 1,
-    eligible: (d) => d.size.m2max >= 10 && d.addons.includes('pickup'),
+    eligible: (d) => (d.option?.m2 ?? maxM2(d.category)) >= 10 && d.addons.includes('pickup'),
     apply: (t) => ({ ...t, pickupDiscount: ADDONS.find((a) => a.key === 'pickup').cost }),
   },
   {
@@ -87,21 +137,13 @@ function activePromos(data) {
 }
 
 function computeTotals(data) {
-  const monthly = data.size.from;
+  const monthly = data.option?.monthly ?? fromPrice(data.category);
   const addonOneOff = data.addons
     .filter((k) => k !== 'pickup')
     .reduce((s, k) => s + ADDONS.find((a) => a.key === k).cost, 0);
   const pickupCost = data.addons.includes('pickup') ? ADDONS.find((a) => a.key === 'pickup').cost : 0;
 
-  let t = {
-    monthly,
-    monthlyDiscount: 0,
-    pickupCost,
-    pickupDiscount: 0,
-    addonOneOff,
-    annualPctOff: 0,
-  };
-
+  let t = { monthly, monthlyDiscount: 0, pickupCost, pickupDiscount: 0, addonOneOff, annualPctOff: 0 };
   activePromos(data).forEach((p) => { t = p.apply(t); });
 
   const monthlyEff = Math.max(0, t.monthly - t.monthlyDiscount);
@@ -143,7 +185,7 @@ function generateCode() {
 }
 
 /* ════════════════════════════════════════════════════════════════ */
-/* Hash routing                                                       */
+/* Routing + reveal                                                   */
 /* ════════════════════════════════════════════════════════════════ */
 function useHashRoute() {
   const parse = () => {
@@ -178,7 +220,7 @@ function useReveal(deps = []) {
 }
 
 /* ════════════════════════════════════════════════════════════════ */
-/* Isologo                                                            */
+/* Brand atoms                                                        */
 /* ════════════════════════════════════════════════════════════════ */
 function Isologo({ size = 36 }) {
   return (
@@ -188,6 +230,18 @@ function Isologo({ size = 36 }) {
       <rect x="13" y="13" width="14" height="14" fill="#5ECA00" />
       <path d="M17.5 19v-1.2a2.5 2.5 0 015 0V19" stroke="#0a0a0a" strokeWidth="1.6" fill="none" strokeLinecap="round" />
       <rect x="16.5" y="19" width="7" height="5" rx="0.6" fill="#0a0a0a" />
+    </svg>
+  );
+}
+
+function MercadoPagoLogo({ size = 18 }) {
+  // Stylized MP wordmark — light blue + handshake icon
+  return (
+    <svg viewBox="0 0 80 28" width={size * 4} height={size} aria-hidden="true">
+      <rect x="0" y="2" width="22" height="24" rx="12" fill="#009ee3" />
+      <path d="M5 14c1.2-2 2.8-3 4.8-3 1.6 0 2.7.5 3.6 1.4l1.2-1.2c1-1 2.2-1.4 3.3-1.2-.5 1.4-1.4 2.5-2.6 3.2.7.9 1 2 .9 3.1-1.6.4-3.2.1-4.4-.9l-1.5 1.5c-1 1-2.4 1.6-3.8 1.6-1.7 0-3.2-.8-3.7-2.3-.4-1.1 0-2.2.7-3.2.4-.6.9-1 1.5-1z" fill="#fff"/>
+      <text x="28" y="19" fontFamily="Inter, system-ui, sans-serif" fontWeight="800" fontSize="13" fill="#009ee3" letterSpacing="-0.5">Mercado</text>
+      <text x="28" y="29" fontFamily="Inter, system-ui, sans-serif" fontWeight="800" fontSize="13" fill="#1a3263" letterSpacing="-0.5">Pago</text>
     </svg>
   );
 }
@@ -258,7 +312,7 @@ function Nav({ onReserve, route, user }) {
           <a onClick={() => goSection('faq')}>Preguntas</a>
         </nav>
         <div className="mc-nav-right">
-          <a className="mc-nav-phone" href="tel:+541143016001">{PHONE}</a>
+          <a className="mc-nav-phone" href={`tel:${PHONE_TEL}`}>{PHONE}</a>
           <a className="mc-nav-portal" href="#/portal">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
@@ -280,7 +334,7 @@ function Nav({ onReserve, route, user }) {
 }
 
 /* ════════════════════════════════════════════════════════════════ */
-/* Hero                                                               */
+/* Hero — "Guardá lo que querés"                                     */
 /* ════════════════════════════════════════════════════════════════ */
 function Hero({ onReserve }) {
   return (
@@ -291,19 +345,19 @@ function Hero({ onReserve }) {
       </div>
 
       <h1 className="mc-hero-title">
-        <span className="line"><span className="reveal">Tu espacio,</span></span>
+        <span className="line"><span className="reveal">Guardá</span></span>
         <span className="line">
           <span className="reveal">
             <span className="img-inline" aria-hidden="true"><img src="assets/hero-box.webp" alt="" /></span>{' '}
-            <span className="v">cuando lo</span>
+            <span className="v">lo que</span>
           </span>
         </span>
-        <span className="line"><span className="reveal"><span className="g">necesites</span>.</span></span>
+        <span className="line"><span className="reveal"><span className="g">querés</span>.</span></span>
       </h1>
 
       <div className="mc-hero-grid" data-reveal>
         <p className="mc-hero-lead">
-          Reservá, accedé y gestioná todo desde la web — sin papeleo, sin llamados, sin esperar. Self-storage flexible mes a mes.
+          Self-storage en Buenos Aires. Reservá tu espacio online en 5 minutos, pagá con Mercado Pago, accedé 24/7 con tu QR — todo desde tu cuenta.
         </p>
         <div className="mc-hero-actions">
           <div className="row">
@@ -316,7 +370,7 @@ function Hero({ onReserve }) {
               <span className="arrow">→</span>
             </a>
           </div>
-          <span className="micro">5 min · sin depósito · cancelás cuando quieras</span>
+          <span className="micro">5 min · sin depósito · 1° mes gratis</span>
         </div>
       </div>
 
@@ -340,7 +394,7 @@ function Hero({ onReserve }) {
 }
 
 /* ════════════════════════════════════════════════════════════════ */
-/* Sucursales (section + map-ish list)                                */
+/* Sucursales                                                         */
 /* ════════════════════════════════════════════════════════════════ */
 function Sucursales({ onReserve }) {
   return (
@@ -350,7 +404,6 @@ function Sucursales({ onReserve }) {
         <h2>Cuatro <span className="v">ubicaciones</span> en Buenos Aires.</h2>
         <p>Elegí la más cercana a tu casa, oficina o depósito. Mismas tarifas, mismos servicios, mismo acceso 24/7.</p>
       </div>
-
       <div className="mc-sucs-grid" data-reveal>
         {SUCURSALES.map((s, i) => (
           <article key={s.id} className="mc-suc-card">
@@ -377,7 +430,7 @@ function Sucursales({ onReserve }) {
 /* Ticker                                                             */
 /* ════════════════════════════════════════════════════════════════ */
 function Ticker() {
-  const items = ['Sin depósito', 'Sin permanencia', '1° mes gratis', 'Mudanza gratis +10m²', '20% off anual', 'Acceso 24/7', 'Gestión online'];
+  const items = ['1° mes gratis', 'Sin depósito', 'Sin permanencia', 'Mudanza gratis +10m²', '20% off anual', 'Acceso 24/7', 'Pagás con Mercado Pago'];
   const run = [...items, ...items, ...items];
   return (
     <div className="mc-ticker" aria-hidden="true">
@@ -389,54 +442,64 @@ function Ticker() {
 }
 
 /* ════════════════════════════════════════════════════════════════ */
-/* Sizes                                                              */
+/* Categorías (home) — con rangos + "desde" + opciones                */
 /* ════════════════════════════════════════════════════════════════ */
-function Sizes({ onReserveSize }) {
+function Categorias({ onReserveCategory }) {
   return (
     <section className="mc-sizes mc-container" id="sizes">
       <div className="mc-sec-head" data-reveal>
-        <span className="mc-eyebrow green">Nuestros espacios</span>
-        <h2>Cuatro tamaños,<br /><span className="g">precios claros</span>.</h2>
-        <p>Pagás mes a mes. Cambiás de tamaño cuando quieras, sin penalidades ni tarifas ocultas.</p>
+        <span className="mc-eyebrow green">Espacios y precios</span>
+        <h2>Cuatro categorías,<br /><span className="g">precios reales</span>.</h2>
+        <p>Cada categoría tiene varios tamaños exactos en m². Pagás mes a mes, con IVA incluido. Cambiás de tamaño desde el portal sin penalidad.</p>
       </div>
-      <div className="mc-sizes-list" data-reveal>
-        {SIZES.map((s, i) => {
-          const promosForSize = PROMOS.filter((p) => p.eligible({ size: s, duration: 12, addons: ['pickup'] }));
+
+      <div className="mc-cats" data-reveal>
+        {CATEGORIES.map((c, i) => {
+          const eligible = PROMOS.filter((p) => p.eligible({ category: c, option: c.options[c.options.length - 1], duration: 12, addons: ['pickup'] }));
           return (
-            <article
-              key={s.key}
-              className="mc-size-row"
-              role="button"
-              tabIndex={0}
-              onClick={() => onReserveSize(s)}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onReserveSize(s); } }}
-            >
-              <div className="mc-size-num">0{i + 1} ──</div>
-              <div className="mc-size-name">
-                <h3>{s.label}</h3>
-                <span>{s.range}</span>
-                {promosForSize.length > 0 && (
-                  <div className="mc-size-promos">
-                    {promosForSize.map((p) => (
-                      <span key={p.key} className={`mc-promo-badge ${p.color}`}>{p.badge}</span>
-                    ))}
-                  </div>
-                )}
+            <article key={c.key} className="mc-cat-card">
+              <div className="mc-cat-head">
+                <div>
+                  <span className="num">0{i + 1}</span>
+                  <h3>{c.label}</h3>
+                  <span className="range">{c.range}</span>
+                </div>
+                <div className="mc-cat-price">
+                  <span className="from">Desde</span>
+                  <b>${fromPrice(c).toLocaleString('es-AR')}</b>
+                  <span className="unit">/ mes</span>
+                </div>
               </div>
-              <div className="mc-size-blurb">
-                <p>{s.blurb}</p>
-                <div className="mc-size-fits">{s.fits.map((f, j) => <span key={j}>{f}</span>)}</div>
+              <p className="blurb">{c.blurb}</p>
+              <div className="mc-cat-fits">
+                {c.fits.map((f, j) => <span key={j}>{f}</span>)}
               </div>
-              <div className="mc-size-price">
-                <span className="from">Desde</span>
-                <b>${s.from.toLocaleString('es-AR')}</b>
-                <span className="unit">por mes</span>
+              <div className="mc-cat-options">
+                <span className="lbl">Opciones de m²</span>
+                <div className="opts">
+                  {c.options.map((o) => (
+                    <span key={o.m2} className="opt">
+                      <b>{formatM2(o.m2)} m²</b>
+                      <span>${o.monthly.toLocaleString('es-AR')}</span>
+                    </span>
+                  ))}
+                </div>
               </div>
-              <div className="mc-size-go" aria-hidden="true">→</div>
+              {eligible.length > 0 && (
+                <div className="mc-cat-promos">
+                  {eligible.map((p) => <span key={p.key} className={`mc-promo-badge ${p.color}`}>{p.badge}</span>)}
+                </div>
+              )}
+              <button className="mc-btn mc-btn-green mc-cat-cta" onClick={() => onReserveCategory(c)}>
+                <span>Reservar {c.label.toLowerCase()}</span>
+                <span className="arrow">→</span>
+              </button>
             </article>
           );
         })}
       </div>
+
+      <p className="mc-cats-foot">Precios finales con IVA incluido. Sucursal de referencia: Nordelta. Otras sucursales pueden tener tarifas diferentes según disponibilidad.</p>
     </section>
   );
 }
@@ -446,9 +509,9 @@ function Sizes({ onReserveSize }) {
 /* ════════════════════════════════════════════════════════════════ */
 function How() {
   const steps = [
-    { n: '01', t: 'Elegí sucursal y tamaño', d: 'Cuatro ubicaciones, cuatro tamaños. Todo transparente.' },
-    { n: '02', t: 'Reservá online',          d: 'Cinco minutos. Sin depósito, sin anticipo.' },
-    { n: '03', t: 'Gestioná desde tu cuenta', d: 'Pagos, accesos, facturación — todo en el portal.' },
+    { n: '01', t: 'Elegí sucursal y tamaño', d: 'Cuatro ubicaciones, cuatro categorías con opciones reales en m².' },
+    { n: '02', t: 'Pagás con Mercado Pago',  d: 'Cinco minutos. Tarjeta, débito o transferencia. Sin depósito.' },
+    { n: '03', t: 'Gestionás desde tu cuenta', d: 'Pagos, accesos, facturación — todo en el portal con tu QR digital.' },
   ];
   return (
     <section className="mc-how" id="how">
@@ -547,8 +610,8 @@ function SelfService({ onReserve }) {
           <span className="mc-eyebrow on-dark">Reserva online</span>
           <h3>Conseguí tu espacio en 5 minutos.</h3>
           <ul>
-            <li>Elegís sucursal, tamaño, fecha y add-ons</li>
-            <li>Pagás online con tarjeta o transferencia</li>
+            <li>Elegís sucursal, tamaño exacto en m² y add-ons</li>
+            <li>Pagás con Mercado Pago (tarjeta, débito o transferencia)</li>
             <li>Recibís tu credencial QR al instante</li>
             <li>Sin firmas, sin contratos físicos</li>
           </ul>
@@ -577,7 +640,7 @@ function SelfService({ onReserve }) {
 }
 
 /* ════════════════════════════════════════════════════════════════ */
-/* Testimonials                                                       */
+/* Testimonials + FAQ + BigCTA + Footer                               */
 /* ════════════════════════════════════════════════════════════════ */
 function Testimonials() {
   return (
@@ -595,12 +658,12 @@ function Testimonials() {
         <div className="mc-testi-side">
           <figure data-reveal="2">
             <div className="stars" aria-label="5 estrellas">★★★★★</div>
-            <blockquote>Tengo dos boxes — uno en Palermo y otro en Vicente López. Los manejo desde la misma cuenta.</blockquote>
+            <blockquote>Tengo dos boxes — uno en Nordelta y otro en Palermo. Los manejo desde la misma cuenta.</blockquote>
             <figcaption><span className="avatar">TR</span><div><b>Tomás R.</b><span>PyME · Importación</span></div></figcaption>
           </figure>
           <figure data-reveal="3">
             <div className="stars" aria-label="5 estrellas">★★★★★</div>
-            <blockquote>Aproveché el primer mes gratis y la mudanza bonificada. Cero gastos arrancando.</blockquote>
+            <blockquote>Aproveché el primer mes gratis y la mudanza bonificada. Pagué todo por Mercado Pago, sin trámites.</blockquote>
             <figcaption><span className="avatar">CP</span><div><b>Carla P.</b><span>Particular</span></div></figcaption>
           </figure>
         </div>
@@ -609,18 +672,15 @@ function Testimonials() {
   );
 }
 
-/* ════════════════════════════════════════════════════════════════ */
-/* FAQ                                                                */
-/* ════════════════════════════════════════════════════════════════ */
 function FAQ() {
   const [open, setOpen] = useState(0);
   const qa = [
     { q: '¿Necesito firmar un contrato largo?', a: 'No. Alquilás mes a mes y cancelás cuando quieras, sin permanencia mínima ni cargos por salida anticipada.' },
     { q: '¿Puedo tener más de un box?',          a: 'Sí. Podés tener tantas reservas como necesites, incluso en distintas sucursales. Las manejás todas desde la misma cuenta.' },
+    { q: '¿Cómo pago?',                          a: 'Por Mercado Pago. Aceptamos tarjeta de crédito, débito, transferencia y dinero en cuenta. Los precios incluyen IVA.' },
     { q: '¿Cómo accedo al box?',                 a: 'Con un QR personal generado desde tu cuenta. Lo escaneás en el ingreso y entrás. Funciona 24/7.' },
     { q: '¿Cómo aplican las promos?',            a: 'Se aplican automáticamente al hacer la reserva si cumplís los requisitos. El primer mes gratis aplica siempre; la mudanza gratis desde 10 m² al elegir "retiro a domicilio".' },
     { q: '¿Puedo cambiar de tamaño después?',    a: 'Sí. Desde el portal cambiás de tamaño sin penalidad. Si crece tu necesidad o si querés achicar, lo hacés con un click.' },
-    { q: '¿Retiran mis cosas de mi casa?',       a: 'Sí. Ofrecemos retiro opcional dentro de CABA y GBA. Lo agregás como add-on al hacer la reserva online (gratis si alquilás 10 m² o más).' },
     { q: '¿Qué no puedo guardar?',               a: 'Materiales inflamables, tóxicos, alimentos perecederos, seres vivos y productos ilegales. El resto, todo.' },
   ];
   return (
@@ -647,14 +707,11 @@ function FAQ() {
   );
 }
 
-/* ════════════════════════════════════════════════════════════════ */
-/* BigCTA + Footer                                                    */
-/* ════════════════════════════════════════════════════════════════ */
 function BigCTA({ onReserve }) {
   return (
     <section className="mc-bigcta" data-reveal>
       <div className="mc-bigcta-inner">
-        <h2><span>Empezá hoy.</span><span>Guardá mañana.</span></h2>
+        <h2><span>Guardá hoy.</span><span>Pagá mañana.</span></h2>
         <div className="mc-bigcta-actions">
           <button className="mc-btn mc-btn-green big" onClick={onReserve}>
             <span>Elegí tu espacio</span>
@@ -662,12 +719,12 @@ function BigCTA({ onReserve }) {
           </button>
           <div className="mc-bigcta-phone">
             <small>o llamanos</small>
-            <b><a href="tel:+541143016001" style={{ color: 'inherit' }}>{PHONE}</a></b>
+            <b><a href={`tel:${PHONE_TEL}`} style={{ color: 'inherit' }}>{PHONE}</a></b>
           </div>
         </div>
         <div className="mc-bigcta-foot">
           <span>MiContainer · BsAs · 2026</span>
-          <span>Hecho en Buenos Aires</span>
+          <span>Guardá lo que querés</span>
         </div>
       </div>
     </section>
@@ -683,7 +740,7 @@ function Footer({ onReserve }) {
             <span className="mc-logo-mark"><Isologo size={36} /></span>
             <span className="mc-logo-type">m<span className="i">i</span><b>container</b></span>
           </a>
-          <p>Self-storage flexible en Buenos Aires. Reservá y gestioná todo online.</p>
+          <p className="tagline"><b>Guardá lo que querés.</b><br />Self-storage flexible en Buenos Aires. Reservá y gestioná todo online.</p>
           <button className="mc-btn mc-btn-primary" onClick={onReserve}>
             <span>Reservá tu espacio</span>
             <span className="arrow">→</span>
@@ -706,24 +763,29 @@ function Footer({ onReserve }) {
           <div>
             <h5>Contacto</h5>
             <a href={WHATSAPP} target="_blank" rel="noopener">WhatsApp</a>
-            <a href="tel:+541143016001">{PHONE}</a>
+            <a href={`tel:${PHONE_TEL}`}>{PHONE}</a>
             <a href="mailto:info@micontainer.com">info@micontainer.com</a>
           </div>
         </div>
       </div>
-      <div className="mc-footer-base"><span>© 2026 Mi Container</span><span>Hecho en Buenos Aires</span></div>
+      <div className="mc-footer-base">
+        <span>© 2026 Mi Container · Guardá lo que querés</span>
+        <span>Hecho en Buenos Aires</span>
+      </div>
     </footer>
   );
 }
 
 /* ════════════════════════════════════════════════════════════════ */
-/* WIZARD — 5 steps                                                   */
+/* WIZARD                                                             */
 /* ════════════════════════════════════════════════════════════════ */
-function Wizard({ initialSize, initialSucursal, user, onClose }) {
+function Wizard({ initialCategory, initialSucursal, user, onClose }) {
   const [step, setStep] = useState(initialSucursal ? 1 : 0);
+  const [paying, setPaying] = useState(false);
   const [data, setData] = useState({
     sucursal: initialSucursal || SUCURSALES[0],
-    size: initialSize || SIZES[0],
+    category: initialCategory || CATEGORIES[0],
+    option: (initialCategory || CATEGORIES[0]).options[0],
     startDate: '',
     duration: 3,
     addons: [],
@@ -731,16 +793,16 @@ function Wizard({ initialSize, initialSucursal, user, onClose }) {
     email: user?.email || '',
     phone: user?.phone || '',
     dni: user?.dni || '',
-    payment: 'card',
+    payment: 'mp',
   });
   const [errors, setErrors] = useState({});
 
   useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape' && step < 5) onClose(); };
+    const onKey = (e) => { if (e.key === 'Escape' && step < 5 && !paying) onClose(); };
     document.addEventListener('keydown', onKey);
     document.body.style.overflow = 'hidden';
     return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = ''; };
-  }, [step, onClose]);
+  }, [step, onClose, paying]);
 
   const today = useMemo(() => { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().split('T')[0]; }, []);
   useEffect(() => { if (!data.startDate) setData((d) => ({ ...d, startDate: today })); }, [today]);
@@ -751,6 +813,9 @@ function Wizard({ initialSize, initialSucursal, user, onClose }) {
   const toggleAddon = (k) => setData((d) => ({
     ...d, addons: d.addons.includes(k) ? d.addons.filter((x) => x !== k) : [...d.addons, k],
   }));
+
+  const setCategory = (c) => setData((d) => ({ ...d, category: c, option: c.options[0] }));
+  const setOption   = (o) => setData((d) => ({ ...d, option: o }));
 
   const validateData = () => {
     const e = {};
@@ -765,32 +830,40 @@ function Wizard({ initialSize, initialSucursal, user, onClose }) {
   const next = () => {
     if (step === 4) {
       if (!validateData()) return;
-      const u = {
-        ...user,
-        name: data.name.trim(),
-        email: data.email.trim().toLowerCase(),
-        phone: data.phone,
-        dni: data.dni,
-      };
-      store.setUser(u);
-      const code = generateCode();
-      const reservation = {
-        id: code,
-        userEmail: u.email,
-        status: 'active',
-        sucursal: data.sucursal,
-        size: data.size,
-        startDate: data.startDate,
-        duration: data.duration,
-        addons: data.addons,
-        monthly: totals.monthlyEff,
-        monthlyBase: data.size.from,
-        firstMonth: totals.firstMonth,
-        promosApplied: promos.map((p) => ({ key: p.key, badge: p.badge, name: p.name })),
-        createdAt: new Date().toISOString(),
-      };
-      store.addReservation(reservation);
-      setStep(5);
+      // Simulate MP checkout flow
+      setPaying(true);
+      setTimeout(() => {
+        const u = {
+          ...user,
+          name: data.name.trim(),
+          email: data.email.trim().toLowerCase(),
+          phone: data.phone,
+          dni: data.dni,
+          provider: user?.provider || 'email',
+        };
+        store.setUser(u);
+        const code = generateCode();
+        const reservation = {
+          id: code,
+          userEmail: u.email,
+          status: 'active',
+          sucursal: data.sucursal,
+          category: data.category,
+          option: data.option,
+          startDate: data.startDate,
+          duration: data.duration,
+          addons: data.addons,
+          monthly: totals.monthlyEff,
+          monthlyBase: data.option.monthly,
+          firstMonth: totals.firstMonth,
+          payment: data.payment,
+          promosApplied: promos.map((p) => ({ key: p.key, badge: p.badge, name: p.name })),
+          createdAt: new Date().toISOString(),
+        };
+        store.addReservation(reservation);
+        setPaying(false);
+        setStep(5);
+      }, 1800);
       return;
     }
     setStep(step + 1);
@@ -802,13 +875,13 @@ function Wizard({ initialSize, initialSucursal, user, onClose }) {
   const progress = step >= 5 ? 100 : Math.round(((step + 1) / totalSteps) * 100);
 
   return (
-    <div className="mc-wiz-back" onClick={step < 5 ? onClose : undefined} role="dialog" aria-modal="true" aria-labelledby="wiz-title">
+    <div className="mc-wiz-back" onClick={step < 5 && !paying ? onClose : undefined} role="dialog" aria-modal="true" aria-labelledby="wiz-title">
       <div className="mc-wiz" onClick={(e) => e.stopPropagation()}>
         {step < 5 && (
           <>
             <div className="mc-wiz-head">
               <div className="step-info">Paso <b>{step + 1}</b> de <b>{totalSteps}</b> · Reservar online</div>
-              <button className="close" onClick={onClose} aria-label="Cerrar">
+              <button className="close" onClick={onClose} aria-label="Cerrar" disabled={paying}>
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
               </button>
             </div>
@@ -820,7 +893,7 @@ function Wizard({ initialSize, initialSucursal, user, onClose }) {
           {step === 0 && (
             <>
               <h2 id="wiz-title">¿En qué sucursal?</h2>
-              <p className="lead">Elegí la más cercana. Todas tienen los mismos servicios y tarifas.</p>
+              <p className="lead">Elegí la más cercana. Todas tienen los mismos servicios y acceso 24/7.</p>
               <div className="mc-wiz-options sucursales">
                 {SUCURSALES.map((s) => (
                   <button
@@ -841,30 +914,46 @@ function Wizard({ initialSize, initialSucursal, user, onClose }) {
 
           {step === 1 && (
             <>
-              <h2 id="wiz-title">¿Qué tamaño necesitás?</h2>
-              <p className="lead">Después podés cambiar de tamaño desde el portal sin penalidad.</p>
-              <div className="mc-wiz-options">
-                {SIZES.map((s) => {
-                  const eligible = PROMOS.filter((p) => p.eligible({ size: s, duration: 12, addons: ['pickup'] }));
-                  return (
-                    <button
-                      key={s.key}
-                      type="button"
-                      className={`mc-wiz-option ${data.size.key === s.key ? 'selected' : ''}`}
-                      onClick={() => setData({ ...data, size: s })}
-                    >
-                      <span className="name">{s.label}</span>
-                      <span className="range">{s.range}</span>
-                      <span className="desc">{s.blurb}</span>
-                      <span className="price">${s.from.toLocaleString('es-AR')} <small>/ mes</small></span>
-                      {eligible.length > 0 && (
-                        <div className="mc-promo-line">
-                          {eligible.map((p) => <span key={p.key} className={`mc-promo-badge ${p.color}`}>{p.badge}</span>)}
-                        </div>
-                      )}
-                    </button>
-                  );
-                })}
+              <h2 id="wiz-title">¿Qué espacio necesitás?</h2>
+              <p className="lead">Elegí la categoría y después el tamaño exacto en m².</p>
+
+              <div className="mc-wiz-cat-tabs">
+                {CATEGORIES.map((c) => (
+                  <button
+                    key={c.key}
+                    type="button"
+                    className={`mc-wiz-cat-tab ${data.category.key === c.key ? 'selected' : ''}`}
+                    onClick={() => setCategory(c)}
+                  >
+                    <b>{c.label}</b>
+                    <span>{c.range}</span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="mc-wiz-cat-detail">
+                <div className="mc-wiz-cat-blurb">
+                  <p>{data.category.blurb}</p>
+                  <div className="fits">{data.category.fits.map((f, j) => <span key={j}>{f}</span>)}</div>
+                </div>
+
+                <div className="mc-wiz-cat-opts">
+                  <span className="opts-lbl">Elegí los m² exactos</span>
+                  <div className="opts-grid">
+                    {data.category.options.map((o) => (
+                      <button
+                        key={o.m2}
+                        type="button"
+                        className={`mc-wiz-opt ${data.option.m2 === o.m2 ? 'selected' : ''}`}
+                        onClick={() => setOption(o)}
+                      >
+                        <b>{formatM2(o.m2)} m²</b>
+                        <span>${o.monthly.toLocaleString('es-AR')} <small>/ mes</small></span>
+                      </button>
+                    ))}
+                  </div>
+                  <span className="hint">Precios finales con IVA · Sucursal {data.sucursal.name}</span>
+                </div>
               </div>
             </>
           )}
@@ -905,7 +994,7 @@ function Wizard({ initialSize, initialSucursal, user, onClose }) {
               <h2 id="wiz-title">¿Sumás algo más?</h2>
               <p className="lead">Servicios opcionales. Todos los podés agregar más tarde desde el portal.</p>
               {ADDONS.map((a) => {
-                const isFree = a.key === 'pickup' && data.size.m2max >= 10 && data.addons.includes('pickup');
+                const isFree = a.key === 'pickup' && data.option.m2 >= 10 && data.addons.includes('pickup');
                 return (
                   <button
                     key={a.key}
@@ -922,7 +1011,7 @@ function Wizard({ initialSize, initialSucursal, user, onClose }) {
                     <span className="body">
                       <b>{a.name}</b>
                       <span>{a.desc}</span>
-                      {a.key === 'pickup' && data.size.m2max >= 10 && (
+                      {a.key === 'pickup' && data.option.m2 >= 10 && (
                         <span className="mc-promo-badge violet inline">Mudanza gratis +10m²</span>
                       )}
                     </span>
@@ -937,13 +1026,13 @@ function Wizard({ initialSize, initialSucursal, user, onClose }) {
 
           {step === 4 && (
             <>
-              <h2 id="wiz-title">Tus datos</h2>
-              <p className="lead">Te creamos la cuenta para que después gestiones todo desde el portal.</p>
+              <h2 id="wiz-title">Tus datos y pago</h2>
+              <p className="lead">Te creamos la cuenta y te redirigimos al checkout de Mercado Pago.</p>
 
               <div className="mc-wiz-summary">
                 <h4>Resumen</h4>
                 <div className="row"><span>Sucursal</span><b>{data.sucursal.name} · {data.sucursal.hood}</b></div>
-                <div className="row"><span>Tamaño</span><b>{data.size.label} · {data.size.range}</b></div>
+                <div className="row"><span>Espacio</span><b>{data.category.label} · {formatM2(data.option.m2)} m²</b></div>
                 <div className="row"><span>Inicio</span><b>{data.startDate || '—'}</b></div>
                 <div className="row"><span>Duración estimada</span><b>{data.duration} {data.duration === 1 ? 'mes' : 'meses'}</b></div>
 
@@ -978,6 +1067,7 @@ function Wizard({ initialSize, initialSucursal, user, onClose }) {
                   <span>Primer pago</span>
                   <b>${totals.firstMonth.toLocaleString('es-AR')}</b>
                 </div>
+                <div className="row hint"><span>IVA incluido</span><span></span></div>
               </div>
 
               <div className="mc-wiz-row2">
@@ -1004,14 +1094,33 @@ function Wizard({ initialSize, initialSucursal, user, onClose }) {
                   {errors.dni && <span className="err">{errors.dni}</span>}
                 </div>
               </div>
-              <div className="mc-wiz-field">
-                <label htmlFor="w-pay">Forma de pago</label>
-                <select id="w-pay" value={data.payment} onChange={(e) => setData({ ...data, payment: e.target.value })}>
-                  <option value="card">Tarjeta de crédito o débito</option>
-                  <option value="transfer">Transferencia bancaria</option>
-                  <option value="mp">Mercado Pago</option>
-                </select>
-                <span className="hint">Al confirmar te redirigimos al checkout seguro.</span>
+
+              <div className="mc-wiz-pay">
+                <span className="lbl">Forma de pago</span>
+                <button
+                  type="button"
+                  className={`mc-wiz-pay-opt mp ${data.payment === 'mp' ? 'selected' : ''}`}
+                  onClick={() => setData({ ...data, payment: 'mp' })}
+                >
+                  <span className="radio">{data.payment === 'mp' && <span className="dot" />}</span>
+                  <span className="body">
+                    <b>Mercado Pago</b>
+                    <span>Tarjeta de crédito, débito, transferencia o dinero en cuenta.</span>
+                  </span>
+                  <span className="logo"><MercadoPagoLogo size={16} /></span>
+                  <span className="featured-tag">Recomendado</span>
+                </button>
+                <button
+                  type="button"
+                  className={`mc-wiz-pay-opt ${data.payment === 'transfer' ? 'selected' : ''}`}
+                  onClick={() => setData({ ...data, payment: 'transfer' })}
+                >
+                  <span className="radio">{data.payment === 'transfer' && <span className="dot" />}</span>
+                  <span className="body">
+                    <b>Transferencia bancaria</b>
+                    <span>Te enviamos CBU y alias por email para que transfieras.</span>
+                  </span>
+                </button>
               </div>
             </>
           )}
@@ -1022,7 +1131,7 @@ function Wizard({ initialSize, initialSucursal, user, onClose }) {
                 <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5L20 7" /></svg>
               </div>
               <h2>¡Reserva confirmada!</h2>
-              <p>Te mandamos un email a <b>{data.email}</b> con tu credencial digital y el resumen.</p>
+              <p>Te mandamos un email a <b>{data.email}</b> con tu credencial digital, la factura y el resumen.</p>
               <div className="code">{store.getReservations()[0]?.id}</div>
               <div className="actions">
                 <a className="mc-btn mc-btn-violet" href="#/portal"><span>Ir al portal</span><span className="arrow">→</span></a>
@@ -1032,14 +1141,36 @@ function Wizard({ initialSize, initialSucursal, user, onClose }) {
           )}
         </div>
 
-        {step < 5 && (
+        {paying && (
+          <div className="mc-mp-overlay" role="status" aria-live="polite">
+            <div className="mc-mp-loader">
+              <div className="logo-big"><MercadoPagoLogo size={32} /></div>
+              <div className="spinner" aria-hidden="true"></div>
+              <p>Conectando con <b>Mercado Pago</b>…</p>
+              <p className="sub">No cierres la ventana. Te redirigimos al checkout seguro.</p>
+            </div>
+          </div>
+        )}
+
+        {step < 5 && !paying && (
           <div className="mc-wiz-foot">
             {step > 0 ? (
               <button className="mc-btn mc-btn-ghost" onClick={back}><span>← Atrás</span></button>
             ) : <span />}
-            <button className="mc-btn mc-btn-green" onClick={next}>
-              <span>{step === 4 ? 'Confirmar reserva' : 'Continuar'}</span>
-              <span className="arrow">→</span>
+            <button className={step === 4 && data.payment === 'mp' ? 'mc-btn mc-btn-mp' : 'mc-btn mc-btn-green'} onClick={next}>
+              {step === 4 ? (
+                data.payment === 'mp' ? (
+                  <>
+                    <MercadoPagoLogo size={14} />
+                    <span>Pagar ${totals.firstMonth.toLocaleString('es-AR')}</span>
+                    <span className="arrow">→</span>
+                  </>
+                ) : (
+                  <><span>Confirmar reserva</span><span className="arrow">→</span></>
+                )
+              ) : (
+                <><span>Continuar</span><span className="arrow">→</span></>
+              )}
             </button>
           </div>
         )}
@@ -1062,7 +1193,6 @@ function decodeJWT(token) {
 function GoogleButton({ onSuccess }) {
   const realRef = useRef(null);
   const [demoOpen, setDemoOpen] = useState(false);
-
   useEffect(() => {
     if (!GOOGLE_CLIENT_ID) return;
     let canceled = false;
@@ -1092,9 +1222,7 @@ function GoogleButton({ onSuccess }) {
     return () => { canceled = true; };
   }, [onSuccess]);
 
-  if (GOOGLE_CLIENT_ID) {
-    return <div ref={realRef} className="mc-google-real"></div>;
-  }
+  if (GOOGLE_CLIENT_ID) return <div ref={realRef} className="mc-google-real"></div>;
 
   return (
     <>
@@ -1129,7 +1257,7 @@ function GoogleDemoPicker({ onPick, onClose }) {
           <b>Continuar con Google</b>
           <span className="demo-tag">Demo</span>
         </div>
-        <p className="sub">Esta es una simulación del flujo. En producción usás tu cuenta real de Google.</p>
+        <p className="sub">Esta es una simulación. En producción usás tu cuenta real de Google.</p>
         <form onSubmit={submit}>
           <div className="mc-wiz-field">
             <label>Nombre</label>
@@ -1155,7 +1283,6 @@ function GoogleDemoPicker({ onPick, onClose }) {
 function PortalLogin({ onLogin }) {
   const [email, setEmail] = useState('');
   const [err, setErr] = useState('');
-
   const handleEmail = (e) => {
     e.preventDefault();
     if (!/^\S+@\S+\.\S+$/.test(email)) { setErr('Ingresá un email válido'); return; }
@@ -1163,23 +1290,15 @@ function PortalLogin({ onLogin }) {
     store.setUser(user);
     onLogin && onLogin(user);
   };
-
-  const handleGoogle = (user) => {
-    store.setUser(user);
-    onLogin && onLogin(user);
-  };
-
+  const handleGoogle = (user) => { store.setUser(user); onLogin && onLogin(user); };
   return (
     <div className="mc-login">
       <div className="mc-login-card">
         <span className="mc-eyebrow violet">Portal cliente</span>
         <h2>Entrá a <span className="v">tu cuenta</span>.</h2>
         <p>Iniciá sesión con Google o con tu email. Sin contraseñas.</p>
-
         <GoogleButton onSuccess={handleGoogle} />
-
         <div className="mc-login-divider"><span>o con tu email</span></div>
-
         <form onSubmit={handleEmail}>
           <div className="mc-wiz-field">
             <label htmlFor="login-email">Email</label>
@@ -1191,7 +1310,6 @@ function PortalLogin({ onLogin }) {
             <span className="arrow">→</span>
           </button>
         </form>
-
         <a className="mc-login-back" href="#/">← Volver al inicio</a>
       </div>
     </div>
@@ -1202,7 +1320,6 @@ function PortalDashboard({ user, reservations, onLogout, onReserve }) {
   const active = reservations.filter((r) => r.status === 'active');
   const totalMonthly = active.reduce((sum, r) => sum + r.monthly, 0);
   const sucursalCount = new Set(active.map((r) => r.sucursal?.id || 'unknown')).size;
-
   return (
     <>
       <section className="mc-portal-hero">
@@ -1212,7 +1329,6 @@ function PortalDashboard({ user, reservations, onLogout, onReserve }) {
           <p>Acá vas a ver todas tus reservas, facturas y accesos. Podés tener varios boxes en distintas sucursales gestionados desde la misma cuenta.</p>
         </div>
       </section>
-
       <div className="mc-portal">
         <div className="mc-portal-grid">
           <div className="mc-portal-card">
@@ -1222,8 +1338,7 @@ function PortalDashboard({ user, reservations, onLogout, onReserve }) {
                 <b>Todavía no tenés reservas</b>
                 <p>Reservá tu primer espacio en menos de 5 minutos.</p>
                 <button className="mc-btn mc-btn-green" onClick={onReserve}>
-                  <span>Reservar ahora</span>
-                  <span className="arrow">→</span>
+                  <span>Reservar ahora</span><span className="arrow">→</span>
                 </button>
               </div>
             ) : (
@@ -1232,7 +1347,7 @@ function PortalDashboard({ user, reservations, onLogout, onReserve }) {
                   <a key={r.id} className="mc-res-card" href={`#/portal/r/${r.id}`}>
                     <span className="num">0{i + 1}</span>
                     <div className="info">
-                      <b>{r.size.label} · {r.size.range}</b>
+                      <b>{r.category?.label || r.size?.label} · {r.option ? `${formatM2(r.option.m2)} m²` : r.size?.range}</b>
                       <span>{r.sucursal?.name || '—'} · {r.sucursal?.hood || ''}</span>
                       <span>Inicio: {r.startDate} · {r.id}</span>
                       <span className={`badge ${r.status === 'active' ? 'active' : r.status === 'cancelled' ? 'cancelled' : 'pending'}`}>{r.status === 'active' ? 'Activa' : r.status === 'cancelled' ? 'Cancelada' : 'Pendiente'}</span>
@@ -1252,12 +1367,10 @@ function PortalDashboard({ user, reservations, onLogout, onReserve }) {
             )}
             <div style={{ marginTop: 18, paddingTop: 18, borderTop: '1px solid var(--mc-line)' }}>
               <button className="mc-btn mc-btn-green" onClick={onReserve}>
-                <span>+ Nueva reserva</span>
-                <span className="arrow">→</span>
+                <span>+ Nueva reserva</span><span className="arrow">→</span>
               </button>
             </div>
           </div>
-
           <div className="mc-portal-card">
             <h3>Resumen <span className="lbl">Tu cuenta</span></h3>
             <div className="mc-portal-stats">
@@ -1269,7 +1382,7 @@ function PortalDashboard({ user, reservations, onLogout, onReserve }) {
               <div className="stat">
                 <span className="lbl">Mensual total</span>
                 <b>${totalMonthly.toLocaleString('es-AR')}</b>
-                <span className="sub">Próximo cobro el día 1</span>
+                <span className="sub">Próximo cobro por Mercado Pago</span>
               </div>
               <div className="stat">
                 <span className="lbl">Acceso · {user.provider === 'google' ? 'Google' : 'Email'}</span>
@@ -1299,39 +1412,37 @@ function ReservationDetail({ reservation, user, onUpdate }) {
     );
   }
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(reservation.id + '|' + user.email)}&size=220x220&bgcolor=f7f4ec&color=3D3083&margin=0`;
-  const addonNames = reservation.addons.map((k) => ADDONS.find((a) => a.key === k)?.name).filter(Boolean);
+  const addonNames = (reservation.addons || []).map((k) => ADDONS.find((a) => a.key === k)?.name).filter(Boolean);
+  const m2 = reservation.option ? `${formatM2(reservation.option.m2)} m²` : reservation.size?.range || '—';
+  const catLabel = reservation.category?.label || reservation.size?.label || '—';
   const cancel = () => {
     if (!confirm('¿Cancelar esta reserva? Va a quedar marcada como cancelada con efecto en 7 días.')) return;
     onUpdate(reservation.id, { status: 'cancelled' });
   };
-
   return (
     <>
       <section className="mc-portal-hero">
         <div className="mc-portal-hero-inner">
           <a className="mc-eyebrow on-dark" href="#/portal" style={{ marginBottom: 14 }}>← Tus reservas</a>
-          <h1>{reservation.size.label} <span className="g">· {reservation.sucursal?.name}</span></h1>
-          <p>{reservation.size.blurb}</p>
+          <h1>{catLabel} <span className="g">· {reservation.sucursal?.name}</span></h1>
+          <p>{reservation.category?.blurb || reservation.size?.blurb}</p>
         </div>
       </section>
-
       <div className="mc-portal">
         <div className="mc-res-detail">
           <div className="mc-res-detail-head">
             <div>
-              <h2>{reservation.size.label} · {reservation.size.range}</h2>
+              <h2>{catLabel} · {m2}</h2>
               <div className="code">{reservation.id}</div>
             </div>
             <span className={`mc-res-status ${reservation.status === 'active' ? 'active' : reservation.status === 'cancelled' ? 'cancelled' : 'pending'}`}>{reservation.status === 'active' ? 'Activa' : reservation.status === 'cancelled' ? 'Cancelada' : 'Pendiente'}</span>
           </div>
-
           {reservation.promosApplied && reservation.promosApplied.length > 0 && (
             <div className="mc-res-promos">
               <span className="lbl">Promos aplicadas</span>
               {reservation.promosApplied.map((p) => <span key={p.key} className="mc-promo-badge green">{p.badge}</span>)}
             </div>
           )}
-
           <div className="mc-res-detail-grid">
             <div className="col">
               <h4>Sucursal</h4>
@@ -1342,11 +1453,13 @@ function ReservationDetail({ reservation, user, onUpdate }) {
               </p>
               <h4 style={{ marginTop: 20 }}>Detalles</h4>
               <p>
+                <b>Espacio:</b> {catLabel} · {m2}<br />
                 <b>Inicio:</b> {reservation.startDate}<br />
                 <b>Duración estimada:</b> {reservation.duration} {reservation.duration === 1 ? 'mes' : 'meses'}<br />
                 <b>Mensualidad:</b> ${reservation.monthly.toLocaleString('es-AR')}<br />
                 {addonNames.length > 0 && <><b>Add-ons:</b> {addonNames.join(', ')}<br /></>}
                 <b>Primer pago:</b> ${reservation.firstMonth.toLocaleString('es-AR')}<br />
+                <b>Pago:</b> {reservation.payment === 'mp' ? 'Mercado Pago' : reservation.payment === 'transfer' ? 'Transferencia' : 'Otro'}<br />
                 <b>Creada:</b> {new Date(reservation.createdAt).toLocaleDateString('es-AR')}
               </p>
             </div>
@@ -1358,7 +1471,6 @@ function ReservationDetail({ reservation, user, onUpdate }) {
               </div>
             </div>
           </div>
-
           <div className="mc-res-detail-actions">
             <button className="mc-btn mc-btn-green"><span>Descargar factura</span><span className="arrow">→</span></button>
             <button className="mc-btn mc-btn-ghost-violet"><span>Cambiar de tamaño</span></button>
@@ -1381,7 +1493,7 @@ function App() {
   const [user, setUser] = useState(store.getUser());
   const [reservations, setReservations] = useState(store.getReservations());
   const [wizardOpen, setWizardOpen] = useState(false);
-  const [wizardSize, setWizardSize] = useState(null);
+  const [wizardCategory, setWizardCategory] = useState(null);
   const [wizardSucursal, setWizardSucursal] = useState(null);
 
   useEffect(() => {
@@ -1398,7 +1510,7 @@ function App() {
   useEffect(() => {
     if (route.openWizard) {
       setWizardOpen(true);
-      setWizardSize(null);
+      setWizardCategory(null);
       setWizardSucursal(null);
       window.location.hash = '#/';
       return;
@@ -1409,7 +1521,7 @@ function App() {
   useReveal([route.name]);
 
   const openWizard = (opts = {}) => {
-    setWizardSize(opts.size || null);
+    setWizardCategory(opts.category || null);
     setWizardSucursal(opts.sucursal || null);
     setWizardOpen(true);
   };
@@ -1429,7 +1541,7 @@ function App() {
           <Hero onReserve={() => openWizard()} />
           <Ticker />
           <Sucursales onReserve={(s) => openWizard({ sucursal: s })} />
-          <Sizes onReserveSize={(s) => openWizard({ size: s })} />
+          <Categorias onReserveCategory={(c) => openWizard({ category: c })} />
           <How />
           <Guarantees onReserve={() => openWizard()} />
           <SelfService onReserve={() => openWizard()} />
@@ -1472,7 +1584,7 @@ function App() {
 
       {showHomeChrome && (
         <div className="mc-sticky-bar">
-          <div className="lbl">Desde $13.500/mes<span>5 min · sin depósito</span></div>
+          <div className="lbl">Desde ${fromPrice(CATEGORIES[0]).toLocaleString('es-AR')}/mes<span>5 min · 1° mes gratis</span></div>
           <button className="mc-btn mc-btn-green" onClick={() => openWizard()}>
             <span>Reservar</span>
             <span className="arrow">→</span>
@@ -1480,7 +1592,7 @@ function App() {
         </div>
       )}
 
-      {wizardOpen && <Wizard initialSize={wizardSize} initialSucursal={wizardSucursal} user={user} onClose={closeWizard} />}
+      {wizardOpen && <Wizard initialCategory={wizardCategory} initialSucursal={wizardSucursal} user={user} onClose={closeWizard} />}
     </>
   );
 }
