@@ -86,10 +86,10 @@ const maxM2 = (cat) => Math.max(...cat.options.map((o) => o.m2));
 const formatM2 = (m2) => m2.toLocaleString('es-AR', { minimumFractionDigits: m2 % 1 === 0 ? 0 : 2 });
 
 const SUCURSALES = [
-  { id: 'nordelta',  name: 'Nordelta',        hood: 'GBA Norte', address: 'Av. de los Lagos 7250',  hours: 'Acceso 24/7', availability: 'Alta'     },
-  { id: 'palermo',   name: 'Palermo',         hood: 'CABA',      address: 'Av. Córdoba 4500',       hours: 'Acceso 24/7', availability: 'Alta'     },
-  { id: 'crespo',    name: 'Villa Crespo',    hood: 'CABA',      address: 'Av. Warnes 1280',        hours: 'Acceso 24/7', availability: 'Media'    },
-  { id: 'vlopez',    name: 'Vicente López',   hood: 'GBA Norte', address: 'Av. Maipú 2840',         hours: 'Acceso 24/7', availability: 'Limitada' },
+  { id: 'nordelta',  name: 'Nordelta',      hood: 'GBA Norte', address: 'Av. de los Lagos 7250', hours: 'Acceso 24/7', availability: 'Alta',     scarcity: null                                  },
+  { id: 'palermo',   name: 'Palermo',       hood: 'CABA',      address: 'Av. Córdoba 4500',      hours: 'Acceso 24/7', availability: 'Alta',     scarcity: null                                  },
+  { id: 'crespo',    name: 'Villa Crespo',  hood: 'CABA',      address: 'Av. Warnes 1280',       hours: 'Acceso 24/7', availability: 'Media',    scarcity: 'Pocos espacios disponibles'          },
+  { id: 'vlopez',    name: 'Vicente López', hood: 'GBA Norte', address: 'Av. Maipú 2840',        hours: 'Acceso 24/7', availability: 'Limitada', scarcity: 'Casi sin lugar · reservá pronto'     },
 ];
 
 const ADDONS = [
@@ -99,12 +99,33 @@ const ADDONS = [
   { key: 'insure',   name: 'Seguro extendido',    desc: 'Cobertura hasta $2.000.000 por daños.',   cost: 8900  },
 ];
 
+// ─────────────────────────────────────────────────────────────────
+// PROMOS — sistema dinámico
+//
+// Cada promo tiene:
+//   active: si está habilitada por marketing (toggle global)
+//   placements: dónde puede aparecer:
+//     - 'banner'       — strip público arriba de la home
+//     - 'size-badge'   — badge sobre las cards de tamaño (filtra por eligible)
+//     - 'auto-apply'   — se aplica automáticamente si cumple condiciones
+//     - 'exit-intent'  — solo aparece en el modal de retención al cerrar wizard
+//     - 'duration-hint'— card highlight en el paso "duración" del wizard
+//
+// Para que una promo aparezca, marketing tiene que ponerla active + agregar
+// el placement donde la quiere. Una promo "tranquila" solo en exit-intent
+// no se ve en ningún lado hasta que el cliente intenta irse.
+//
+// Para lanzar una promo pública (ej. Black Friday): poner active: true +
+// placements: ['banner', 'size-badge', 'auto-apply', 'exit-intent']
+// ─────────────────────────────────────────────────────────────────
 const PROMOS = [
   {
     key: 'first-month-free',
+    active: true,
+    placements: ['exit-intent'],                  // retención silenciosa
     badge: '1° mes gratis',
     name: 'Primer mes gratis',
-    description: 'Tu primer mes sin cargo. Aplica en todas las sucursales y tamaños.',
+    description: 'Tu primer mes sin cargo para que te acomodes sin presión.',
     color: 'green',
     bannerOrder: 0,
     eligible: () => true,
@@ -112,6 +133,8 @@ const PROMOS = [
   },
   {
     key: 'free-pickup-10m2',
+    active: true,
+    placements: ['auto-apply', 'size-badge'],     // perk natural — se aplica si calificás
     badge: 'Mudanza gratis',
     name: 'Mudanza gratis desde 10 m²',
     description: 'Retiro a domicilio bonificado al alquilar 10 m² o más.',
@@ -122,6 +145,8 @@ const PROMOS = [
   },
   {
     key: 'annual-20',
+    active: true,
+    placements: ['auto-apply', 'duration-hint'],  // hint cuando elegís 12+ meses
     badge: '20% off anual',
     name: '20% off al pagar anual',
     description: 'Pagás 12 meses por adelantado y te ahorrás un 20%.',
@@ -132,8 +157,43 @@ const PROMOS = [
   },
 ];
 
+// Unlocking — promos solo accesibles vía exit-intent quedan "desbloqueadas"
+// por sesión cuando el cliente acepta. Persistido en sessionStorage.
+function hasUnlocked(key) {
+  try { return JSON.parse(sessionStorage.getItem('mc.unlocked') || '[]').includes(key); }
+  catch { return false; }
+}
+function unlockPromo(key) {
+  try {
+    const arr = JSON.parse(sessionStorage.getItem('mc.unlocked') || '[]');
+    if (!arr.includes(key)) {
+      arr.push(key);
+      sessionStorage.setItem('mc.unlocked', JSON.stringify(arr));
+      window.dispatchEvent(new Event('mc:unlocked-change'));
+    }
+  } catch {}
+}
+
+// Active promos = active + eligible + (auto-apply OR unlocked-via-exit-intent)
 function activePromos(data) {
-  return PROMOS.filter((p) => p.eligible(data));
+  return PROMOS.filter((p) => {
+    if (!p.active) return false;
+    if (!p.eligible(data)) return false;
+    const pls = p.placements || [];
+    if (pls.includes('auto-apply')) return true;
+    if (pls.includes('exit-intent') && hasUnlocked(p.key)) return true;
+    return false;
+  });
+}
+
+// Promos visibles para un placement específico (banner, size-badge, etc.)
+function promosForPlacement(placement, data = null) {
+  return PROMOS.filter((p) => {
+    if (!p.active) return false;
+    if (!(p.placements || []).includes(placement)) return false;
+    if (data && !p.eligible(data)) return false;
+    return true;
+  });
 }
 
 function computeTotals(data) {
@@ -250,6 +310,8 @@ function MercadoPagoLogo({ size = 18 }) {
 /* ════════════════════════════════════════════════════════════════ */
 /* Promo banner                                                       */
 /* ════════════════════════════════════════════════════════════════ */
+// Banner público — solo si marketing puso una promo con placement: 'banner'.
+// Por defecto NO se ve. Marketing lo enciende editando PROMOS.
 function PromoBanner() {
   const [dismissed, setDismissed] = useState(store.isPromoDismissed());
   useEffect(() => {
@@ -257,8 +319,8 @@ function PromoBanner() {
     window.addEventListener('mc:promo-change', onChange);
     return () => window.removeEventListener('mc:promo-change', onChange);
   }, []);
-  if (dismissed) return null;
-  const featured = [...PROMOS].sort((a, b) => a.bannerOrder - b.bannerOrder).slice(0, 3);
+  const featured = promosForPlacement('banner').sort((a, b) => a.bannerOrder - b.bannerOrder).slice(0, 3);
+  if (dismissed || featured.length === 0) return null;
   return (
     <div className="mc-promo-strip" role="region" aria-label="Promociones vigentes">
       <div className="mc-promo-strip-inner">
@@ -273,6 +335,66 @@ function PromoBanner() {
         <button className="mc-promo-close" onClick={() => { store.dismissPromo(); setDismissed(true); }} aria-label="Cerrar promociones">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
         </button>
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════ */
+/* ExitIntent — retention modal cuando intentás cerrar el wizard      */
+/* Aplica psicología: reciprocidad, loss aversion, anchoring          */
+/* ════════════════════════════════════════════════════════════════ */
+function ExitIntent({ promo, data, onAccept, onDecline }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onDecline(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onDecline]);
+
+  if (!promo) return null;
+
+  // Anchored visual: si el promo descuenta la mensualidad, mostramos el "antes" y "ahora"
+  const monthlyBase = data?.option?.monthly ?? 0;
+  const isFirstMonthFree = promo.key === 'first-month-free';
+
+  return (
+    <div className="mc-exit-back" onClick={onDecline} role="dialog" aria-modal="true" aria-labelledby="exit-title">
+      <div className="mc-exit" onClick={(e) => e.stopPropagation()}>
+        <button className="mc-exit-close" onClick={onDecline} aria-label="Cerrar">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+        </button>
+
+        <span className="mc-exit-eyebrow">Antes de irte ↓</span>
+        <h2 id="exit-title">¿Necesitás <span className="g">una mano</span>?</h2>
+        <p>Sabemos que arrancar cuesta. Te regalamos el <b>primer mes</b> para que te acomodes — sin condiciones, sin tarjeta hasta confirmar.</p>
+
+        {isFirstMonthFree && monthlyBase > 0 && (
+          <div className="mc-exit-visual">
+            <div className="anchor">
+              <span className="lbl">Primer mes</span>
+              <div className="prices">
+                <span className="before">${monthlyBase.toLocaleString('es-AR')}</span>
+                <span className="arr">→</span>
+                <span className="after">$0</span>
+              </div>
+            </div>
+            <div className="save">Te ahorrás <b>${monthlyBase.toLocaleString('es-AR')}</b> hoy</div>
+          </div>
+        )}
+
+        <div className="mc-exit-actions">
+          <button className="mc-btn mc-btn-green big" onClick={() => onAccept(promo)}>
+            <span>Aprovecho y sigo</span>
+            <span className="arrow">→</span>
+          </button>
+          <button className="mc-exit-no" onClick={onDecline}>Otra vez será</button>
+        </div>
+
+        <div className="mc-exit-trust">
+          <span>· Sin tarjeta hasta que confirmes</span>
+          <span>· Cancelás cuando quieras</span>
+          <span>· +2.300 clientes</span>
+        </div>
       </div>
     </div>
   );
@@ -415,6 +537,7 @@ function Sucursales({ onReserve }) {
             <div className="mc-suc-meta">
               <span><b>{s.hours}</b></span>
               <span className={`avail ${s.availability.toLowerCase()}`}>Disponibilidad: <b>{s.availability}</b></span>
+              {s.scarcity && <span className="scarcity">⏳ {s.scarcity}</span>}
             </div>
             <button className="mc-btn mc-btn-green" onClick={() => onReserve(s)}>
               <span>Reservar acá</span>
@@ -456,7 +579,8 @@ function Categorias({ onReserveCategory }) {
 
       <div className="mc-cats" data-reveal>
         {CATEGORIES.map((c, i) => {
-          const eligible = PROMOS.filter((p) => p.eligible({ category: c, option: c.options[c.options.length - 1], duration: 12, addons: ['pickup'] }));
+          const testData = { category: c, option: c.options[c.options.length - 1], duration: 12, addons: ['pickup'] };
+          const eligible = promosForPlacement('size-badge', testData);
           return (
             <article key={c.key} className="mc-cat-card">
               <div className="mc-cat-head">
@@ -783,6 +907,14 @@ function Footer({ onReserve }) {
 function Wizard({ initialCategory, initialSucursal, user, onClose }) {
   const [step, setStep] = useState(initialSucursal ? 1 : 0);
   const [paying, setPaying] = useState(false);
+  const [exitOpen, setExitOpen] = useState(false);
+  const [exitShown, setExitShown] = useState(false);
+  const [unlockTick, setUnlockTick] = useState(0);
+  useEffect(() => {
+    const onChange = () => setUnlockTick((n) => n + 1);
+    window.addEventListener('mc:unlocked-change', onChange);
+    return () => window.removeEventListener('mc:unlocked-change', onChange);
+  }, []);
   const [data, setData] = useState({
     sucursal: initialSucursal || SUCURSALES[0],
     category: initialCategory || CATEGORIES[0],
@@ -798,18 +930,43 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
   });
   const [errors, setErrors] = useState({});
 
+  // Exit-intent: si está intentando cerrar entre steps 1-3 (después de empezar a elegir)
+  // y todavía no le ofrecimos retención esta sesión → ofrecer.
+  const tryClose = useCallback(() => {
+    if (paying || step >= 4) { onClose(); return; }
+    if (step >= 1 && !exitShown && !hasUnlocked('first-month-free')) {
+      const promo = promosForPlacement('exit-intent')[0];
+      if (promo) {
+        setExitOpen(true);
+        setExitShown(true);
+        return;
+      }
+    }
+    onClose();
+  }, [step, paying, exitShown, onClose]);
+
   useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape' && step < 5 && !paying) onClose(); };
+    const onKey = (e) => { if (e.key === 'Escape' && step < 5 && !paying) tryClose(); };
     document.addEventListener('keydown', onKey);
     document.body.style.overflow = 'hidden';
     return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = ''; };
-  }, [step, onClose, paying]);
+  }, [step, paying, tryClose]);
+
+  const onExitAccept = (promo) => {
+    unlockPromo(promo.key);
+    setExitOpen(false);
+    // Wizard se queda abierto; al recomputar totals, la promo ya está activa.
+  };
+  const onExitDecline = () => {
+    setExitOpen(false);
+    onClose();
+  };
 
   const today = useMemo(() => { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().split('T')[0]; }, []);
   useEffect(() => { if (!data.startDate) setData((d) => ({ ...d, startDate: today })); }, [today]);
 
-  const totals = useMemo(() => computeTotals(data), [data]);
-  const promos = activePromos(data);
+  const totals = useMemo(() => computeTotals(data), [data, unlockTick]);
+  const promos = useMemo(() => activePromos(data), [data, unlockTick]);
 
   const toggleAddon = (k) => setData((d) => ({
     ...d, addons: d.addons.includes(k) ? d.addons.filter((x) => x !== k) : [...d.addons, k],
@@ -876,13 +1033,13 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
   const progress = step >= 5 ? 100 : Math.round(((step + 1) / totalSteps) * 100);
 
   return (
-    <div className="mc-wiz-back" onClick={step < 5 && !paying ? onClose : undefined} role="dialog" aria-modal="true" aria-labelledby="wiz-title">
+    <div className="mc-wiz-back" onClick={step < 5 && !paying ? tryClose : undefined} role="dialog" aria-modal="true" aria-labelledby="wiz-title">
       <div className="mc-wiz" onClick={(e) => e.stopPropagation()}>
         {step < 5 && (
           <>
             <div className="mc-wiz-head">
               <div className="step-info">Paso <b>{step + 1}</b> de <b>{totalSteps}</b> · Reservar online</div>
-              <button className="close" onClick={onClose} aria-label="Cerrar" disabled={paying}>
+              <button className="close" onClick={tryClose} aria-label="Cerrar" disabled={paying}>
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
               </button>
             </div>
@@ -1031,9 +1188,12 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
               <p className="lead">Te creamos la cuenta y te redirigimos al checkout de Mercado Pago.</p>
 
               <div className="mc-wiz-summary">
-                <h4>Resumen</h4>
-                <div className="row"><span>Sucursal</span><b>{data.sucursal.name} · {data.sucursal.hood}</b></div>
-                <div className="row"><span>Espacio</span><b>{data.category.label} · {formatM2(data.option.m2)} m²</b></div>
+                <h4>Tu reserva</h4>
+                <div className="mc-wiz-endow">
+                  <span className="mc-wiz-endow-lbl">Apartado a tu nombre</span>
+                  <b>{data.category.label} · {formatM2(data.option.m2)} m²</b>
+                  <span>en {data.sucursal.name} · {data.sucursal.hood}</span>
+                </div>
                 <div className="row"><span>Inicio</span><b>{data.startDate || '—'}</b></div>
                 <div className="row"><span>Duración estimada</span><b>{data.duration} {data.duration === 1 ? 'mes' : 'meses'}</b></div>
 
@@ -1148,8 +1308,24 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
           </div>
         )}
 
+        {exitOpen && (
+          <ExitIntent
+            promo={promosForPlacement('exit-intent')[0]}
+            data={data}
+            onAccept={onExitAccept}
+            onDecline={onExitDecline}
+          />
+        )}
+
         {step < 5 && !paying && (
           <div className="mc-wiz-foot">
+            {step === 4 && (
+              <div className="mc-wiz-trust">
+                <span>🔒 Pago seguro</span>
+                <span>· Sin tarjeta hasta confirmar</span>
+                <span>· Cancelás cuando quieras</span>
+              </div>
+            )}
             {step > 0 ? (
               <button className="mc-btn mc-btn-ghost" onClick={back}><span>← Atrás</span></button>
             ) : <span />}
