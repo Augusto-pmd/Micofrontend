@@ -223,13 +223,14 @@ function useReveal(deps = []) {
 /* Brand atoms                                                        */
 /* ════════════════════════════════════════════════════════════════ */
 function Isologo({ size = 36 }) {
+  // Isologo oficial: dos cuadrados intersectados en negro + cuadrado verde central con cerradura
   return (
     <svg viewBox="0 0 40 40" width={size} height={size} aria-hidden="true">
-      <rect x="3"  y="3"  width="24" height="24" rx="1" fill="none" stroke="#3D3083" strokeWidth="2.4" />
-      <rect x="13" y="13" width="24" height="24" rx="1" fill="none" stroke="#0a0a0a" strokeWidth="2.4" />
+      <rect x="3"  y="3"  width="24" height="24" rx="1" fill="none" stroke="#0a0a0a" strokeWidth="2.6" />
+      <rect x="13" y="13" width="24" height="24" rx="1" fill="none" stroke="#0a0a0a" strokeWidth="2.6" />
       <rect x="13" y="13" width="14" height="14" fill="#5ECA00" />
-      <path d="M17.5 19v-1.2a2.5 2.5 0 015 0V19" stroke="#0a0a0a" strokeWidth="1.6" fill="none" strokeLinecap="round" />
-      <rect x="16.5" y="19" width="7" height="5" rx="0.6" fill="#0a0a0a" />
+      <path d="M17.4 18.8v-1.1a2.6 2.6 0 015.2 0v1.1" stroke="#0a0a0a" strokeWidth="1.7" fill="none" strokeLinecap="round" />
+      <rect x="16.3" y="18.6" width="7.4" height="5.4" rx="0.6" fill="#0a0a0a" />
     </svg>
   );
 }
@@ -303,7 +304,7 @@ function Nav({ onReserve, route, user }) {
       <div className="mc-nav-inner">
         <a className="mc-logo" href="#/" aria-label="Mi Container — inicio">
           <span className="mc-logo-mark"><Isologo size={36} /></span>
-          <span className="mc-logo-type">m<span className="i">i</span><b>container</b></span>
+          <span className="mc-logo-type">M<span className="i">i</span><b>CONTAINER</b></span>
         </a>
         <nav className={`mc-links ${open ? 'open' : ''}`} aria-label="Principal">
           <a onClick={() => goSection('sucursales')}>Sucursales</a>
@@ -357,7 +358,7 @@ function Hero({ onReserve }) {
 
       <div className="mc-hero-grid" data-reveal>
         <p className="mc-hero-lead">
-          Self-storage en Buenos Aires. Reservá tu espacio online en 5 minutos, pagá con Mercado Pago, accedé 24/7 con tu QR — todo desde tu cuenta.
+          Self-storage en Buenos Aires. Reservá en 5 minutos, suscribite con tarjeta vía Mercado Pago y accedé 24/7 con tu QR — todo desde tu cuenta.
         </p>
         <div className="mc-hero-actions">
           <div className="row">
@@ -510,7 +511,7 @@ function Categorias({ onReserveCategory }) {
 function How() {
   const steps = [
     { n: '01', t: 'Elegí sucursal y tamaño', d: 'Cuatro ubicaciones, cuatro categorías con opciones reales en m².' },
-    { n: '02', t: 'Pagás con Mercado Pago',  d: 'Cinco minutos. Tarjeta, débito o transferencia. Sin depósito.' },
+    { n: '02', t: 'Suscribite con tarjeta',  d: 'Mercado Pago, mensualidad automática. Cinco minutos. Sin depósito.' },
     { n: '03', t: 'Gestionás desde tu cuenta', d: 'Pagos, accesos, facturación — todo en el portal con tu QR digital.' },
   ];
   return (
@@ -611,7 +612,7 @@ function SelfService({ onReserve }) {
           <h3>Conseguí tu espacio en 5 minutos.</h3>
           <ul>
             <li>Elegís sucursal, tamaño exacto en m² y add-ons</li>
-            <li>Pagás con Mercado Pago (tarjeta, débito o transferencia)</li>
+            <li>Suscripción mensual con tarjeta de crédito vía Mercado Pago</li>
             <li>Recibís tu credencial QR al instante</li>
             <li>Sin firmas, sin contratos físicos</li>
           </ul>
@@ -677,7 +678,7 @@ function FAQ() {
   const qa = [
     { q: '¿Necesito firmar un contrato largo?', a: 'No. Alquilás mes a mes y cancelás cuando quieras, sin permanencia mínima ni cargos por salida anticipada.' },
     { q: '¿Puedo tener más de un box?',          a: 'Sí. Podés tener tantas reservas como necesites, incluso en distintas sucursales. Las manejás todas desde la misma cuenta.' },
-    { q: '¿Cómo pago?',                          a: 'Por Mercado Pago. Aceptamos tarjeta de crédito, débito, transferencia y dinero en cuenta. Los precios incluyen IVA.' },
+    { q: '¿Cómo pago?',                          a: 'Suscripción mensual con tarjeta de crédito a través de Mercado Pago. Te cobramos automáticamente cada mes mientras tu cuenta esté activa. Cancelás cuando quieras desde el portal. Los precios incluyen IVA.' },
     { q: '¿Cómo accedo al box?',                 a: 'Con un QR personal generado desde tu cuenta. Lo escaneás en el ingreso y entrás. Funciona 24/7.' },
     { q: '¿Cómo aplican las promos?',            a: 'Se aplican automáticamente al hacer la reserva si cumplís los requisitos. El primer mes gratis aplica siempre; la mudanza gratis desde 10 m² al elegir "retiro a domicilio".' },
     { q: '¿Puedo cambiar de tamaño después?',    a: 'Sí. Desde el portal cambiás de tamaño sin penalidad. Si crece tu necesidad o si querés achicar, lo hacés con un click.' },
@@ -738,7 +739,7 @@ function Footer({ onReserve }) {
         <div className="mc-footer-brand">
           <a className="mc-logo" href="#/">
             <span className="mc-logo-mark"><Isologo size={36} /></span>
-            <span className="mc-logo-type">m<span className="i">i</span><b>container</b></span>
+            <span className="mc-logo-type">M<span className="i">i</span><b>CONTAINER</b></span>
           </a>
           <p className="tagline"><b>Guardá lo que querés.</b><br />Self-storage flexible en Buenos Aires. Reservá y gestioná todo online.</p>
           <button className="mc-btn mc-btn-primary" onClick={onReserve}>
@@ -793,7 +794,7 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
     email: user?.email || '',
     phone: user?.phone || '',
     dni: user?.dni || '',
-    payment: 'mp',
+    payment: 'mp-recurring',
   });
   const [errors, setErrors] = useState({});
 
@@ -1097,30 +1098,21 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
 
               <div className="mc-wiz-pay">
                 <span className="lbl">Forma de pago</span>
-                <button
-                  type="button"
-                  className={`mc-wiz-pay-opt mp ${data.payment === 'mp' ? 'selected' : ''}`}
-                  onClick={() => setData({ ...data, payment: 'mp' })}
-                >
-                  <span className="radio">{data.payment === 'mp' && <span className="dot" />}</span>
-                  <span className="body">
-                    <b>Mercado Pago</b>
-                    <span>Tarjeta de crédito, débito, transferencia o dinero en cuenta.</span>
-                  </span>
-                  <span className="logo"><MercadoPagoLogo size={16} /></span>
-                  <span className="featured-tag">Recomendado</span>
-                </button>
-                <button
-                  type="button"
-                  className={`mc-wiz-pay-opt ${data.payment === 'transfer' ? 'selected' : ''}`}
-                  onClick={() => setData({ ...data, payment: 'transfer' })}
-                >
-                  <span className="radio">{data.payment === 'transfer' && <span className="dot" />}</span>
-                  <span className="body">
-                    <b>Transferencia bancaria</b>
-                    <span>Te enviamos CBU y alias por email para que transfieras.</span>
-                  </span>
-                </button>
+                <div className="mc-wiz-pay-mp">
+                  <div className="mp-head">
+                    <MercadoPagoLogo size={18} />
+                    <span className="featured-tag">Suscripción mensual</span>
+                  </div>
+                  <b>Tarjeta de crédito vía Mercado Pago</b>
+                  <p>Cobro automático cada mes mientras tu cuenta esté activa. Cancelás cuando quieras desde el portal.</p>
+                </div>
+                <div className="mc-wiz-recurring-note">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M21 12a9 9 0 11-3-6.7L21 8" />
+                    <path d="M21 3v5h-5" />
+                  </svg>
+                  <span>Próximos cobros: <b>${Math.round(totals.monthly * (1 - totals.annualPctOff)).toLocaleString('es-AR')}/mes</b>. Primer cobro hoy de ${totals.firstMonth.toLocaleString('es-AR')}.</span>
+                </div>
               </div>
             </>
           )}
@@ -1130,9 +1122,13 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
               <div className="badge" aria-hidden="true">
                 <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5L20 7" /></svg>
               </div>
-              <h2>¡Reserva confirmada!</h2>
-              <p>Te mandamos un email a <b>{data.email}</b> con tu credencial digital, la factura y el resumen.</p>
+              <h2>¡Suscripción activa!</h2>
+              <p>Te enviamos a <b>{data.email}</b> la credencial digital, la factura del primer cobro y el resumen.</p>
               <div className="code">{store.getReservations()[0]?.id}</div>
+              <div className="mc-wiz-recurring-summary">
+                <div><span>Primer cobro · hoy</span><b>${totals.firstMonth.toLocaleString('es-AR')}</b></div>
+                <div><span>Próximos cobros · mensual</span><b>${Math.round(totals.monthly * (1 - totals.annualPctOff)).toLocaleString('es-AR')}</b></div>
+              </div>
               <div className="actions">
                 <a className="mc-btn mc-btn-violet" href="#/portal"><span>Ir al portal</span><span className="arrow">→</span></a>
                 <button className="mc-btn mc-btn-ghost" onClick={onClose}><span>Cerrar</span></button>
@@ -1157,17 +1153,13 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
             {step > 0 ? (
               <button className="mc-btn mc-btn-ghost" onClick={back}><span>← Atrás</span></button>
             ) : <span />}
-            <button className={step === 4 && data.payment === 'mp' ? 'mc-btn mc-btn-mp' : 'mc-btn mc-btn-green'} onClick={next}>
+            <button className={step === 4 ? 'mc-btn mc-btn-mp' : 'mc-btn mc-btn-green'} onClick={next}>
               {step === 4 ? (
-                data.payment === 'mp' ? (
-                  <>
-                    <MercadoPagoLogo size={14} />
-                    <span>Pagar ${totals.firstMonth.toLocaleString('es-AR')}</span>
-                    <span className="arrow">→</span>
-                  </>
-                ) : (
-                  <><span>Confirmar reserva</span><span className="arrow">→</span></>
-                )
+                <>
+                  <MercadoPagoLogo size={14} />
+                  <span>Suscribirme · ${totals.firstMonth.toLocaleString('es-AR')}</span>
+                  <span className="arrow">→</span>
+                </>
               ) : (
                 <><span>Continuar</span><span className="arrow">→</span></>
               )}
@@ -1382,7 +1374,7 @@ function PortalDashboard({ user, reservations, onLogout, onReserve }) {
               <div className="stat">
                 <span className="lbl">Mensual total</span>
                 <b>${totalMonthly.toLocaleString('es-AR')}</b>
-                <span className="sub">Próximo cobro por Mercado Pago</span>
+                <span className="sub">Suscripción vía Mercado Pago</span>
               </div>
               <div className="stat">
                 <span className="lbl">Acceso · {user.provider === 'google' ? 'Google' : 'Email'}</span>
@@ -1459,7 +1451,7 @@ function ReservationDetail({ reservation, user, onUpdate }) {
                 <b>Mensualidad:</b> ${reservation.monthly.toLocaleString('es-AR')}<br />
                 {addonNames.length > 0 && <><b>Add-ons:</b> {addonNames.join(', ')}<br /></>}
                 <b>Primer pago:</b> ${reservation.firstMonth.toLocaleString('es-AR')}<br />
-                <b>Pago:</b> {reservation.payment === 'mp' ? 'Mercado Pago' : reservation.payment === 'transfer' ? 'Transferencia' : 'Otro'}<br />
+                <b>Pago:</b> Mercado Pago · Suscripción mensual con tarjeta<br />
                 <b>Creada:</b> {new Date(reservation.createdAt).toLocaleDateString('es-AR')}
               </p>
             </div>

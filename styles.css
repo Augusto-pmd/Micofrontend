@@ -324,11 +324,15 @@ p { margin: 0; color: var(--mc-ink-2); text-wrap: pretty; }
 .mc-logo:hover .mc-logo-mark { transform: rotate(-4deg) scale(1.05); }
 .mc-logo-type {
   font-family: var(--font-body);
-  font-size: 19px; letter-spacing: -0.02em; color: var(--mc-black);
-  font-weight: 400;
+  font-size: 18px; letter-spacing: -0.01em; color: var(--mc-black);
+  font-weight: 900;
 }
-.mc-logo-type .i { color: var(--mc-green); font-weight: 900; }
-.mc-logo-type b { font-weight: 900; color: var(--mc-black); }
+.mc-logo-type .i {
+  color: var(--mc-green); font-weight: 900;
+  font-size: 0.78em; vertical-align: 0.05em;
+  margin: 0 0.02em;
+}
+.mc-logo-type b { font-weight: 900; color: var(--mc-black); letter-spacing: -0.005em; }
 
 .mc-links {
   display: flex; gap: 4px; justify-self: center;
@@ -987,6 +991,81 @@ section { position: relative; z-index: 2; }
   background: #009ee3; color: white;
   font-family: var(--font-mono); font-size: 9px; font-weight: 700;
   letter-spacing: 0.1em; text-transform: uppercase;
+}
+
+/* Wizard MP card (single payment method, info card) */
+.mc-wiz-pay-mp {
+  padding: 18px 20px 18px;
+  background: #e7f5fd;
+  border: 1.5px solid #009ee3;
+  border-radius: var(--mc-r-md);
+  box-shadow: 0 0 0 3px rgba(0, 158, 227, 0.12);
+  position: relative;
+}
+.mc-wiz-pay-mp .mp-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-bottom: 12px;
+}
+.mc-wiz-pay-mp .featured-tag {
+  padding: 3px 9px; border-radius: 999px;
+  background: #009ee3; color: white;
+  font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase;
+}
+.mc-wiz-pay-mp b {
+  display: block;
+  font-family: var(--font-cond);
+  font-size: 17px; font-weight: 700;
+  letter-spacing: -0.015em;
+  color: var(--mc-black);
+  margin-bottom: 4px;
+}
+.mc-wiz-pay-mp p {
+  font-size: 13px; color: var(--mc-ink-2);
+  line-height: 1.5; margin: 0;
+}
+
+/* Wizard recurring note (below MP card) */
+.mc-wiz-recurring-note {
+  display: flex; align-items: flex-start; gap: 10px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  background: #e7f5fd;
+  border-radius: var(--mc-r-sm);
+  border: 1px solid rgba(0, 158, 227, 0.18);
+  font-size: 13px; color: var(--mc-ink-2);
+  line-height: 1.5;
+}
+.mc-wiz-recurring-note svg { color: #009ee3; flex-shrink: 0; margin-top: 3px; }
+.mc-wiz-recurring-note b { color: var(--mc-black); font-weight: 700; font-family: var(--font-cond); letter-spacing: -0.005em; }
+
+/* Success: recurring summary */
+.mc-wiz-recurring-summary {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+  margin: 18px auto 24px; max-width: 420px;
+  text-align: left;
+}
+.mc-wiz-recurring-summary > div {
+  padding: 14px 16px;
+  background: var(--mc-paper);
+  border-radius: var(--mc-r-sm);
+}
+.mc-wiz-recurring-summary span {
+  display: block;
+  font-family: var(--font-mono); font-size: 10px;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--mc-violet); font-weight: 600;
+  margin-bottom: 6px;
+}
+.mc-wiz-recurring-summary b {
+  display: block;
+  font-family: var(--font-cond);
+  font-size: 18px; font-weight: 900;
+  letter-spacing: -0.025em;
+  color: var(--mc-black);
+}
+@media (max-width: 600px) {
+  .mc-wiz-recurring-summary { grid-template-columns: 1fr; }
 }
 
 /* MP submit button */
