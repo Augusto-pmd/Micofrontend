@@ -631,6 +631,64 @@ section { position: relative; z-index: 2; }
 }
 
 /* ════════════════════════════════════════════════════════════════ */
+/* SUCURSALES STRIP — compacto, reemplaza las 4 cards grandes          */
+/* ════════════════════════════════════════════════════════════════ */
+.mc-sucs-strip { padding: 28px 0 0; }
+.mc-sucs-strip-head { margin-bottom: 14px; }
+.mc-sucs-strip-list {
+  display: flex; gap: 10px; flex-wrap: wrap;
+}
+.mc-suc-pill {
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px 18px;
+  background: var(--mc-card);
+  border: 1.5px solid var(--mc-line-2);
+  border-radius: var(--mc-r-md);
+  cursor: pointer;
+  font-family: inherit; color: inherit; text-align: left;
+  transition: border-color 0.18s var(--ease-out), transform 0.2s var(--ease-out), box-shadow 0.2s var(--ease-out);
+  flex: 1; min-width: 200px;
+}
+.mc-suc-pill:hover {
+  border-color: var(--mc-green);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px -6px rgba(10, 10, 10, 0.1);
+}
+.mc-suc-pill .name {
+  font-family: var(--font-cond);
+  font-size: 18px; font-weight: 900;
+  letter-spacing: -0.02em;
+  color: var(--mc-black);
+  flex-shrink: 0;
+}
+.mc-suc-pill .detail {
+  font-family: var(--font-mono); font-size: 11px;
+  color: var(--mc-ink-3); letter-spacing: 0.02em;
+  flex: 1;
+}
+.mc-suc-pill .badge {
+  flex-shrink: 0;
+  padding: 3px 8px; border-radius: 999px;
+  font-family: var(--font-mono); font-size: 9px;
+  font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.mc-suc-pill .badge.avail-alta     { background: var(--mc-green-mist); color: var(--mc-green-ink); }
+.mc-suc-pill .badge.avail-media    { background: #fff2d0; color: #8a6100; }
+.mc-suc-pill .badge.avail-limitada { background: #fde0db; color: #a91f0a; }
+.mc-suc-pill .badge.scarce         { background: #fde0db; color: #a91f0a; }
+
+@media (max-width: 900px) {
+  .mc-sucs-strip { padding: 20px 0 0; }
+  .mc-suc-pill { min-width: calc(50% - 5px); flex: none; }
+  .mc-suc-pill .detail { display: none; }
+}
+@media (max-width: 480px) {
+  .mc-suc-pill { min-width: 100%; }
+  .mc-suc-pill .detail { display: none; }
+}
+
+/* ════════════════════════════════════════════════════════════════ */
 /* CATEGORÍAS (home) — 4 cards con opciones de m²                     */
 /* ════════════════════════════════════════════════════════════════ */
 .mc-cats {
@@ -762,7 +820,7 @@ section { position: relative; z-index: 2; }
 }
 
 /* ════════════════════════════════════════════════════════════════ */
-/* SUCURSALES                                                         */
+/* SUCURSALES CARDS (legacy, mantenido por el wizard step)            */
 /* ════════════════════════════════════════════════════════════════ */
 .mc-sucs { padding: 120px 0 80px; }
 .mc-sucs-grid {
@@ -1191,6 +1249,74 @@ section { position: relative; z-index: 2; }
   font-size: 13px; color: var(--mc-ink-2);
   line-height: 1.5; margin: 0;
 }
+
+/* Wizard: instructivo de acceso (step 0) */
+.mc-wiz-how-access {
+  margin: 0 0 22px;
+  padding: 16px 18px 14px;
+  background: var(--mc-violet-mist);
+  border-radius: var(--mc-r-md);
+  border: 1px solid color-mix(in oklab, var(--mc-violet) 18%, transparent);
+}
+.mc-wiz-how-access .lbl {
+  display: block; margin-bottom: 12px;
+  font-family: var(--font-mono); font-size: 10px;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--mc-violet); font-weight: 700;
+}
+.mc-wiz-how-access .steps { display: flex; flex-direction: column; gap: 8px; }
+.mc-wiz-how-access .steps > div {
+  display: flex; align-items: baseline; gap: 10px;
+  font-size: 13px; color: var(--mc-ink-2);
+}
+.mc-wiz-how-access .steps .n {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--mc-violet); color: white;
+  font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+  flex-shrink: 0;
+}
+.mc-wiz-how-access .steps b { color: var(--mc-black); font-weight: 700; }
+
+/* Wizard: próximos pasos (success screen) */
+.mc-wiz-next-steps {
+  margin: 20px 0 18px;
+  padding: 18px 18px 14px;
+  background: var(--mc-green-mist);
+  border-radius: var(--mc-r-md);
+  border: 1px solid color-mix(in oklab, var(--mc-green) 22%, transparent);
+  text-align: left;
+}
+.mc-wiz-next-steps .lbl {
+  display: block; margin-bottom: 12px;
+  font-family: var(--font-mono); font-size: 10px;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--mc-green-ink); font-weight: 700;
+}
+.mc-wiz-next-steps .step {
+  display: flex; align-items: baseline; gap: 10px;
+  font-size: 13px; color: var(--mc-ink-2);
+  margin-bottom: 8px;
+}
+.mc-wiz-next-steps .step:last-child { margin-bottom: 0; }
+.mc-wiz-next-steps .n {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--mc-green-ink); color: white;
+  font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+  flex-shrink: 0;
+}
+.mc-wiz-next-steps b { color: var(--mc-black); font-weight: 700; }
+
+/* Sticky bar: WA icon integrado */
+.mc-sticky-wa {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; border-radius: 50%;
+  background: #25d366; color: white;
+  flex-shrink: 0;
+  transition: transform 0.2s var(--ease-out);
+}
+.mc-sticky-wa:hover { transform: scale(1.08); }
 
 /* Wizard recurring note (below MP card) */
 .mc-wiz-recurring-note {

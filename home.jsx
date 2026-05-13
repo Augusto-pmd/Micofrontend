@@ -37,8 +37,8 @@ const CATEGORIES = [
     key: 'pequeno',
     label: 'Pequeño',
     range: '1,5 – 3 m²',
-    blurb: 'Cajas, bicis, archivo personal.',
-    fits: ['~20 cajas', '2 bicis', 'Objetos estacionales'],
+    blurb: 'Para cajas, una bicicleta o archivo personal.',
+    fits: ['20–30 cajas de mudanza', '1 bicicleta', 'Ropa de temporada / archivo'],
     options: [
       { m2: 1.50, monthly: 53550 },
       { m2: 2.00, monthly: 71400 },
@@ -49,8 +49,8 @@ const CATEGORIES = [
     key: 'mediano',
     label: 'Mediano',
     range: '5 – 9 m²',
-    blurb: 'Un monoambiente o estudio.',
-    fits: ['Monoambiente', 'Electrodomésticos', 'Muebles de un cuarto'],
+    blurb: 'Para el contenido completo de un monoambiente.',
+    fits: ['Muebles de 1 habitación', '~60 cajas', 'Electros y línea blanca'],
     options: [
       { m2: 5.10, monthly: 139230 },
       { m2: 6.00, monthly: 151200 },
@@ -62,8 +62,8 @@ const CATEGORIES = [
     key: 'grande',
     label: 'Grande',
     range: '11 – 13,5 m²',
-    blurb: 'Casa de 2 ambientes o stock PyME.',
-    fits: ['Casa 2 ambientes', 'Stock e-commerce', '3–5 pallets'],
+    blurb: 'Para un departamento de 2 ambientes o stock de negocio.',
+    fits: ['Muebles de 2 ambientes', '3–5 pallets', 'Stock e-commerce'],
     options: [
       { m2: 11.25, monthly: 259875 },
       { m2: 13.50, monthly: 283500 },
@@ -73,8 +73,8 @@ const CATEGORIES = [
     key: 'xl',
     label: 'XL',
     range: '15+ m²',
-    blurb: 'Mudanzas completas, logística.',
-    fits: ['Casa familiar', 'Operación logística', 'A medida'],
+    blurb: 'Para una casa completa o logística de empresa.',
+    fits: ['Casa familiar completa', 'Mercadería por pallet', 'A medida'],
     options: [
       { m2: 15.00, monthly: 441000 },
     ],
@@ -480,7 +480,7 @@ function Hero({ onReserve }) {
 
       <div className="mc-hero-grid" data-reveal>
         <p className="mc-hero-lead">
-          Self-storage en Buenos Aires. Reservá en 5 minutos, suscribite con tarjeta vía Mercado Pago y accedé 24/7 con tu QR — todo desde tu cuenta.
+          Alquilá un espacio para guardar tus cosas en Buenos Aires. Reservá en 5 minutos, pagás mensual con tarjeta y accedés 24/7 con tu QR — todo online, sin llamar a nadie.
         </p>
         <div className="mc-hero-actions">
           <div className="row">
@@ -521,29 +521,20 @@ function Hero({ onReserve }) {
 /* ════════════════════════════════════════════════════════════════ */
 function Sucursales({ onReserve }) {
   return (
-    <section className="mc-sucs mc-container" id="sucursales">
-      <div className="mc-sec-head" data-reveal>
-        <span className="mc-eyebrow violet">Sucursales</span>
-        <h2>Cuatro <span className="v">ubicaciones</span> en Buenos Aires.</h2>
-        <p>Elegí la más cercana a tu casa, oficina o depósito. Mismas tarifas, mismos servicios, mismo acceso 24/7.</p>
+    <section className="mc-sucs-strip mc-container" id="sucursales" data-reveal>
+      <div className="mc-sucs-strip-head">
+        <span className="mc-eyebrow violet" style={{ marginBottom: 0 }}>4 sucursales · CABA y GBA Norte · Acceso 24/7</span>
       </div>
-      <div className="mc-sucs-grid" data-reveal>
-        {SUCURSALES.map((s, i) => (
-          <article key={s.id} className="mc-suc-card">
-            <div className="mc-suc-num">0{i + 1}</div>
-            <h3>{s.name}</h3>
-            <span className="hood">{s.hood}</span>
-            <p className="addr">{s.address}</p>
-            <div className="mc-suc-meta">
-              <span><b>{s.hours}</b></span>
-              <span className={`avail ${s.availability.toLowerCase()}`}>Disponibilidad: <b>{s.availability}</b></span>
-              {s.scarcity && <span className="scarcity">⏳ {s.scarcity}</span>}
-            </div>
-            <button className="mc-btn mc-btn-green" onClick={() => onReserve(s)}>
-              <span>Reservar acá</span>
-              <span className="arrow">→</span>
-            </button>
-          </article>
+      <div className="mc-sucs-strip-list">
+        {SUCURSALES.map((s) => (
+          <button key={s.id} className={`mc-suc-pill ${s.availability.toLowerCase()}`} onClick={() => onReserve(s)}>
+            <span className="name">{s.name}</span>
+            <span className="detail">{s.hood} · {s.address}</span>
+            {s.scarcity
+              ? <span className="badge scarce">{s.scarcity}</span>
+              : <span className={`badge avail-${s.availability.toLowerCase()}`}>{s.availability}</span>
+            }
+          </button>
         ))}
       </div>
     </section>
@@ -1052,6 +1043,17 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
             <>
               <h2 id="wiz-title">¿En qué sucursal?</h2>
               <p className="lead">Elegí la más cercana. Todas tienen los mismos servicios y acceso 24/7.</p>
+
+              <div className="mc-wiz-how-access">
+                <span className="lbl">Cómo funciona el acceso</span>
+                <div className="steps">
+                  <div><span className="n">1</span><span>Reservás online y pagás con tarjeta</span></div>
+                  <div><span className="n">2</span><span>Te enviamos un <b>QR personal</b> por email</span></div>
+                  <div><span className="n">3</span><span>Lo mostrás en el ingreso y entrás — las 24 hs, sin turno</span></div>
+                  <div><span className="n">4</span><span>Gestionás todo (pagos, accesos, facturas) desde tu cuenta online</span></div>
+                </div>
+              </div>
+
               <div className="mc-wiz-options sucursales">
                 {SUCURSALES.map((s) => (
                   <button
@@ -1283,8 +1285,17 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
                 <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5L20 7" /></svg>
               </div>
               <h2>¡Suscripción activa!</h2>
-              <p>Te enviamos a <b>{data.email}</b> la credencial digital, la factura del primer cobro y el resumen.</p>
+              <p>Te enviamos a <b>{data.email}</b> la credencial digital, la factura y el resumen.</p>
               <div className="code">{store.getReservations()[0]?.id}</div>
+
+              <div className="mc-wiz-next-steps">
+                <span className="lbl">¿Qué pasa ahora?</span>
+                <div className="step"><span className="n">1</span><span>Te llega un email con tu <b>QR de acceso</b> y el comprobante de pago.</span></div>
+                <div className="step"><span className="n">2</span><span>El día <b>{data.startDate}</b> tu espacio queda activo en <b>{data.sucursal.name}</b>.</span></div>
+                <div className="step"><span className="n">3</span><span>Ingresás mostrando el QR en el lector de la entrada — sin turno, sin esperar.</span></div>
+                <div className="step"><span className="n">4</span><span>Cada mes Mercado Pago cobra automáticamente. Cancelás desde el portal cuando quieras.</span></div>
+              </div>
+
               <div className="mc-wiz-recurring-summary">
                 <div><span>Primer cobro · hoy</span><b>${totals.firstMonth.toLocaleString('es-AR')}</b></div>
                 <div><span>Próximos cobros · mensual</span><b>${Math.round(totals.monthly * (1 - totals.annualPctOff)).toLocaleString('es-AR')}</b></div>
@@ -1752,6 +1763,11 @@ function App() {
 
       {showHomeChrome && (
         <div className="mc-sticky-bar">
+          <a className="mc-sticky-wa" href={WHATSAPP} target="_blank" rel="noopener" aria-label="WhatsApp">
+            <svg viewBox="0 0 32 32" fill="currentColor" width="20" height="20" aria-hidden="true">
+              <path d="M16.004 3C8.82 3 3 8.82 3 16.004c0 2.29.6 4.53 1.74 6.507L3 29l6.63-1.725A12.96 12.96 0 0016.004 29C23.19 29 29 23.19 29 16.004 29 8.82 23.19 3 16.004 3zm6.78 16.49c-.37-.19-2.2-1.08-2.54-1.2-.34-.13-.59-.19-.84.19s-.96 1.2-1.18 1.45c-.22.25-.43.28-.8.09-.37-.19-1.57-.58-2.99-1.84-1.11-.98-1.85-2.2-2.07-2.57-.22-.37-.02-.57.16-.76.17-.17.37-.43.56-.65.19-.22.25-.37.37-.62.12-.25.06-.46-.03-.65-.09-.19-.84-2.02-1.15-2.77-.3-.73-.61-.63-.84-.64-.22-.01-.46-.01-.71-.01-.25 0-.65.09-.99.46-.34.37-1.3 1.27-1.3 3.1 0 1.83 1.33 3.6 1.51 3.85.19.25 2.61 3.99 6.33 5.6.88.38 1.57.6 2.11.77.88.28 1.69.24 2.33.15.71-.11 2.2-.9 2.51-1.77.31-.87.31-1.61.22-1.77z"/>
+            </svg>
+          </a>
           <div className="lbl">Desde ${fromPrice(CATEGORIES[0]).toLocaleString('es-AR')}/mes<span>5 min · 1° mes gratis</span></div>
           <button className="mc-btn mc-btn-green" onClick={() => openWizard()}>
             <span>Reservar</span>
