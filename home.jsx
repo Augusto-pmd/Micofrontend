@@ -86,10 +86,10 @@ const maxM2 = (cat) => Math.max(...cat.options.map((o) => o.m2));
 const formatM2 = (m2) => m2.toLocaleString('es-AR', { minimumFractionDigits: m2 % 1 === 0 ? 0 : 2 });
 
 const SUCURSALES = [
-  { id: 'nordelta',  name: 'Nordelta',      hood: 'GBA Norte', address: 'Av. de los Lagos 7250', hours: 'Acceso 24/7', availability: 'Alta',     scarcity: null                                  },
-  { id: 'palermo',   name: 'Palermo',       hood: 'CABA',      address: 'Av. Córdoba 4500',      hours: 'Acceso 24/7', availability: 'Alta',     scarcity: null                                  },
-  { id: 'crespo',    name: 'Villa Crespo',  hood: 'CABA',      address: 'Av. Warnes 1280',       hours: 'Acceso 24/7', availability: 'Media',    scarcity: 'Pocos espacios disponibles'          },
-  { id: 'vlopez',    name: 'Vicente López', hood: 'GBA Norte', address: 'Av. Maipú 2840',        hours: 'Acceso 24/7', availability: 'Limitada', scarcity: 'Casi sin lugar · reservá pronto'     },
+  { id: 'nordelta',  name: 'Nordelta',      hood: 'GBA Norte', address: 'Av. de los Lagos 7250', hours: 'Lun–Vie 8–17 hs · Sáb 9–13 hs', availability: 'Alta',     scarcity: null                              },
+  { id: 'palermo',   name: 'Palermo',       hood: 'CABA',      address: 'Av. Córdoba 4500',      hours: 'Horarios a confirmar',           availability: 'Alta',     scarcity: null                              },
+  { id: 'crespo',    name: 'Villa Crespo',  hood: 'CABA',      address: 'Av. Warnes 1280',       hours: 'Horarios a confirmar',           availability: 'Media',    scarcity: 'Pocos espacios disponibles'      },
+  { id: 'vlopez',    name: 'Vicente López', hood: 'GBA Norte', address: 'Av. Maipú 2840',        hours: 'Horarios a confirmar',           availability: 'Limitada', scarcity: 'Casi sin lugar · reservá pronto' },
 ];
 
 const ADDONS = [
