@@ -1423,17 +1423,25 @@ section { position: relative; z-index: 2; }
 }
 .mc-bento-item p { font-size: 14px; line-height: 1.55; max-width: 340px; }
 
-/* 1 — Big black hero card */
+/* 1 — Bento hero card: gradiente verde oscuro → violeta */
 .mc-bento-1 {
   grid-column: span 4; grid-row: span 2;
-  background: linear-gradient(160deg, var(--mc-black) 0%, #18181a 100%);
+  background: linear-gradient(155deg, #1a3504 0%, #2d225a 60%, var(--mc-violet) 100%);
   color: white;
-  box-shadow: var(--mc-shadow-dark);
+  box-shadow:
+    0 30px 80px -20px color-mix(in oklab, var(--mc-violet) 55%, transparent),
+    0 10px 30px -10px color-mix(in oklab, var(--mc-green-ink) 40%, transparent);
 }
 .mc-bento-1::after {
-  content: ''; position: absolute; bottom: -140px; right: -100px;
-  width: 380px; height: 380px; border-radius: 50%;
-  background: radial-gradient(circle, color-mix(in oklab, var(--mc-green) 65%, transparent) 0%, transparent 60%);
+  content: ''; position: absolute; bottom: -120px; right: -80px;
+  width: 360px; height: 360px; border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in oklab, var(--mc-green) 55%, transparent) 0%, transparent 60%);
+  pointer-events: none;
+}
+.mc-bento-1::before {
+  content: ''; position: absolute; top: -100px; left: -80px;
+  width: 280px; height: 280px; border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in oklab, var(--mc-violet) 50%, transparent) 0%, transparent 65%);
   pointer-events: none;
 }
 .mc-bento-1 h3 {
@@ -1530,13 +1538,16 @@ section { position: relative; z-index: 2; }
 }
 .mc-self-reserve > * { position: relative; z-index: 1; }
 .mc-self-portal {
-  background: var(--mc-black); color: white;
-  box-shadow: var(--mc-shadow-dark);
+  background: linear-gradient(155deg, var(--mc-violet) 0%, #1a3504 100%);
+  color: white;
+  box-shadow:
+    0 30px 80px -20px color-mix(in oklab, var(--mc-green-ink) 50%, transparent),
+    0 10px 30px -10px color-mix(in oklab, var(--mc-violet) 40%, transparent);
 }
 .mc-self-portal::after {
   content: ''; position: absolute; bottom: -120px; left: -100px;
   width: 360px; height: 360px; border-radius: 50%;
-  background: radial-gradient(circle, color-mix(in oklab, var(--mc-violet) 60%, transparent) 0%, transparent 65%);
+  background: radial-gradient(circle, color-mix(in oklab, var(--mc-green) 45%, transparent) 0%, transparent 65%);
   pointer-events: none;
 }
 .mc-self-portal > * { position: relative; z-index: 1; }
