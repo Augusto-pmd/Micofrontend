@@ -331,13 +331,13 @@ function Isologo({ size = 36 }) {
   // SVG fallback (mientras no esté el PNG)
   return (
     <svg viewBox="0 0 37 37" width={size} height={size} aria-hidden="true">
-      <rect x="2" y="2"  width="22" height="22" rx="3" fill="white"/>
-      <rect x="13" y="13" width="22" height="22" rx="3" fill="white"/>
+      <rect x="2" y="2"  width="22" height="22" rx="1" fill="white"/>
+      <rect x="13" y="13" width="22" height="22" rx="1" fill="white"/>
       <rect x="13" y="13" width="11" height="11" fill="#5ECA00"/>
       <path d="M16.5 18.5 L16.5 16 A2 2 0 0 0 20.5 16 L20.5 18.5" stroke="#0a0a0a" strokeWidth="1.6" fill="none" strokeLinecap="round"/>
-      <rect x="15.5" y="18" width="6" height="4" rx="1" fill="#0a0a0a"/>
-      <rect x="2" y="2"  width="22" height="22" rx="3" fill="none" stroke="#0a0a0a" strokeWidth="2.4"/>
-      <rect x="13" y="13" width="22" height="22" rx="3" fill="none" stroke="#0a0a0a" strokeWidth="2.4"/>
+      <rect x="15.5" y="18" width="6" height="4" rx="0.5" fill="#0a0a0a"/>
+      <rect x="2" y="2"  width="22" height="22" rx="1" fill="none" stroke="#0a0a0a" strokeWidth="2.6"/>
+      <rect x="13" y="13" width="22" height="22" rx="1" fill="none" stroke="#0a0a0a" strokeWidth="2.6"/>
     </svg>
   );
 }
