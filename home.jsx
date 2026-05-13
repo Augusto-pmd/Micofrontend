@@ -6,6 +6,20 @@ const { useState, useEffect, useMemo, useRef, useCallback } = React;
 // ─────────────────────────────────────────────────────────────────
 // Contacto real (del flyer Mayo 2026)
 // ─────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────
+// Entidad facturadora
+// CORDIS MS SA es la empresa propietaria de la sucursal Nordelta.
+// Mi Container opera en su nombre. Las facturas se emiten a nombre
+// de CORDIS MS SA.
+// ─────────────────────────────────────────────────────────────────
+const BILLING_ENTITY = {
+  razonSocial: 'CORDIS MS SA',
+  domicilio: 'Agustín M. García 10297',
+  localidad: 'Benavídez (1621)',
+  partido: 'Tigre',
+  provincia: 'Buenos Aires',
+};
+
 const PHONE = '+54 9 11 3620-7989';
 const PHONE_TEL = '+5491136207989';
 const WHATSAPP = 'https://wa.me/5491136207989';
@@ -307,9 +321,9 @@ function Isologo({ size = 36 }) {
       <rect x="13" y="13" width="22" height="22" rx="3" fill="white"/>
       {/* Cuadrado verde (intersección exacta) */}
       <rect x="13" y="13" width="11" height="11" fill="#5ECA00"/>
-      {/* Cerradura: círculo superior + ranura */}
-      <circle cx="18.5" cy="17.5" r="2.4" fill="#0a0a0a"/>
-      <rect x="17.3" y="19.7" width="2.4" height="2.5" rx="0.4" fill="#0a0a0a"/>
+      {/* Candado (padlock): arco/grapa + cuerpo */}
+      <path d="M16.5 18.5 L16.5 16 A2 2 0 0 0 20.5 16 L20.5 18.5" stroke="#0a0a0a" strokeWidth="1.6" fill="none" strokeLinecap="round"/>
+      <rect x="15.5" y="18" width="6" height="4" rx="1" fill="#0a0a0a"/>
       {/* Bordes de ambos cuadrados encima de todo */}
       <rect x="2" y="2"  width="22" height="22" rx="3" fill="none" stroke="#0a0a0a" strokeWidth="2.4"/>
       <rect x="13" y="13" width="22" height="22" rx="3" fill="none" stroke="#0a0a0a" strokeWidth="2.4"/>
@@ -567,7 +581,7 @@ function Sucursales({ onReserve }) {
 /* Ticker                                                             */
 /* ════════════════════════════════════════════════════════════════ */
 function Ticker() {
-  const items = ['1° mes gratis', 'Sin depósito', 'Sin permanencia', 'Mudanza gratis +10m²', '20% off anual', 'Acceso 24/7', 'Pagás con Mercado Pago'];
+  const items = ['1° mes gratis', 'Sin depósito', 'Sin permanencia', '20% off anual', 'Acceso 24/7', 'Pagás con Mercado Pago', 'Gestión online'];
   const run = [...items, ...items, ...items];
   return (
     <div className="mc-ticker" aria-hidden="true">
@@ -1376,6 +1390,11 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
                 <div className="step"><span className="n">2</span><span>El día <b>{data.startDate}</b> tu espacio queda activo en <b>{data.sucursal.name}</b>.</span></div>
                 <div className="step"><span className="n">3</span><span>Ingresás mostrando el QR en el lector de la entrada — sin turno, sin esperar.</span></div>
                 <div className="step"><span className="n">4</span><span>Cada mes Mercado Pago cobra automáticamente. Cancelás desde el portal cuando quieras.</span></div>
+              </div>
+
+              <div className="mc-wiz-billing-note">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg>
+                <span>Factura emitida por <b>{BILLING_ENTITY.razonSocial}</b> · {BILLING_ENTITY.domicilio}, {BILLING_ENTITY.localidad}, {BILLING_ENTITY.partido}</span>
               </div>
 
               <div className="mc-wiz-recurring-summary">
