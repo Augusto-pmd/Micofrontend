@@ -283,14 +283,24 @@ function useReveal(deps = []) {
 /* Brand atoms                                                        */
 /* ════════════════════════════════════════════════════════════════ */
 function Isologo({ size = 36 }) {
-  // Isologo oficial: dos cuadrados intersectados en negro + cuadrado verde central con cerradura
+  // Reconstrucción del logo oficial:
+  // - Dos cuadrados offset (negro, fondo blanco), bordes visibles sobre todo
+  // - Cuadrado verde en la intersección
+  // - Keyhole (cerradura) negro sobre el verde
+  // - "Mi" en verde · "CONTAINER" en negro
   return (
     <svg viewBox="0 0 40 40" width={size} height={size} aria-hidden="true">
-      <rect x="3"  y="3"  width="24" height="24" rx="1" fill="none" stroke="#0a0a0a" strokeWidth="2.6" />
-      <rect x="13" y="13" width="24" height="24" rx="1" fill="none" stroke="#0a0a0a" strokeWidth="2.6" />
-      <rect x="13" y="13" width="14" height="14" fill="#5ECA00" />
-      <path d="M17.4 18.8v-1.1a2.6 2.6 0 015.2 0v1.1" stroke="#0a0a0a" strokeWidth="1.7" fill="none" strokeLinecap="round" />
-      <rect x="16.3" y="18.6" width="7.4" height="5.4" rx="0.6" fill="#0a0a0a" />
+      {/* Fondos blancos primero */}
+      <rect x="2" y="2" width="23" height="23" rx="2" fill="white"/>
+      <rect x="15" y="15" width="23" height="23" rx="2" fill="white"/>
+      {/* Cuadrado verde (intersección) */}
+      <rect x="15" y="15" width="10" height="10" fill="#5ECA00"/>
+      {/* Keyhole: círculo superior + ranura rectangular */}
+      <circle cx="20" cy="19.5" r="2.6" fill="#0a0a0a"/>
+      <rect x="18.8" y="21.8" width="2.4" height="2.8" rx="0.4" fill="#0a0a0a"/>
+      {/* Bordes de ambos cuadrados encima de todo */}
+      <rect x="2" y="2" width="23" height="23" rx="2" fill="none" stroke="#0a0a0a" strokeWidth="2.4"/>
+      <rect x="15" y="15" width="23" height="23" rx="2" fill="none" stroke="#0a0a0a" strokeWidth="2.4"/>
     </svg>
   );
 }
@@ -426,7 +436,7 @@ function Nav({ onReserve, route, user }) {
       <div className="mc-nav-inner">
         <a className="mc-logo" href="#/" aria-label="Mi Container — inicio">
           <span className="mc-logo-mark"><Isologo size={36} /></span>
-          <span className="mc-logo-type">M<span className="i">i</span><b>CONTAINER</b></span>
+          <span className="mc-logo-type"><span className="mi">Mi</span><b>CONTAINER</b></span>
         </a>
         <nav className={`mc-links ${open ? 'open' : ''}`} aria-label="Principal">
           <a onClick={() => goSection('sucursales')}>Sucursales</a>
@@ -854,7 +864,7 @@ function Footer({ onReserve }) {
         <div className="mc-footer-brand">
           <a className="mc-logo" href="#/">
             <span className="mc-logo-mark"><Isologo size={36} /></span>
-            <span className="mc-logo-type">M<span className="i">i</span><b>CONTAINER</b></span>
+            <span className="mc-logo-type"><span className="mi">Mi</span><b>CONTAINER</b></span>
           </a>
           <p className="tagline"><b>Guardá lo que querés.</b><br />Self-storage flexible en Buenos Aires. Reservá y gestioná todo online.</p>
           <button className="mc-btn mc-btn-primary" onClick={onReserve}>
