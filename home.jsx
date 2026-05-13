@@ -941,6 +941,9 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
     phone: user?.phone || '',
     dni: user?.dni || '',
     payment: 'mp-recurring',
+    clientType: 'persona',   // 'persona' | 'empresa'
+    razonSocial: '',
+    cuit: '',
   });
   const [errors, setErrors] = useState({});
 
@@ -991,10 +994,16 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
 
   const validateData = () => {
     const e = {};
-    if (!data.name.trim() || data.name.trim().length < 2) e.name = 'Ingresá tu nombre';
+    if (data.clientType === 'empresa') {
+      if (!data.razonSocial.trim() || data.razonSocial.trim().length < 2) e.razonSocial = 'Ingresá la razón social';
+      const cuitDigits = data.cuit.replace(/\D/g, '');
+      if (cuitDigits.length !== 11) e.cuit = 'El CUIT debe tener 11 dígitos';
+    } else {
+      if (!data.name.trim() || data.name.trim().length < 2) e.name = 'Ingresá tu nombre';
+      if (!/^\d{7,9}$/.test(data.dni.replace(/\D/g, ''))) e.dni = 'DNI inválido';
+    }
     if (!/^\S+@\S+\.\S+$/.test(data.email)) e.email = 'Email inválido';
     if (!/^[\d\s\-+()]{8,}$/.test(data.phone)) e.phone = 'Teléfono inválido';
-    if (!/^\d{7,9}$/.test(data.dni.replace(/\D/g, ''))) e.dni = 'DNI inválido';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -1212,10 +1221,31 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
               <h2 id="wiz-title">Tus datos y pago</h2>
               <p className="lead">Te creamos la cuenta y te redirigimos al checkout de Mercado Pago.</p>
 
+              <div className="mc-wiz-client-toggle">
+                <button
+                  type="button"
+                  className={`opt ${data.clientType === 'persona' ? 'active' : ''}`}
+                  onClick={() => setData({ ...data, clientType: 'persona' })}
+                >
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                  Persona
+                </button>
+                <button
+                  type="button"
+                  className={`opt ${data.clientType === 'empresa' ? 'active' : ''}`}
+                  onClick={() => setData({ ...data, clientType: 'empresa' })}
+                >
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                  Empresa
+                </button>
+              </div>
+
               <div className="mc-wiz-summary">
                 <h4>Tu reserva</h4>
                 <div className="mc-wiz-endow">
-                  <span className="mc-wiz-endow-lbl">Apartado a tu nombre</span>
+                  <span className="mc-wiz-endow-lbl">
+                    {data.clientType === 'empresa' ? 'Reservado a nombre de empresa' : 'Apartado a tu nombre'}
+                  </span>
                   <b>{data.category.label} · {formatM2(data.option.m2)} m²</b>
                   <span>en {data.sucursal.name} · {data.sucursal.hood}</span>
                 </div>
@@ -1256,30 +1286,60 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
                 <div className="row hint"><span>IVA incluido</span><span></span></div>
               </div>
 
-              <div className="mc-wiz-row2">
-                <div className="mc-wiz-field">
-                  <label htmlFor="w-name">Nombre completo</label>
-                  <input id="w-name" type="text" value={data.name} onChange={(e) => setData({ ...data, name: e.target.value })} placeholder="Julia Martínez" />
-                  {errors.name && <span className="err">{errors.name}</span>}
-                </div>
-                <div className="mc-wiz-field">
-                  <label htmlFor="w-email">Email</label>
-                  <input id="w-email" type="email" value={data.email} onChange={(e) => setData({ ...data, email: e.target.value })} placeholder="vos@email.com" />
-                  {errors.email && <span className="err">{errors.email}</span>}
-                </div>
-              </div>
-              <div className="mc-wiz-row2">
-                <div className="mc-wiz-field">
-                  <label htmlFor="w-phone">Teléfono</label>
-                  <input id="w-phone" type="tel" value={data.phone} onChange={(e) => setData({ ...data, phone: e.target.value })} placeholder="11 5555-5555" />
-                  {errors.phone && <span className="err">{errors.phone}</span>}
-                </div>
-                <div className="mc-wiz-field">
-                  <label htmlFor="w-dni">DNI</label>
-                  <input id="w-dni" type="text" value={data.dni} onChange={(e) => setData({ ...data, dni: e.target.value })} placeholder="32.123.456" />
-                  {errors.dni && <span className="err">{errors.dni}</span>}
-                </div>
-              </div>
+              {data.clientType === 'persona' ? (
+                <>
+                  <div className="mc-wiz-row2">
+                    <div className="mc-wiz-field">
+                      <label htmlFor="w-name">Nombre completo</label>
+                      <input id="w-name" type="text" value={data.name} onChange={(e) => setData({ ...data, name: e.target.value })} placeholder="Julia Martínez" />
+                      {errors.name && <span className="err">{errors.name}</span>}
+                    </div>
+                    <div className="mc-wiz-field">
+                      <label htmlFor="w-email">Email</label>
+                      <input id="w-email" type="email" value={data.email} onChange={(e) => setData({ ...data, email: e.target.value })} placeholder="vos@email.com" />
+                      {errors.email && <span className="err">{errors.email}</span>}
+                    </div>
+                  </div>
+                  <div className="mc-wiz-row2">
+                    <div className="mc-wiz-field">
+                      <label htmlFor="w-phone">Teléfono</label>
+                      <input id="w-phone" type="tel" value={data.phone} onChange={(e) => setData({ ...data, phone: e.target.value })} placeholder="11 5555-5555" />
+                      {errors.phone && <span className="err">{errors.phone}</span>}
+                    </div>
+                    <div className="mc-wiz-field">
+                      <label htmlFor="w-dni">DNI</label>
+                      <input id="w-dni" type="text" value={data.dni} onChange={(e) => setData({ ...data, dni: e.target.value })} placeholder="32.123.456" />
+                      {errors.dni && <span className="err">{errors.dni}</span>}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="mc-wiz-field">
+                    <label htmlFor="w-razon">Razón social</label>
+                    <input id="w-razon" type="text" value={data.razonSocial} onChange={(e) => setData({ ...data, razonSocial: e.target.value })} placeholder="Mi Empresa S.A." />
+                    {errors.razonSocial && <span className="err">{errors.razonSocial}</span>}
+                  </div>
+                  <div className="mc-wiz-row2">
+                    <div className="mc-wiz-field">
+                      <label htmlFor="w-cuit">CUIT</label>
+                      <input id="w-cuit" type="text" value={data.cuit} onChange={(e) => setData({ ...data, cuit: e.target.value })} placeholder="30-12345678-9" />
+                      {errors.cuit && <span className="err">{errors.cuit}</span>}
+                      <span className="hint">11 dígitos sin guiones</span>
+                    </div>
+                    <div className="mc-wiz-field">
+                      <label htmlFor="w-email-emp">Email de contacto</label>
+                      <input id="w-email-emp" type="email" value={data.email} onChange={(e) => setData({ ...data, email: e.target.value })} placeholder="admin@miempresa.com" />
+                      {errors.email && <span className="err">{errors.email}</span>}
+                    </div>
+                  </div>
+                  <div className="mc-wiz-field">
+                    <label htmlFor="w-phone-emp">Teléfono</label>
+                    <input id="w-phone-emp" type="tel" value={data.phone} onChange={(e) => setData({ ...data, phone: e.target.value })} placeholder="11 5555-5555" />
+                    {errors.phone && <span className="err">{errors.phone}</span>}
+                  </div>
+                </>
+              )}
 
               <div className="mc-wiz-pay">
                 <span className="lbl">Forma de pago</span>

@@ -1248,6 +1248,31 @@ section { position: relative; z-index: 2; }
   line-height: 1.5; margin: 0;
 }
 
+/* Wizard: toggle Persona / Empresa */
+.mc-wiz-client-toggle {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+  margin-bottom: 20px;
+}
+.mc-wiz-client-toggle .opt {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 12px 16px;
+  background: var(--mc-card);
+  border: 1.5px solid var(--mc-line-2);
+  border-radius: var(--mc-r-md);
+  cursor: pointer;
+  font-family: var(--font-cond); font-weight: 700;
+  font-size: 15px; letter-spacing: -0.01em;
+  color: var(--mc-ink-2);
+  transition: all 0.18s var(--ease-out);
+}
+.mc-wiz-client-toggle .opt:hover { border-color: var(--mc-violet); color: var(--mc-violet); }
+.mc-wiz-client-toggle .opt.active {
+  border-color: var(--mc-violet);
+  background: var(--mc-violet-mist);
+  color: var(--mc-violet);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--mc-violet) 14%, transparent);
+}
+
 /* Wizard: instructivo de acceso (step 0) */
 .mc-wiz-how-access {
   margin: 0 0 22px;
