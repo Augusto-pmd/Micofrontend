@@ -296,24 +296,23 @@ function useReveal(deps = []) {
 /* Brand atoms                                                        */
 /* ════════════════════════════════════════════════════════════════ */
 function Isologo({ size = 36 }) {
-  // Reconstrucción del logo oficial:
-  // - Dos cuadrados offset (negro, fondo blanco), bordes visibles sobre todo
-  // - Cuadrado verde en la intersección
-  // - Keyhole (cerradura) negro sobre el verde
-  // - "Mi" en verde · "CONTAINER" en negro
+  // Proporciones corregidas según PNG oficial:
+  // Arm = Green = 11px → cuadrado side = 22px, offset = 11px
+  // Cuadrado 1: (2,2)→(24,24) · Cuadrado 2: (13,13)→(35,35)
+  // Intersección: (13,13)→(24,24) = 11×11 · ViewBox 0 0 37 37
   return (
-    <svg viewBox="0 0 40 40" width={size} height={size} aria-hidden="true">
-      {/* Fondos blancos primero */}
-      <rect x="2" y="2" width="23" height="23" rx="2" fill="white"/>
-      <rect x="15" y="15" width="23" height="23" rx="2" fill="white"/>
-      {/* Cuadrado verde (intersección) */}
-      <rect x="15" y="15" width="10" height="10" fill="#5ECA00"/>
-      {/* Keyhole: círculo superior + ranura rectangular */}
-      <circle cx="20" cy="19.5" r="2.6" fill="#0a0a0a"/>
-      <rect x="18.8" y="21.8" width="2.4" height="2.8" rx="0.4" fill="#0a0a0a"/>
+    <svg viewBox="0 0 37 37" width={size} height={size} aria-hidden="true">
+      {/* Fondos blancos */}
+      <rect x="2" y="2"  width="22" height="22" rx="3" fill="white"/>
+      <rect x="13" y="13" width="22" height="22" rx="3" fill="white"/>
+      {/* Cuadrado verde (intersección exacta) */}
+      <rect x="13" y="13" width="11" height="11" fill="#5ECA00"/>
+      {/* Cerradura: círculo superior + ranura */}
+      <circle cx="18.5" cy="17.5" r="2.4" fill="#0a0a0a"/>
+      <rect x="17.3" y="19.7" width="2.4" height="2.5" rx="0.4" fill="#0a0a0a"/>
       {/* Bordes de ambos cuadrados encima de todo */}
-      <rect x="2" y="2" width="23" height="23" rx="2" fill="none" stroke="#0a0a0a" strokeWidth="2.4"/>
-      <rect x="15" y="15" width="23" height="23" rx="2" fill="none" stroke="#0a0a0a" strokeWidth="2.4"/>
+      <rect x="2" y="2"  width="22" height="22" rx="3" fill="none" stroke="#0a0a0a" strokeWidth="2.4"/>
+      <rect x="13" y="13" width="22" height="22" rx="3" fill="none" stroke="#0a0a0a" strokeWidth="2.4"/>
     </svg>
   );
 }
