@@ -102,6 +102,19 @@ const ADDONS = [
 // ─────────────────────────────────────────────────────────────────
 // PROMOS — sistema dinámico
 //
+// ESTRATEGIA: las promos son herramientas de captación/retención.
+// No más de 1 promo de adquisición activa a la vez — si se apilan
+// se pierde impacto y se "quema" el arsenal antes de necesitarlo.
+//
+// Orden sugerido de despliegue:
+//   1. Primer mes gratis     → captación base (exit-intent)
+//   2. Mudanza gratis 10m²   → alternativa al primer mes (activar cuando el 1° pierda impacto)
+//   3. 20% off anual         → siempre disponible (incentiva compromiso, no es regalo puro)
+//   4. Promo temporal (ej. Black Friday) → placements: ['banner','auto-apply','exit-intent']
+//
+// Para activar una promo: active: true
+// Para desactivarla sin borrarla: active: false
+//
 // Cada promo tiene:
 //   active: si está habilitada por marketing (toggle global)
 //   placements: dónde puede aparecer:
@@ -133,8 +146,8 @@ const PROMOS = [
   },
   {
     key: 'free-pickup-10m2',
-    active: true,
-    placements: ['auto-apply', 'size-badge'],     // perk natural — se aplica si calificás
+    active: false,                                // RESERVADA — alternativa al primer mes gratis
+    placements: ['auto-apply', 'size-badge'],
     badge: 'Mudanza gratis',
     name: 'Mudanza gratis desde 10 m²',
     description: 'Retiro a domicilio bonificado al alquilar 10 m² o más.',
