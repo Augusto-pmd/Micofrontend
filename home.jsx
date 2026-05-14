@@ -612,57 +612,45 @@ function Categorias({ onReserveCategory }) {
       <div className="mc-sec-head" data-reveal>
         <span className="mc-eyebrow green">Espacios y precios</span>
         <h2>Cuatro categorías,<br /><span className="g">precios reales</span>.</h2>
-        <p>Cada categoría tiene varios tamaños exactos en m². Pagás mes a mes, con IVA incluido. Cambiás de tamaño desde el portal sin penalidad.</p>
+        <p>Mes a mes, con IVA incluido. Precios de sucursal Nordelta.</p>
       </div>
 
-      <div className="mc-cats" data-reveal>
+      <div className="mc-cat-list" data-reveal>
         {CATEGORIES.map((c, i) => {
           const testData = { category: c, option: c.options[c.options.length - 1], duration: 12, addons: ['pickup'] };
           const eligible = promosForPlacement('size-badge', testData);
           return (
-            <article key={c.key} className="mc-cat-card">
-              <div className="mc-cat-head">
-                <div>
-                  <span className="num">0{i + 1}</span>
-                  <h3>{c.label}</h3>
-                  <span className="range">{c.range}</span>
-                </div>
-                <div className="mc-cat-price">
-                  <span className="from">Desde</span>
-                  <b>${fromPrice(c).toLocaleString('es-AR')}</b>
-                  <span className="unit">/ mes</span>
-                </div>
+            <article
+              key={c.key}
+              className="mc-cat-row"
+              role="button"
+              tabIndex={0}
+              onClick={() => onReserveCategory(c)}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onReserveCategory(c); } }}
+            >
+              <div className="mc-cat-row-num">0{i + 1}</div>
+              <div className="mc-cat-row-name">
+                <h3>{c.label}</h3>
+                <span className="range">{c.range}</span>
               </div>
-              <p className="blurb">{c.blurb}</p>
-              <div className="mc-cat-fits">
-                {c.fits.map((f, j) => <span key={j}>{f}</span>)}
+              <div className="mc-cat-row-blurb">
+                <p>{c.blurb}</p>
+                {eligible.length > 0 && (
+                  <div className="badges">
+                    {eligible.map((p) => <span key={p.key} className={`mc-promo-badge ${p.color}`}>{p.badge}</span>)}
+                  </div>
+                )}
               </div>
-              <div className="mc-cat-options">
-                <span className="lbl">Opciones de m²</span>
-                <div className="opts">
-                  {c.options.map((o) => (
-                    <span key={o.m2} className="opt">
-                      <b>{formatM2(o.m2)} m²</b>
-                      <span>${o.monthly.toLocaleString('es-AR')}</span>
-                    </span>
-                  ))}
-                </div>
+              <div className="mc-cat-row-price">
+                <span className="from">Desde</span>
+                <b>${fromPrice(c).toLocaleString('es-AR')}</b>
+                <span className="unit">/ mes</span>
               </div>
-              {eligible.length > 0 && (
-                <div className="mc-cat-promos">
-                  {eligible.map((p) => <span key={p.key} className={`mc-promo-badge ${p.color}`}>{p.badge}</span>)}
-                </div>
-              )}
-              <button className="mc-btn mc-btn-green mc-cat-cta" onClick={() => onReserveCategory(c)}>
-                <span>Reservar {c.label.toLowerCase()}</span>
-                <span className="arrow">→</span>
-              </button>
+              <div className="mc-cat-row-go" aria-hidden="true">→</div>
             </article>
           );
         })}
       </div>
-
-      <p className="mc-cats-foot">Precios finales con IVA incluido. Sucursal de referencia: Nordelta. Otras sucursales pueden tener tarifas diferentes según disponibilidad.</p>
     </section>
   );
 }

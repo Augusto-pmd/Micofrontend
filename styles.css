@@ -818,6 +818,100 @@ section { position: relative; z-index: 2; }
 }
 
 /* ════════════════════════════════════════════════════════════════ */
+/* CATEGORÍAS — fila horizontal (reemplaza las cards pesadas)          */
+/* ════════════════════════════════════════════════════════════════ */
+.mc-cat-list {
+  margin-top: 40px;
+  border-top: 1px solid var(--mc-line-2);
+}
+.mc-cat-row {
+  display: grid;
+  grid-template-columns: 52px 200px 1fr 190px 52px;
+  align-items: center; gap: 24px;
+  padding: 28px 20px;
+  border-bottom: 1px solid var(--mc-line-2);
+  cursor: pointer;
+  position: relative;
+  transition: padding-left 0.3s var(--ease-out);
+}
+.mc-cat-row::before {
+  content: ''; position: absolute; inset: 0;
+  background: var(--mc-green-mist);
+  transform: scaleX(0); transform-origin: left;
+  transition: transform 0.5s var(--ease-out);
+  z-index: 0;
+}
+.mc-cat-row:hover { padding-left: 28px; }
+.mc-cat-row:hover::before { transform: scaleX(1); }
+.mc-cat-row > * { position: relative; z-index: 1; }
+
+.mc-cat-row-num {
+  font-family: var(--font-mono);
+  font-size: 12px; color: var(--mc-ink-4);
+  letter-spacing: 0.12em; font-weight: 500;
+}
+.mc-cat-row-name h3 {
+  font-family: var(--font-cond);
+  font-size: clamp(26px, 2.6vw, 36px);
+  font-weight: 900; letter-spacing: -0.03em; margin-bottom: 4px;
+}
+.mc-cat-row-name .range {
+  font-family: var(--font-mono); font-size: 12px;
+  color: var(--mc-green-ink); font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.mc-cat-row-blurb p {
+  font-size: 15px; color: var(--mc-ink-2); margin-bottom: 8px;
+}
+.mc-cat-row-blurb .badges { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.mc-cat-row-price {
+  display: flex; flex-direction: column; align-items: flex-end;
+  font-variant-numeric: tabular-nums;
+}
+.mc-cat-row-price .from {
+  font-family: var(--font-mono); font-size: 10px;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--mc-ink-3); font-weight: 500;
+}
+.mc-cat-row-price b {
+  font-family: var(--font-cond);
+  font-size: clamp(28px, 2.4vw, 36px);
+  font-weight: 900; letter-spacing: -0.035em;
+  color: var(--mc-black); line-height: 1;
+}
+.mc-cat-row-price .unit {
+  font-size: 13px; color: var(--mc-ink-3); margin-top: 4px;
+}
+.mc-cat-row-go {
+  width: 52px; height: 52px; border-radius: 999px;
+  background: var(--mc-black); color: var(--mc-green);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 18px; font-weight: 900;
+  transition: transform 0.4s var(--ease-spring), background 0.2s var(--ease-out);
+  justify-self: end;
+}
+.mc-cat-row:hover .mc-cat-row-go {
+  transform: scale(1.08) rotate(-8deg);
+  background: var(--mc-green); color: var(--mc-black);
+}
+
+@media (max-width: 900px) {
+  .mc-cat-row {
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto auto;
+    row-gap: 6px; column-gap: 16px;
+    padding: 22px 12px;
+  }
+  .mc-cat-row:hover { padding-left: 16px; }
+  .mc-cat-row-num { grid-column: 1; grid-row: 1; font-size: 11px; }
+  .mc-cat-row-name { grid-column: 1; grid-row: 2; }
+  .mc-cat-row-blurb { grid-column: 1 / -1; grid-row: 3; }
+  .mc-cat-row-price { grid-column: 2; grid-row: 2; align-items: flex-end; }
+  .mc-cat-row-go { display: none; }
+}
+
+/* ════════════════════════════════════════════════════════════════ */
 /* SUCURSALES CARDS (legacy, mantenido por el wizard step)            */
 /* ════════════════════════════════════════════════════════════════ */
 .mc-sucs { padding: 120px 0 80px; }
