@@ -49,7 +49,8 @@ async function processWebhook(body: Record<string, unknown>): Promise<void> {
       });
     }
 
-    const period = new Date().toISOString().slice(0, 7);
+    const eventDate = (body.date_created as string) ?? new Date().toISOString();
+    const period = eventDate.slice(0, 7);
     await createPayment({
       id: `${String(data?.id)}-${period}`,
       reservationId: reservation.id,
@@ -73,12 +74,16 @@ async function processWebhook(body: Record<string, unknown>): Promise<void> {
     const reservation = await getReservationByMpPreapprovalId(preapprovalId);
     if (!reservation) return;
 
-    const dataWithStatus = data as Record<string, unknown> | undefined;
-    const newStatus = dataWithStatus?.status === 'cancelled' ? 'cancelled' : 'payment_failed';
+    const newStatus = data?.status === 'cancelled' ? 'cancelled' : 'payment_failed';
+    const VALID_MP_STATUSES: MpSubscriptionStatus[] = ['pending', 'authorized', 'paused', 'cancelled'];
+    const rawStatus = data?.status as string;
+    const mpStatus: MpSubscriptionStatus = VALID_MP_STATUSES.includes(rawStatus as MpSubscriptionStatus)
+      ? (rawStatus as MpSubscriptionStatus)
+      : 'cancelled';
 
     await updateReservation(reservation.id, {
       status: newStatus,
-      mpSubscriptionStatus: ((dataWithStatus?.status as MpSubscriptionStatus) ?? 'cancelled') as MpSubscriptionStatus,
+      mpSubscriptionStatus: mpStatus,
       cancelledAt: admin.firestore.Timestamp.now(),
     });
 
