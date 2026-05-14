@@ -3215,3 +3215,74 @@ section { position: relative; z-index: 2; }
 /* Stagger delays extended for denser sections */
 [data-reveal="5"] { transition-delay: 0.4s; }
 [data-reveal="6"] { transition-delay: 0.5s; }
+
+/* ════════════════════════════════════════════════════════════════ */
+/* CATEGORÍAS MOBILE — stagger entrance + tap feedback               */
+/* ════════════════════════════════════════════════════════════════ */
+@media (max-width: 600px) {
+  /* Step 1: rows start hidden, ready to animate in */
+  .mc-cat-row {
+    opacity: 0;
+    transform: translateY(18px);
+    /* include padding-left in transition for active feedback */
+    transition:
+      opacity    0.45s var(--ease-out),
+      transform  0.45s var(--ease-out),
+      padding-left 0.2s var(--ease-out),
+      background 0.15s var(--ease-out);
+  }
+
+  /* Step 2: when container gets .in, rows cascade in */
+  .mc-cat-list.in .mc-cat-row:nth-child(1) { opacity: 1; transform: translateY(0); transition-delay: 0s,    0s,    0s, 0s; }
+  .mc-cat-list.in .mc-cat-row:nth-child(2) { opacity: 1; transform: translateY(0); transition-delay: 0.1s, 0.1s, 0s, 0s; }
+  .mc-cat-list.in .mc-cat-row:nth-child(3) { opacity: 1; transform: translateY(0); transition-delay: 0.2s, 0.2s, 0s, 0s; }
+  .mc-cat-list.in .mc-cat-row:nth-child(4) { opacity: 1; transform: translateY(0); transition-delay: 0.3s, 0.3s, 0s, 0s; }
+
+  /* Step 3: instant tap feedback — green flash + left shift */
+  .mc-cat-row:active {
+    background: var(--mc-green-mist);
+    padding-left: 20px;
+    transform: translateY(0); /* don't let active override entrance */
+  }
+  .mc-cat-row:active::before {
+    transform: scaleX(1);
+    transition-duration: 0.12s;
+  }
+
+  /* Step 4: bring back the arrow on mobile (smaller) */
+  .mc-cat-row-go {
+    display: inline-flex;
+    width: 34px; height: 34px;
+    font-size: 14px;
+    grid-column: 2; grid-row: 1 / 3;
+    align-self: center;
+  }
+  .mc-cat-row:active .mc-cat-row-go {
+    transform: scale(1.15) rotate(-8deg);
+    background: var(--mc-green); color: var(--mc-black);
+    transition-duration: 0.12s;
+  }
+
+  /* Step 5: number badge — teal accent to signal interactivity */
+  .mc-cat-row-num {
+    color: var(--mc-green-ink);
+    font-weight: 700;
+  }
+
+  /* Re-layout: 3 columns — num | content | arrow */
+  .mc-cat-row {
+    grid-template-columns: 28px 1fr 34px;
+    grid-template-rows: auto auto auto;
+    column-gap: 12px;
+  }
+  .mc-cat-row-num   { grid-column: 1; grid-row: 1; align-self: center; }
+  .mc-cat-row-name  { grid-column: 2; grid-row: 1; }
+  .mc-cat-row-blurb { grid-column: 1 / 3; grid-row: 3; }
+  .mc-cat-row-price { grid-column: 2; grid-row: 2; align-items: flex-start; }
+  .mc-cat-row-go    { grid-column: 3; grid-row: 1 / 3; }
+}
+
+/* Respect reduced motion — skip the entrance animations */
+@media (prefers-reduced-motion: reduce) {
+  .mc-cat-row { opacity: 1; transform: none; transition: none; }
+}
