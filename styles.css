@@ -79,6 +79,8 @@ img { display: block; max-width: 100%; }
 button, a { font-family: inherit; color: inherit; }
 button { border: none; background: none; cursor: pointer; padding: 0; }
 a { text-decoration: none; cursor: pointer; }
+/* Remove the default blue tap flash on all touchable elements */
+a, button, [role="button"] { -webkit-tap-highlight-color: transparent; }
 :focus-visible {
   outline: 2px solid var(--mc-green-dark);
   outline-offset: 3px;
@@ -229,7 +231,7 @@ p { margin: 0; color: var(--mc-ink-2); text-wrap: pretty; }
     color 0.18s var(--ease-out);
 }
 .mc-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.mc-btn:active { transform: translateY(1px) scale(0.985); }
+.mc-btn:active { transform: translateY(2px) scale(0.96); transition-duration: 0.08s; }
 .mc-btn .arrow {
   display: inline-block; transition: transform 0.2s var(--ease-out);
   font-weight: 500;
@@ -569,6 +571,8 @@ section { position: relative; z-index: 2; }
 }
 .mc-size-row:hover { padding-left: 32px; padding-right: 16px; }
 .mc-size-row:hover::before { transform: scaleX(1); }
+.mc-size-row:active::before { transform: scaleX(1); }
+.mc-size-row:active { background: var(--mc-green-mist); }
 .mc-size-row > * { position: relative; z-index: 1; }
 
 .mc-size-num {
@@ -1780,7 +1784,10 @@ section { position: relative; z-index: 2; }
   border-radius: var(--mc-r-lg);
   padding: 48px 40px 40px;
   display: flex; flex-direction: column; gap: 18px;
+  transition: transform 0.2s var(--ease-out), box-shadow 0.2s var(--ease-out);
 }
+.mc-self-card:hover { transform: translateY(-3px); }
+.mc-self-card:active { transform: scale(0.98); transition-duration: 0.08s; }
 .mc-self-reserve {
   background: linear-gradient(160deg, var(--mc-violet) 0%, var(--mc-violet-dark) 100%);
   color: white;
@@ -3148,3 +3155,63 @@ section { position: relative; z-index: 2; }
 .mc-res-selector-card .info b { display: block; font-family: var(--font-cond); font-size: 18px; font-weight: 900; letter-spacing: -0.015em; }
 .mc-res-selector-card .info span { font-size: 13px; color: var(--mc-ink-3); }
 .mc-res-selector-card .arrow { font-size: 18px; color: var(--mc-ink-4); }
+
+/* ════════════════════════════════════════════════════════════════ */
+/* MOBILE TOUCH LIFE — active states, pulse, counters                 */
+/* ════════════════════════════════════════════════════════════════ */
+
+/* Sucursal cards — tap feedback */
+.mc-suc-card:active {
+  transform: scale(0.97);
+  border-color: var(--mc-violet);
+  transition-duration: 0.08s;
+}
+
+/* Bento items — tap feedback */
+.mc-bento-item:active {
+  transform: scale(0.98);
+  transition-duration: 0.08s;
+}
+
+/* How-to steps — highlight number on tap */
+.mc-how-step:active .num {
+  background: var(--mc-violet);
+  color: white;
+  transform: scale(1.1);
+}
+.mc-how-step .num {
+  transition: background 0.2s var(--ease-out), color 0.2s var(--ease-out), transform 0.2s var(--ease-spring);
+}
+
+/* FAQ items — highlight on tap */
+.mc-faq-q:active .mc-faq-q-head { color: var(--mc-violet); }
+
+/* Testimonial cards — tap feedback */
+.mc-testi-item:active {
+  transform: scale(0.98);
+  transition-duration: 0.08s;
+}
+
+/* Pulsing CTA in sticky bar — draws attention while scrolling */
+@keyframes pulse-cta {
+  0%, 100% { box-shadow: var(--mc-shadow-green); }
+  50% {
+    box-shadow:
+      0 0 0 6px color-mix(in oklab, var(--mc-green) 22%, transparent),
+      var(--mc-shadow-green);
+  }
+}
+
+@media (max-width: 900px) {
+  .mc-sticky-bar .mc-btn-primary {
+    animation: pulse-cta 2.8s ease-in-out 1.5s infinite;
+  }
+  .mc-sticky-bar .mc-btn-primary:active {
+    animation: none;
+    transform: scale(0.94);
+  }
+}
+
+/* Stagger delays extended for denser sections */
+[data-reveal="5"] { transition-delay: 0.4s; }
+[data-reveal="6"] { transition-delay: 0.5s; }
