@@ -547,8 +547,6 @@ function Nav({ onReserve, route, user }) {
 /* Hero — "Guardá lo que querés"                                     */
 /* ════════════════════════════════════════════════════════════════ */
 function Hero({ onReserve }) {
-  const rating = useCountUp(4.9, { duration: 1200, decimals: 1, startDelay: 300 });
-  const reviews = useCountUp(2300, { duration: 1400, startDelay: 400 });
   return (
     <section className="mc-hero mc-container" id="top">
       <div className="mc-hero-meta" data-reveal>
@@ -586,21 +584,6 @@ function Hero({ onReserve }) {
         </div>
       </div>
 
-      <div className="mc-hero-figure" data-reveal>
-        <div className="item lead" ref={rating.ref}>
-          <b>{rating.count.toFixed(1)}</b>
-          <div className="stars" aria-label="4.9 de 5 estrellas">★★★★★</div>
-          <div className="sub" ref={reviews.ref}>+{reviews.count.toLocaleString('es-AR')} reseñas verificadas · Google</div>
-        </div>
-        <div className="item">
-          <b>24/7</b>
-          <div className="sub">Acceso todos los días del año, sin reservar turno.</div>
-        </div>
-        <div className="item">
-          <b>4</b>
-          <div className="sub">Sucursales en CABA + GBA Norte. Elegís la más cercana.</div>
-        </div>
-      </div>
     </section>
   );
 }
