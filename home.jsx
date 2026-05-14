@@ -1778,13 +1778,248 @@ function PortalEntry({ user, reservations, onLogout, onReserve }) {
   );
 }
 
-// ReservationPortal — full implementation in Task 3
+// ProximoPago stub — replaced in Task 6
+function ProximoPago({ reservation }) {
+  return (
+    <div className="mc-portal-block mc-pago">
+      <span className="mc-portal-block-title">Próximo pago</span>
+      <div className="mc-pago-amount">${(reservation.monthly || 0).toLocaleString('es-AR')}<small>/ mes</small></div>
+    </div>
+  );
+}
+
+// TuEspacio stub — replaced in Task 7
+function TuEspacio({ reservation, m2Label, catLabel }) {
+  return (
+    <div className="mc-portal-block mc-espacio">
+      <span className="mc-portal-block-title">Tu espacio</span>
+      <p style={{ fontSize: 14, color: 'var(--mc-ink-2)' }}>{catLabel} · {m2Label} · {reservation.sucursal?.name}</p>
+    </div>
+  );
+}
+
+// Gestionar stub — replaced in Task 8
+function Gestionar({ reservation, onUpdate, onOpenResize, cancelStep, setCancelStep }) {
+  return (
+    <div className="mc-portal-block mc-gestionar">
+      <span className="mc-portal-block-title">Gestionar</span>
+      <div className="mc-gestionar-actions">
+        {reservation.status === 'active' && (
+          <button className="mc-btn mc-btn-ghost-violet" onClick={onOpenResize}><span>Cambiar de tamaño</span></button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ResizeModal stub — replaced in Task 9
+function ResizeModal({ reservation, allCategories, onClose, onUpdate }) {
+  return null;
+}
+
+function FaceEnrollFlow({ reservation, onUpdate, onDone }) {
+  const [step, setStep] = useState(1); // 1=consent, 2=photo, 3=sent
+  const [consented, setConsented] = useState(false);
+  const [photoPreview, setPhotoPreview] = useState(null);
+  const fileRef = useRef(null);
+
+  const handleFile = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => setPhotoPreview(ev.target.result);
+    reader.readAsDataURL(file);
+  };
+
+  const handleSend = () => {
+    onUpdate(reservation.id, { faceEnrollStatus: 'queued' });
+    setStep(3);
+  };
+
+  return (
+    <div className="mc-enroll">
+      {step === 1 && (
+        <div className="mc-enroll-step">
+          <div className="mc-enroll-step-num">1</div>
+          <p style={{ fontSize: 14, color: 'var(--mc-ink-1)', fontWeight: 600, marginBottom: 12 }}>
+            Consentimiento biométrico (Ley 25.326)
+          </p>
+          <button
+            className={`mc-enroll-consent ${consented ? 'checked' : ''}`}
+            onClick={() => setConsented(!consented)}
+            type="button"
+          >
+            <span className="checkbox">
+              {consented && (
+                <svg width="12" height="9" viewBox="0 0 12 9" fill="none">
+                  <path d="M1 4L4.5 7.5L11 1" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              )}
+            </span>
+            <span className="legal">
+              <b>Acepto el uso de mis datos biométricos</b> exclusivamente para el control de acceso al local de Mi Container (CORDIS MS SA). Mi foto se usa para registrar mi cara en el sistema Hikvision del local y se elimina de los servidores dentro de las 24 hs. El dato biométrico reside únicamente en el dispositivo de acceso.
+            </span>
+          </button>
+          <button
+            className="mc-btn mc-btn-violet"
+            style={{ marginTop: 14 }}
+            disabled={!consented}
+            onClick={() => setStep(2)}
+          >
+            <span>Continuar →</span>
+          </button>
+          <button className="mc-btn mc-btn-ghost" style={{ marginTop: 8 }} onClick={onDone}>
+            <span>Cancelar</span>
+          </button>
+        </div>
+      )}
+
+      {step === 2 && (
+        <div className="mc-enroll-step">
+          <div className="mc-enroll-step-num">2</div>
+          <p style={{ fontSize: 14, color: 'var(--mc-ink-1)', fontWeight: 600, marginBottom: 12 }}>
+            Sacate una foto o subí una imagen
+          </p>
+          <div className="mc-enroll-photo" onClick={() => fileRef.current?.click()} style={{ cursor: 'pointer' }}>
+            {photoPreview
+              ? <img src={photoPreview} alt="Vista previa" className="mc-enroll-preview" />
+              : <span style={{ fontSize: 28 }}>📷</span>
+            }
+            <p>{photoPreview ? 'Tocá para cambiar' : 'Tocá para elegir foto'}</p>
+            <div className="mc-enroll-photo-req">
+              Cara centrada · buena iluminación · sin anteojos de sol · mínimo 640×480px
+            </div>
+          </div>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            capture="user"
+            onChange={handleFile}
+            style={{ display: 'none' }}
+          />
+          <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+            <button
+              className="mc-btn mc-btn-violet"
+              disabled={!photoPreview}
+              onClick={handleSend}
+            >
+              <span>Enviar foto →</span>
+            </button>
+            <button className="mc-btn mc-btn-ghost" onClick={() => setStep(1)}>
+              <span>← Atrás</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {step === 3 && (
+        <div className="mc-enroll-step" style={{ textAlign: 'center', paddingTop: 8 }}>
+          <div style={{ fontSize: 36, marginBottom: 12 }}>⏳</div>
+          <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--mc-ink-1)', marginBottom: 6 }}>
+            Activando tu acceso...
+          </p>
+          <p style={{ fontSize: 14, color: 'var(--mc-ink-2)', marginBottom: 20 }}>
+            Estamos registrando tu cara en {reservation.sucursal?.name}.<br />
+            Te avisamos por email cuando tu acceso esté listo.
+          </p>
+          <button className="mc-btn mc-btn-ghost" onClick={onDone}>
+            <span>Entendido</span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AccesoFacial({ reservation, onUpdate }) {
+  const [enrolling, setEnrolling] = useState(false);
+  const status = reservation.faceEnrollStatus || 'not_started';
+
+  // Estado C — activo
+  if (status === 'enrolled') {
+    return (
+      <div className="mc-portal-block mc-acceso state-active">
+        <span className="mc-portal-block-title">Acceso facial</span>
+        <div className="mc-acceso-icon check">✅</div>
+        <h3>Acceso activo — {reservation.sucursal?.name}</h3>
+        <p>Podés entrar las 24 hs. Tu cara es tu credencial.</p>
+        <div className="sub">{reservation.sucursal?.hours || 'Horarios de atención según sucursal'}</div>
+      </div>
+    );
+  }
+
+  // Estado B — procesando
+  if (status === 'queued') {
+    return (
+      <div className="mc-portal-block mc-acceso state-processing">
+        <span className="mc-portal-block-title">Acceso facial</span>
+        <div className="mc-acceso-icon spin">⚙️</div>
+        <h3>Activando tu acceso...</h3>
+        <p>Estamos registrando tu cara en {reservation.sucursal?.name}. En minutos recibís un email.</p>
+      </div>
+    );
+  }
+
+  // Estado D — error
+  if (status === 'failed') {
+    return (
+      <div className="mc-portal-block mc-acceso state-failed">
+        <span className="mc-portal-block-title">Acceso facial</span>
+        <div className="mc-acceso-icon warning">⚠️</div>
+        <h3>Error al activar el acceso</h3>
+        <p>La foto no cumplió los requisitos mínimos.</p>
+        <div className="mc-acceso-actions">
+          <button className="mc-btn mc-btn-violet" onClick={() => setEnrolling(true)}>
+            <span>Intentar de nuevo</span>
+          </button>
+          <a className="mc-btn mc-btn-ghost" href={`https://wa.me/5491136207989?text=Hola,%20necesito%20ayuda%20con%20el%20acceso%20facial%20de%20mi%20reserva%20${reservation.id}`} target="_blank" rel="noreferrer">
+            <span>Contactar por WhatsApp</span>
+          </a>
+        </div>
+        {enrolling && <FaceEnrollFlow reservation={reservation} onUpdate={onUpdate} onDone={() => setEnrolling(false)} />}
+      </div>
+    );
+  }
+
+  // Estado A — not_started (default)
+  return (
+    <div className="mc-portal-block mc-acceso">
+      <span className="mc-portal-block-title">Acceso facial</span>
+      {!enrolling ? (
+        <>
+          <div className="mc-acceso-icon lock">🔒</div>
+          <h3>Activá tu acceso al local</h3>
+          <p>
+            Tu espacio está listo. Solo falta registrar tu cara para poder entrar.
+            {reservation.status === 'pending_payment' && ' (Disponible una vez confirmado el pago.)'}
+          </p>
+          {reservation.status === 'active' && (
+            <button className="mc-btn mc-btn-violet" onClick={() => setEnrolling(true)}>
+              <span>Activar acceso →</span>
+            </button>
+          )}
+          <div className="sub">Solo necesitás una foto · tarda 2 minutos</div>
+        </>
+      ) : (
+        <FaceEnrollFlow reservation={reservation} onUpdate={onUpdate} onDone={() => setEnrolling(false)} />
+      )}
+    </div>
+  );
+}
+
 function ReservationPortal({ reservation, user, initialView, onUpdate, allCategories }) {
+  const [resizeOpen, setResizeOpen] = useState(initialView === 'cambiar');
+  const [cancelStep, setCancelStep] = useState(0); // 0=hidden, 1=confirm, 2=done
+
   if (!reservation) {
     return (
       <div className="mc-res-portal">
         <div className="mc-portal-block" style={{ textAlign: 'center', padding: 56 }}>
           <h3>Reserva no encontrada</h3>
+          <p style={{ fontSize: 14, color: 'var(--mc-ink-2)', marginTop: 8 }}>
+            El código no coincide con ninguna reserva tuya.
+          </p>
           <a className="mc-btn mc-btn-violet" href="#/portal" style={{ marginTop: 18, display: 'inline-flex' }}>
             <span>← Volver</span>
           </a>
@@ -1792,15 +2027,58 @@ function ReservationPortal({ reservation, user, initialView, onUpdate, allCatego
       </div>
     );
   }
+
+  const catLabel = reservation.category?.label || reservation.size?.label || '—';
+  const m2Label = reservation.option ? `${formatM2(reservation.option.m2)} m²` : reservation.size?.range || '—';
+
+  const statusConfig = {
+    active:                 { label: 'Activa',                                         cls: 'active' },
+    pending_payment:        { label: 'Esperando pago',                                 cls: 'pending' },
+    payment_failed:         { label: 'Pago fallido',                                   cls: 'failed' },
+    cancellation_scheduled: { label: `Cancela el ${reservation.cancelEffectiveDate || '—'}`, cls: 'scheduled' },
+    cancelled:              { label: 'Cancelada',                                       cls: 'cancelled' },
+  };
+  const sc = statusConfig[reservation.status] || { label: reservation.status, cls: 'pending' };
+
   return (
-    <div className="mc-res-portal">
-      <a className="mc-res-portal-back" href="#/portal">← Tus espacios</a>
-      <div className="mc-portal-block">
-        <p style={{ fontSize: 14, color: 'var(--mc-ink-2)' }}>
-          Cargando reserva {reservation.id}...
-        </p>
+    <>
+      <section className="mc-portal-hero" style={{ paddingBottom: 0 }}>
+        <div className="mc-portal-hero-inner" style={{ paddingBottom: 24 }}>
+          <a className="mc-res-portal-back" href="#/portal">← Tus espacios</a>
+          <div className="mc-res-portal-header">
+            <div>
+              <h1>{catLabel} <span className="g">· {reservation.sucursal?.name}</span></h1>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.06em' }}>
+                {reservation.id}
+              </div>
+            </div>
+            <span className={`mc-portal-status ${sc.cls}`}>{sc.label}</span>
+          </div>
+        </div>
+      </section>
+
+      <div className="mc-res-portal">
+        <AccesoFacial reservation={reservation} onUpdate={onUpdate} />
+        <ProximoPago reservation={reservation} />
+        <TuEspacio reservation={reservation} m2Label={m2Label} catLabel={catLabel} />
+        <Gestionar
+          reservation={reservation}
+          onUpdate={onUpdate}
+          onOpenResize={() => setResizeOpen(true)}
+          cancelStep={cancelStep}
+          setCancelStep={setCancelStep}
+        />
       </div>
-    </div>
+
+      {resizeOpen && (
+        <ResizeModal
+          reservation={reservation}
+          allCategories={allCategories}
+          onClose={() => setResizeOpen(false)}
+          onUpdate={onUpdate}
+        />
+      )}
+    </>
   );
 }
 
