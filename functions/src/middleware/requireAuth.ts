@@ -23,7 +23,7 @@ export async function requireAuth(
     return;
   }
 
-  const token = header.split('Bearer ')[1];
+  const token = header.slice('Bearer '.length);
 
   try {
     const decoded = await auth.verifyIdToken(token);
