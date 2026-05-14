@@ -1,6 +1,10 @@
 import { SecretManagerServiceClient } from '@google-cloud/secret-manager';
 
-const client = new SecretManagerServiceClient();
+let _client: SecretManagerServiceClient | null = null;
+function getClient(): SecretManagerServiceClient {
+  if (!_client) _client = new SecretManagerServiceClient();
+  return _client;
+}
 
 /**
  * Reads a secret from Google Secret Manager.
@@ -14,15 +18,22 @@ export async function getSecret(secretId: string): Promise<string> {
     return process.env[envKey]!;
   }
 
-  const projectId = process.env.GCLOUD_PROJECT;
+  const projectId = process.env.GCLOUD_PROJECT ?? process.env.GOOGLE_CLOUD_PROJECT;
+  if (!projectId) {
+    throw new Error(
+      `getSecret('${secretId}') failed: GCLOUD_PROJECT is not set and no env var fallback found`
+    );
+  }
   const name = `projects/${projectId}/secrets/${secretId}/versions/latest`;
 
-  const [version] = await client.accessSecretVersion({ name });
+  const [version] = await getClient().accessSecretVersion({ name });
   const payload = version.payload?.data;
 
   if (!payload) {
     throw new Error(`Secret ${secretId} not found or empty`);
   }
 
-  return Buffer.isBuffer(payload) ? payload.toString('utf8') : String(payload);
+  if (Buffer.isBuffer(payload)) return payload.toString('utf8');
+  if (payload instanceof Uint8Array) return Buffer.from(payload).toString('utf8');
+  return String(payload);
 }
