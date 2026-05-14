@@ -2945,7 +2945,6 @@ section { position: relative; z-index: 2; }
 .mc-acceso-icon.check   { background: var(--mc-green-soft); }
 .mc-acceso-icon.warning { background: #fef3c7; }
 .mc-acceso-icon.spin    { background: var(--mc-violet-soft); animation: spin 2s linear infinite; }
-@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
 .mc-acceso h3 {
   font-family: var(--font-cond); font-size: 20px;
