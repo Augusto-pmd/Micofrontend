@@ -1687,15 +1687,15 @@ function PortalDashboard({ user, reservations, onLogout, onReserve }) {
 function PortalEntry({ user, reservations, onLogout, onReserve }) {
   const active = reservations.filter((r) => r.status !== 'cancelled');
 
-  // Auto-redirect when exactly 1 reservation exists
+  // Auto-redirect when exactly 1 active reservation exists
   useEffect(() => {
     if (active.length === 1) {
       window.location.hash = `#/portal/r/${active[0].id}`;
     }
-  }, []);
+  }, [active.length, active[0]?.id]);
 
-  // 0 reservations — empty state
-  if (reservations.length === 0) {
+  // 0 active reservations — empty state
+  if (active.length === 0) {
     return (
       <>
         <section className="mc-portal-hero">
