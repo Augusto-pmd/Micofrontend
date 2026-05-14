@@ -1898,7 +1898,7 @@ function TuEspacio({ reservation, m2Label, catLabel }) {
   );
 }
 
-function Gestionar({ reservation, onUpdate, onOpenResize, cancelStep, setCancelStep }) {
+function Gestionar({ reservation, onUpdate, onOpenResize, cancelStep, setCancelStep, onReserve }) {
   const cancelDate = addDays(7);
   const isActive = reservation.status === 'active';
   const isCancelScheduled = reservation.status === 'cancellation_scheduled';
@@ -1916,6 +1916,9 @@ function Gestionar({ reservation, onUpdate, onOpenResize, cancelStep, setCancelS
     <div className="mc-portal-block mc-gestionar">
       <span className="mc-portal-block-title">Gestionar</span>
       <div className="mc-gestionar-actions">
+        <button className="mc-btn mc-btn-green" onClick={onReserve}>
+          <span>+ Agregar otra baulera</span>
+        </button>
         {isActive && (
           <button className="mc-btn mc-btn-ghost-violet" onClick={onOpenResize}>
             <span>Cambiar de tamaño</span>
@@ -2234,7 +2237,7 @@ function AccesoFacial({ reservation, onUpdate }) {
   );
 }
 
-function ReservationPortal({ reservation, user, initialView, onUpdate, allCategories }) {
+function ReservationPortal({ reservation, user, initialView, onUpdate, allCategories, onReserve }) {
   const [resizeOpen, setResizeOpen] = useState(initialView === 'cambiar');
   const [cancelStep, setCancelStep] = useState(0); // 0=hidden, 1=confirm, 2=done
 
@@ -2293,6 +2296,7 @@ function ReservationPortal({ reservation, user, initialView, onUpdate, allCatego
           onOpenResize={() => setResizeOpen(true)}
           cancelStep={cancelStep}
           setCancelStep={setCancelStep}
+          onReserve={onReserve}
         />
       </div>
 
@@ -2392,6 +2396,7 @@ function App() {
               initialView={route.params.view}
               onUpdate={store.updateReservation}
               allCategories={CATEGORIES}
+              onReserve={() => openWizard()}
             />
           )}
         </main>
