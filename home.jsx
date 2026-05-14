@@ -304,6 +304,35 @@ function useHashRoute() {
   return route;
 }
 
+// Animates a number from 0 to `target` when the element scrolls into view
+function useCountUp(target, { duration = 1000, decimals = 0, startDelay = 0 } = {}) {
+  const [count, setCount] = useState(0);
+  const [started, setStarted] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !('IntersectionObserver' in window)) { setCount(target); return; }
+    const io = new IntersectionObserver(([e]) => {
+      if (e.isIntersecting) { io.disconnect(); setTimeout(() => setStarted(true), startDelay); }
+    }, { threshold: 0.5 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  useEffect(() => {
+    if (!started) return;
+    const start = performance.now();
+    const tick = (now) => {
+      const p = Math.min((now - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - p, 3); // ease-out cubic
+      const val = eased * target;
+      setCount(decimals > 0 ? Math.round(val * 10 ** decimals) / 10 ** decimals : Math.round(val));
+      if (p < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }, [started]);
+  return { count, ref };
+}
+
 function useReveal(deps = []) {
   useEffect(() => {
     const els = document.querySelectorAll('[data-reveal]');
@@ -518,6 +547,8 @@ function Nav({ onReserve, route, user }) {
 /* Hero — "Guardá lo que querés"                                     */
 /* ════════════════════════════════════════════════════════════════ */
 function Hero({ onReserve }) {
+  const rating = useCountUp(4.9, { duration: 1200, decimals: 1, startDelay: 300 });
+  const reviews = useCountUp(2300, { duration: 1400, startDelay: 400 });
   return (
     <section className="mc-hero mc-container" id="top">
       <div className="mc-hero-meta" data-reveal>
@@ -556,10 +587,10 @@ function Hero({ onReserve }) {
       </div>
 
       <div className="mc-hero-figure" data-reveal>
-        <div className="item lead">
-          <b>4.9</b>
+        <div className="item lead" ref={rating.ref}>
+          <b>{rating.count.toFixed(1)}</b>
           <div className="stars" aria-label="4.9 de 5 estrellas">★★★★★</div>
-          <div className="sub">+2.300 reseñas verificadas · Google</div>
+          <div className="sub" ref={reviews.ref}>+{reviews.count.toLocaleString('es-AR')} reseñas verificadas · Google</div>
         </div>
         <div className="item">
           <b>24/7</b>
