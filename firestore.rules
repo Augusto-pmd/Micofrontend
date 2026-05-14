@@ -1,0 +1,46 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: checks if user has admin role (Custom Claim)
+    function isAdmin() {
+      return request.auth != null &&
+             request.auth.token.role == 'admin';
+    }
+
+    // users: each client can only read/write their own document
+    match /users/{uid} {
+      allow read, update: if request.auth != null && request.auth.uid == uid;
+      allow create: if request.auth != null && request.auth.uid == uid;
+      allow read, write: if isAdmin();
+    }
+
+    // reservations: client reads their own; backend (Admin SDK) writes freely
+    match /reservations/{reservationId} {
+      allow read: if request.auth != null &&
+                     resource.data.userUid == request.auth.uid;
+      allow read, write: if isAdmin();
+      // Backend writes use Admin SDK and bypass these rules
+    }
+
+    // payments: client read only their own; write only from backend
+    match /payments/{paymentId} {
+      allow read: if request.auth != null &&
+                     resource.data.userUid == request.auth.uid;
+      allow read, write: if isAdmin();
+    }
+
+    // access_logs: client read only their own
+    match /access_logs/{logId} {
+      allow read: if request.auth != null &&
+                     resource.data.userUid == request.auth.uid;
+      allow read, write: if isAdmin();
+    }
+
+    // sucursales: public read (name, address for frontend)
+    match /sucursales/{sucursalId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}

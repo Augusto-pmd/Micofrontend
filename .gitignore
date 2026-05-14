@@ -1,6 +1,3 @@
-.DS_Store
+functions/.env.local
+functions/lib/
 node_modules/
-dist/
-.vscode/
-.idea/
-*.log
