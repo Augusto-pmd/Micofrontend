@@ -5,7 +5,7 @@ const config: Config = {
   testEnvironment: 'node',
   testMatch: ['**/tests/**/*.test.ts'],
   moduleNameMapper: {
-    '^../config/firebase$': '<rootDir>/tests/__mocks__/firebase.ts',
+    '^.*\\/config\\/firebase$': '<rootDir>/tests/__mocks__/firebase.ts',
   },
   collectCoverageFrom: ['src/**/*.ts', '!src/index.ts'],
 };
