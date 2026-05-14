@@ -54,9 +54,8 @@ export async function createSubscription(
 
 export async function cancelSubscription(preapprovalId: string): Promise<void> {
   const { preApproval } = getMpClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await (preApproval.update as any)(
-    { id: preapprovalId },
-    { body: { status: 'cancelled' } }
-  );
+  await preApproval.update({
+    id: preapprovalId,
+    body: { status: 'cancelled' },
+  });
 }

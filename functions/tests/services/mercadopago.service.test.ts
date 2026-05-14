@@ -54,10 +54,10 @@ describe('mercadopago.service', () => {
     it('should call update with cancelled status', async () => {
       mockPreApprovalUpdate.mockResolvedValue({ status: 'cancelled' });
       await cancelSubscription('preapproval-123');
-      expect(mockPreApprovalUpdate).toHaveBeenCalledWith(
-        { id: 'preapproval-123' },
-        { body: { status: 'cancelled' } }
-      );
+      expect(mockPreApprovalUpdate).toHaveBeenCalledWith({
+        id: 'preapproval-123',
+        body: { status: 'cancelled' },
+      });
     });
   });
 });
