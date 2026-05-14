@@ -99,6 +99,12 @@ const fromPrice = (cat) => Math.min(...cat.options.map((o) => o.monthly));
 const maxM2 = (cat) => Math.max(...cat.options.map((o) => o.m2));
 const formatM2 = (m2) => m2.toLocaleString('es-AR', { minimumFractionDigits: m2 % 1 === 0 ? 0 : 2 });
 
+const addDays = (days) => {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' });
+};
+
 const SUCURSALES = [
   { id: 'nordelta',  name: 'Nordelta',      hood: 'GBA Norte', address: 'Av. de los Lagos 7250', hours: 'Lun–Vie 8–17 hs · Sáb 9–13 hs', availability: 'Alta',     scarcity: null                              },
   { id: 'palermo',   name: 'Palermo',       hood: 'CABA',      address: 'Av. Córdoba 4500',      hours: 'Horarios a confirmar',           availability: 'Alta',     scarcity: null                              },
@@ -1778,43 +1784,263 @@ function PortalEntry({ user, reservations, onLogout, onReserve }) {
   );
 }
 
-// ProximoPago stub — replaced in Task 6
 function ProximoPago({ reservation }) {
+  const calcNextPayment = () => {
+    try {
+      const start = new Date(reservation.startDate);
+      const today = new Date();
+      const next = new Date(start);
+      while (next <= today) next.setMonth(next.getMonth() + 1);
+      return next.toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' });
+    } catch { return '—'; }
+  };
+
+  const nextDate = calcNextPayment();
+  const monthly = reservation.monthly || 0;
+  const isFailed = reservation.status === 'payment_failed';
+
+  const mockHistory = (() => {
+    if (!reservation.startDate) return [];
+    const rows = [];
+    try {
+      const start = new Date(reservation.startDate);
+      const today = new Date();
+      const d = new Date(start);
+      let isFirst = true;
+      while (d < today) {
+        const label = d.toLocaleDateString('es-AR', { month: 'short', year: 'numeric' });
+        const amount = isFirst ? (reservation.firstMonth || monthly) : monthly;
+        const promoLabel = isFirst && reservation.promosApplied?.some((p) => p.key === 'first-month-free')
+          ? '1° mes gratis' : null;
+        rows.push({ label, amount, promoLabel });
+        d.setMonth(d.getMonth() + 1);
+        isFirst = false;
+      }
+    } catch { return []; }
+    return rows.reverse().slice(0, 4);
+  })();
+
   return (
     <div className="mc-portal-block mc-pago">
       <span className="mc-portal-block-title">Próximo pago</span>
-      <div className="mc-pago-amount">${(reservation.monthly || 0).toLocaleString('es-AR')}<small>/ mes</small></div>
+      {isFailed && (
+        <div className="mc-pago-alert">
+          <b>Problema con tu pago</b>
+          <p>No pudimos cobrar el monto mensual. Tu acceso se suspende en 7 días si no se actualiza la tarjeta.</p>
+          <a className="mc-btn mc-btn-ghost" href="https://www.mercadopago.com.ar/subscriptions" target="_blank" rel="noreferrer" style={{ fontSize: 13 }}>
+            <span>Actualizar tarjeta en Mercado Pago →</span>
+          </a>
+        </div>
+      )}
+      {!isFailed && (
+        <>
+          <div className="mc-pago-amount">${monthly.toLocaleString('es-AR')}<small>/ mes</small></div>
+          <div className="mc-pago-next">Próximo cobro: {nextDate}</div>
+        </>
+      )}
+      {mockHistory.length > 0 && (
+        <div className="mc-pago-history">
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--mc-ink-4)', marginBottom: 10 }}>
+            Historial
+          </div>
+          {mockHistory.map((row, i) => (
+            <div key={i} className="mc-pago-row">
+              <span>
+                {row.label}
+                {row.promoLabel && <span style={{ marginLeft: 6, color: 'var(--mc-green-ink)', fontFamily: 'var(--font-mono)', fontSize: 10 }}>{row.promoLabel}</span>}
+              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <b>${row.amount.toLocaleString('es-AR')}</b>
+                <a href="#" onClick={(e) => e.preventDefault()}>ver factura ↗</a>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-// TuEspacio stub — replaced in Task 7
 function TuEspacio({ reservation, m2Label, catLabel }) {
+  const addonNames = (reservation.addons || [])
+    .map((k) => ADDONS.find((a) => a.key === k)?.name)
+    .filter(Boolean);
+
   return (
     <div className="mc-portal-block mc-espacio">
       <span className="mc-portal-block-title">Tu espacio</span>
-      <p style={{ fontSize: 14, color: 'var(--mc-ink-2)' }}>{catLabel} · {m2Label} · {reservation.sucursal?.name}</p>
-    </div>
-  );
-}
-
-// Gestionar stub — replaced in Task 8
-function Gestionar({ reservation, onUpdate, onOpenResize, cancelStep, setCancelStep }) {
-  return (
-    <div className="mc-portal-block mc-gestionar">
-      <span className="mc-portal-block-title">Gestionar</span>
-      <div className="mc-gestionar-actions">
-        {reservation.status === 'active' && (
-          <button className="mc-btn mc-btn-ghost-violet" onClick={onOpenResize}><span>Cambiar de tamaño</span></button>
+      <div className="mc-espacio-grid">
+        <div className="mc-espacio-item">
+          <span className="lbl">Espacio</span>
+          <b>{catLabel} · {m2Label}</b>
+        </div>
+        <div className="mc-espacio-item">
+          <span className="lbl">Sucursal</span>
+          <b>{reservation.sucursal?.name}</b>
+          <span>{reservation.sucursal?.address}</span>
+        </div>
+        <div className="mc-espacio-item">
+          <span className="lbl">Horarios de atención</span>
+          <span>{reservation.sucursal?.hours || 'Consultar'}</span>
+        </div>
+        <div className="mc-espacio-item">
+          <span className="lbl">Inicio</span>
+          <span>{reservation.startDate}</span>
+        </div>
+        {addonNames.length > 0 && (
+          <div className="mc-espacio-item" style={{ gridColumn: '1 / -1' }}>
+            <span className="lbl">Add-ons</span>
+            <span>{addonNames.join(' · ')}</span>
+          </div>
         )}
       </div>
     </div>
   );
 }
 
-// ResizeModal stub — replaced in Task 9
+function Gestionar({ reservation, onUpdate, onOpenResize, cancelStep, setCancelStep }) {
+  const cancelDate = addDays(7);
+  const isActive = reservation.status === 'active';
+  const isCancelScheduled = reservation.status === 'cancellation_scheduled';
+
+  const handleConfirmCancel = () => {
+    onUpdate(reservation.id, {
+      status: 'cancellation_scheduled',
+      cancelEffectiveDate: cancelDate,
+      cancelledAt: new Date().toISOString(),
+    });
+    setCancelStep(2);
+  };
+
+  return (
+    <div className="mc-portal-block mc-gestionar">
+      <span className="mc-portal-block-title">Gestionar</span>
+      <div className="mc-gestionar-actions">
+        {isActive && (
+          <button className="mc-btn mc-btn-ghost-violet" onClick={onOpenResize}>
+            <span>Cambiar de tamaño</span>
+          </button>
+        )}
+        <hr className="mc-gestionar-divider" />
+        {isActive && cancelStep === 0 && (
+          <button className="mc-btn mc-btn-ghost" style={{ color: 'var(--mc-ink-3)', fontSize: 14 }} onClick={() => setCancelStep(1)}>
+            <span>Cancelar reserva</span>
+          </button>
+        )}
+        {cancelStep === 1 && (
+          <div className="mc-cancel-confirm">
+            <p><strong>¿Cancelar esta reserva?</strong></p>
+            <div className="date">Fecha efectiva: {cancelDate}</div>
+            <p style={{ marginBottom: 14, color: 'var(--mc-ink-2)' }}>
+              Tu acceso se desactiva en esa fecha. No se cobra más a partir del próximo ciclo.
+            </p>
+            <div className="mc-cancel-confirm-actions">
+              <button className="mc-btn mc-btn-ghost" style={{ background: '#fee2e2', borderColor: '#fca5a5', color: '#991b1b' }} onClick={handleConfirmCancel}>
+                <span>Cancelar definitivamente</span>
+              </button>
+              <button className="mc-btn mc-btn-ghost" onClick={() => setCancelStep(0)}>
+                <span>Volver</span>
+              </button>
+            </div>
+          </div>
+        )}
+        {cancelStep === 2 && (
+          <div style={{ padding: '12px 0', textAlign: 'center' }}>
+            <p style={{ fontSize: 14, color: 'var(--mc-ink-2)' }}>
+              Cancelación programada para el <strong>{cancelDate}</strong>.<br />
+              Recibís un email de confirmación.
+            </p>
+          </div>
+        )}
+        {isCancelScheduled && cancelStep === 0 && (
+          <p style={{ fontSize: 14, color: 'var(--mc-ink-3)' }}>
+            Tu reserva se cancela el <strong>{reservation.cancelEffectiveDate}</strong>.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ResizeModal({ reservation, allCategories, onClose, onUpdate }) {
-  return null;
+  const [selected, setSelected] = useState(null);
+  const [sent, setSent] = useState(false);
+
+  const currentM2 = reservation.option?.m2;
+
+  const allOpts = allCategories.flatMap((cat) =>
+    cat.options.map((opt) => ({ ...opt, catKey: cat.key, catLabel: cat.label }))
+  ).filter((opt) => opt.m2 !== currentM2);
+
+  const handleSend = () => {
+    const request = {
+      id: `RES-${Date.now()}`,
+      reservationId: reservation.id,
+      currentM2,
+      requestedM2: selected.m2,
+      requestedMonthly: selected.monthly,
+      requestedCat: selected.catLabel,
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+    };
+    try {
+      const existing = JSON.parse(localStorage.getItem('mc.resize_requests') || '[]');
+      existing.unshift(request);
+      localStorage.setItem('mc.resize_requests', JSON.stringify(existing));
+    } catch { /* silent */ }
+    setSent(true);
+  };
+
+  return (
+    <div className="mc-resize-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="mc-resize-modal">
+        {!sent ? (
+          <>
+            <h3>Cambiar de tamaño</h3>
+            <div className="sub">
+              Seleccioná el nuevo tamaño. El cambio se aplica en el próximo ciclo de facturación una vez confirmado.
+            </div>
+            <div className="mc-resize-current">
+              Tamaño actual: {reservation.category?.label} · {currentM2 ? `${formatM2(currentM2)} m²` : '—'} — ${(reservation.monthly || 0).toLocaleString('es-AR')}/mes
+            </div>
+            <div className="mc-resize-opts">
+              {allOpts.map((opt, i) => (
+                <button key={i} className={`mc-resize-opt ${selected?.m2 === opt.m2 ? 'selected' : ''}`} onClick={() => setSelected(opt)}>
+                  <div>
+                    <b>{opt.catLabel} · {formatM2(opt.m2)} m²</b>
+                    <span style={{ display: 'block', fontSize: 12, marginTop: 2 }}>
+                      {opt.m2 > (currentM2 || 0) ? '↑ Más espacio' : '↓ Menos espacio'}
+                    </span>
+                  </div>
+                  <span className="price">${opt.monthly.toLocaleString('es-AR')}/mes</span>
+                </button>
+              ))}
+            </div>
+            <div className="mc-resize-actions">
+              <button className="mc-btn mc-btn-violet" disabled={!selected} onClick={handleSend}>
+                <span>Solicitar cambio →</span>
+              </button>
+              <button className="mc-btn mc-btn-ghost" onClick={onClose}>
+                <span>Cancelar</span>
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="mc-resize-success">
+            <div className="icon">📬</div>
+            <h4>Solicitud enviada</h4>
+            <p>
+              Te avisamos por email en 24 hs hábiles cuando el cambio esté confirmado.<br />
+              Nuevo tamaño solicitado: <strong>{selected?.catLabel} · {formatM2(selected?.m2)} m²</strong>
+            </p>
+            <button className="mc-btn mc-btn-ghost" onClick={onClose} style={{ marginTop: 20 }}>
+              <span>Cerrar</span>
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function FaceEnrollFlow({ reservation, onUpdate, onDone }) {
