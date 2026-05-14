@@ -8,24 +8,27 @@
     "test:watch": "jest --watchAll",
     "deploy": "firebase deploy --only functions"
   },
-  "engines": { "node": "20" },
+  "engines": {
+    "node": "20"
+  },
   "main": "lib/index.js",
   "dependencies": {
+    "@google-cloud/secret-manager": "^6.1.2",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
     "firebase-admin": "^12.3.0",
     "firebase-functions": "^6.0.0",
-    "express": "^4.19.2",
-    "mercadopago": "^2.0.15",
-    "cors": "^2.8.5"
+    "mercadopago": "^2.0.15"
   },
   "devDependencies": {
-    "@types/express": "^4.17.21",
     "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/jest": "^29.5.12",
     "@types/node": "^20.14.0",
-    "typescript": "^5.4.5",
+    "firebase-functions-test": "^3.3.0",
     "jest": "^29.7.0",
     "ts-jest": "^29.1.5",
-    "@types/jest": "^29.5.12",
-    "firebase-functions-test": "^3.3.0",
-    "ts-node": "^10.9.2"
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5"
   }
 }
