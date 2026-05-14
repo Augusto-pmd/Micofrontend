@@ -1,0 +1,3 @@
+functions/.env.local
+functions/lib/
+node_modules/
