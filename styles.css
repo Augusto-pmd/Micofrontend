@@ -3309,89 +3309,9 @@ section { position: relative; z-index: 2; }
 }
 
 /* ════════════════════════════════════════════════════════════════ */
-/* AURORA THEME — fondo blanco con orbs tornasolados               */
-/* Verde y violeta marca, muy sutiles, se mueven lentísimo         */
+/* AURORA THEME — canvas ribbons (ver index.html)                   */
 /* ════════════════════════════════════════════════════════════════ */
-
-/* ── Fondo blanco puro ─────────────────────────────────────────── */
-:root { --mc-paper: #ffffff; --mc-paper-2: #f8f8fb; }
-body  { background: #ffffff; }
-
-/* ── Aurora container — multiply sobre blanco tinta los colores ── */
-.mc-aurora {
-  position: fixed; inset: 0; z-index: 0;
-  pointer-events: none; overflow: hidden;
-  mix-blend-mode: multiply;
-}
-.mc-aurora-orb {
-  position: absolute; border-radius: 50%;
-  will-change: transform;
-}
-
-/* Orb verde marca — arriba izquierda */
-.orb-green-1 {
-  width: 70vw; height: 70vw;
-  background: radial-gradient(circle, rgba(94,202,0,1) 0%, transparent 60%);
-  top: -15%; left: -15%;
-  filter: blur(80px);
-  opacity: 0.17;
-  animation: aurora1 30s ease-in-out infinite alternate;
-}
-/* Orb violeta marca — protagonista, cruza la pantalla */
-.orb-violet {
-  width: 75vw; height: 75vw;
-  background: radial-gradient(circle, rgba(61,48,131,1) 0%, transparent 58%);
-  top: -20%; right: -20%;
-  filter: blur(85px);
-  opacity: 0.26;
-  animation: aurora2 22s ease-in-out infinite alternate;
-}
-/* Orb shimmer lavanda — refuerza el tornasolado */
-.orb-shimmer {
-  width: 55vw; height: 55vw;
-  background: radial-gradient(circle, rgba(100,75,200,1) 0%, transparent 58%);
-  top: 25%; left: 25%;
-  filter: blur(75px);
-  opacity: 0.12;
-  animation: aurora3 36s ease-in-out infinite alternate;
-}
-/* Orb verde-teal — abajo derecha */
-.orb-green-2 {
-  width: 55vw; height: 55vw;
-  background: radial-gradient(circle, rgba(40,190,110,1) 0%, transparent 62%);
-  bottom: -15%; right: 5%;
-  filter: blur(90px);
-  opacity: 0.13;
-  animation: aurora4 34s ease-in-out infinite alternate;
-}
-
-@keyframes aurora1 {
-  0%   { transform: translate(0,     0)    scale(1);    }
-  33%  { transform: translate(30vw,  25vh) scale(1.15); }
-  66%  { transform: translate(10vw,  50vh) scale(0.90); }
-  100% { transform: translate(45vw,  15vh) scale(1.20); }
-}
-/* Violeta recorre la pantalla de derecha a izquierda y baja */
-@keyframes aurora2 {
-  0%   { transform: translate(0,     0)    scale(1);    }
-  25%  { transform: translate(-35vw, 20vh) scale(1.10); }
-  50%  { transform: translate(-55vw, 50vh) scale(1.20); }
-  75%  { transform: translate(-30vw, 70vh) scale(0.95); }
-  100% { transform: translate(-10vw, 30vh) scale(1.05); }
-}
-@keyframes aurora3 {
-  0%   { transform: translate(0,     0)    scale(1);    }
-  50%  { transform: translate(-35vw,-20vh) scale(1.30); }
-  100% { transform: translate(25vw,  35vh) scale(0.80); }
-}
-@keyframes aurora4 {
-  0%   { transform: translate(0,     0)    scale(1);    }
-  45%  { transform: translate(-25vw,-30vh) scale(1.18); }
-  100% { transform: translate(15vw, -40vh) scale(0.90); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .mc-aurora-orb { animation: none !important; }
-}
-
-/* ── Contenido por encima de la aurora ──────────────────────────── */
-#root { position: relative; z-index: 2; }
+:root  { --mc-paper: #ffffff; --mc-paper-2: #f8f8fb; }
+body   { background: #ffffff; }
+#root  { position: relative; z-index: 2; }
+#mc-aurora-canvas { z-index: 0; }

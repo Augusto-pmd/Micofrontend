@@ -69,13 +69,87 @@
 <body>
   <a class="mc-skip" href="#main">Saltar al contenido</a>
   <div class="mc-grain" aria-hidden="true"></div>
-  <div class="mc-aurora" aria-hidden="true">
-    <div class="mc-aurora-orb orb-green-1"></div>
-    <div class="mc-aurora-orb orb-violet"></div>
-    <div class="mc-aurora-orb orb-shimmer"></div>
-    <div class="mc-aurora-orb orb-green-2"></div>
-  </div>
+  <canvas id="mc-aurora-canvas" aria-hidden="true" style="position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;"></canvas>
   <div id="root"></div>
+  <script>
+  (function() {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    var cvs = document.getElementById('mc-aurora-canvas');
+    var ctx  = cvs.getContext('2d');
+    var W, H;
+
+    function resize() {
+      W = cvs.width  = window.innerWidth;
+      H = cvs.height = window.innerHeight;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    // Cada cinta: ondea en los primeros ~35% de la pantalla
+    // yBase  = posición vertical base (fracción de H)
+    // amp    = amplitud de la onda (fracción de H)
+    // freq   = frecuencia espacial (ondas por px)
+    // speed  = velocidad de animación
+    // thick  = grosor de la cinta (fracción de H)
+    // alpha  = opacidad máxima
+    // c1/c2  = color inicio y fin del gradiente horizontal
+    var ribbons = [
+      { yBase:0.07, amp:0.055, freq:0.0032, speed:0.00022, phase:0.0, thick:0.20, alpha:0.28, c1:[61,48,131],  c2:[94,202,0]   },
+      { yBase:0.03, amp:0.040, freq:0.0025, speed:0.00016, phase:2.1, thick:0.14, alpha:0.22, c1:[94,202,0],   c2:[61,48,131]  },
+      { yBase:0.18, amp:0.065, freq:0.0040, speed:0.00027, phase:4.0, thick:0.13, alpha:0.20, c1:[80,55,180],  c2:[40,195,115] },
+      { yBase:0.22, amp:0.050, freq:0.0028, speed:0.00019, phase:1.4, thick:0.10, alpha:0.17, c1:[40,195,115], c2:[61,48,131]  },
+      { yBase:0.12, amp:0.045, freq:0.0048, speed:0.00032, phase:5.5, thick:0.09, alpha:0.15, c1:[100,70,200], c2:[94,202,0]   },
+    ];
+
+    function rgba(c, a) { return 'rgba('+c[0]+','+c[1]+','+c[2]+','+a+')'; }
+
+    function drawRibbon(r, t) {
+      var y0    = H * r.yBase;
+      var amp   = H * r.amp;
+      var thick = H * r.thick;
+
+      // borde superior
+      function topY(x) { return y0 + amp * Math.sin(x * r.freq + t * r.speed + r.phase); }
+      // borde inferior: misma onda ligeramente desplazada + grosor
+      function botY(x) { return y0 + thick + amp * 0.8 * Math.sin(x * r.freq + t * r.speed * 0.88 + r.phase + 0.35); }
+
+      ctx.beginPath();
+      for (var x = 0; x <= W; x += 3) {
+        if (x === 0) ctx.moveTo(x, topY(x)); else ctx.lineTo(x, topY(x));
+      }
+      for (var x = W; x >= 0; x -= 3) { ctx.lineTo(x, botY(x)); }
+      ctx.closePath();
+
+      // Gradiente horizontal: color1 → color2 → color1, fade en los bordes
+      var g = ctx.createLinearGradient(0, 0, W, 0);
+      g.addColorStop(0,    rgba(r.c1, 0));
+      g.addColorStop(0.10, rgba(r.c1, r.alpha));
+      g.addColorStop(0.38, rgba(r.c2, r.alpha));
+      g.addColorStop(0.62, rgba(r.c1, r.alpha * 0.9));
+      g.addColorStop(0.88, rgba(r.c2, r.alpha));
+      g.addColorStop(1,    rgba(r.c1, 0));
+
+      ctx.fillStyle = g;
+      ctx.fill();
+    }
+
+    var raf = null;
+    function draw() {
+      ctx.clearRect(0, 0, W, H);
+      var t = performance.now();
+      for (var i = 0; i < ribbons.length; i++) drawRibbon(ribbons[i], t);
+      raf = requestAnimationFrame(draw);
+    }
+    draw();
+
+    // Pausa cuando el tab está oculto
+    document.addEventListener('visibilitychange', function() {
+      if (document.hidden) { cancelAnimationFrame(raf); raf = null; }
+      else if (!raf) draw();
+    });
+  })();
+  </script>
   <script type="text/babel" data-presets="env,react" src="home.jsx"></script>
 </body>
 </html>
