@@ -3316,7 +3316,26 @@ body   { background: #ffffff; }
 #root  { position: relative; z-index: 2; }
 #mc-aurora-canvas { z-index: 0; }
 
-/* ── Sección "Cómo funciona" — lavanda suave, contraste sin romper el estilo ── */
+/* ── Sección "Cómo funciona" — nube flotante ──────────────────── */
+.mc-how { overflow: visible !important; }
+
 .mc-how::before {
-  background: linear-gradient(160deg, #eeeaff 0%, #edf5e8 100%) !important;
+  /* Forma de nube: inset + bordes asimétricos orgánicos */
+  inset: 12px clamp(12px, 4vw, 56px) !important;
+  background: #ffffff !important;
+  border-radius: 52px 72px 64px 80px / 72px 56px 80px 52px !important;
+
+  /* Sombra multicapa: brilla arriba (highlight), flota abajo (violeta difuso) */
+  box-shadow:
+    inset 0 2px 0 rgba(255,255,255,0.95),
+    inset 0 -1px 0 rgba(61,48,131,0.04),
+    0 2px  12px  -4px rgba(61,48,131,0.10),
+    0 16px 48px  -8px rgba(61,48,131,0.14),
+    0 48px 96px -24px rgba(61,48,131,0.08) !important;
+}
+
+/* El contenido necesita padding lateral para quedar dentro de la nube */
+.mc-how .mc-how-grid {
+  padding-left:  clamp(20px, 5vw, 72px);
+  padding-right: clamp(20px, 5vw, 72px);
 }
