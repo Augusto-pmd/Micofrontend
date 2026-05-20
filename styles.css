@@ -3334,5 +3334,6 @@ body   { background: #ffffff; }
 .mc-how-box-img {
   width: 100%;
   display: block;
-  /* El JS elimina el fondo blanco pixel a pixel */
+  /* SVG filter elimina fondo blanco: alpha = 3 - R - G - B */
+  filter: url(#rm-white);
 }
