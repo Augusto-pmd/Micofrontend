@@ -3322,9 +3322,9 @@ body   { background: #ffffff; }
   overflow: visible !important;
   padding: 0 !important;
   background: transparent !important;
-  max-width: 1440px !important;
+  max-width: 1320px !important;
   width: 100% !important;
-  padding: 0 clamp(8px, 2vw, 24px) !important;
+  padding: 0 !important;
   margin-left: auto !important;
   margin-right: auto !important;
   filter: drop-shadow(0 32px 64px rgba(61,48,131,0.18));
