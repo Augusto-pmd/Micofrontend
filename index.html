@@ -69,7 +69,7 @@
 <body>
   <a class="mc-skip" href="#main">Saltar al contenido</a>
   <div class="mc-grain" aria-hidden="true"></div>
-  <canvas id="mc-aurora-canvas" aria-hidden="true" style="position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;"></canvas>
+  <canvas id="mc-aurora-canvas" aria-hidden="true" style="position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;filter:blur(55px);"></canvas>
   <div id="root"></div>
   <script>
   (function() {
@@ -86,20 +86,13 @@
     resize();
     window.addEventListener('resize', resize);
 
-    // Cada cinta: ondea en los primeros ~35% de la pantalla
-    // yBase  = posición vertical base (fracción de H)
-    // amp    = amplitud de la onda (fracción de H)
-    // freq   = frecuencia espacial (ondas por px)
-    // speed  = velocidad de animación
-    // thick  = grosor de la cinta (fracción de H)
-    // alpha  = opacidad máxima
-    // c1/c2  = color inicio y fin del gradiente horizontal
+    // Cintas anchas que cubren todo el fondo — no solo el encabezado
     var ribbons = [
-      { yBase:0.07, amp:0.055, freq:0.0032, speed:0.00022, phase:0.0, thick:0.20, alpha:0.28, c1:[61,48,131],  c2:[94,202,0]   },
-      { yBase:0.03, amp:0.040, freq:0.0025, speed:0.00016, phase:2.1, thick:0.14, alpha:0.22, c1:[94,202,0],   c2:[61,48,131]  },
-      { yBase:0.18, amp:0.065, freq:0.0040, speed:0.00027, phase:4.0, thick:0.13, alpha:0.20, c1:[80,55,180],  c2:[40,195,115] },
-      { yBase:0.22, amp:0.050, freq:0.0028, speed:0.00019, phase:1.4, thick:0.10, alpha:0.17, c1:[40,195,115], c2:[61,48,131]  },
-      { yBase:0.12, amp:0.045, freq:0.0048, speed:0.00032, phase:5.5, thick:0.09, alpha:0.15, c1:[100,70,200], c2:[94,202,0]   },
+      { yBase:0.00, amp:0.08, freq:0.0018, speed:0.00018, phase:0.0, thick:0.55, alpha:0.32, c1:[61,48,131],  c2:[94,202,0]   },
+      { yBase:0.25, amp:0.10, freq:0.0014, speed:0.00013, phase:2.1, thick:0.60, alpha:0.28, c1:[94,202,0],   c2:[80,55,180]  },
+      { yBase:0.50, amp:0.09, freq:0.0020, speed:0.00020, phase:4.0, thick:0.50, alpha:0.24, c1:[80,55,180],  c2:[40,195,115] },
+      { yBase:0.70, amp:0.07, freq:0.0016, speed:0.00015, phase:1.4, thick:0.45, alpha:0.22, c1:[40,195,115], c2:[61,48,131]  },
+      { yBase:0.10, amp:0.12, freq:0.0012, speed:0.00010, phase:5.5, thick:0.65, alpha:0.20, c1:[100,70,200], c2:[94,202,0]   },
     ];
 
     function rgba(c, a) { return 'rgba('+c[0]+','+c[1]+','+c[2]+','+a+')'; }
