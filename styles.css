@@ -3322,7 +3322,8 @@ body   { background: #ffffff; }
   overflow: visible !important;
   padding: 0 !important;
   background: transparent !important;
-  max-width: 1160px !important;
+  max-width: 1280px !important;
+  width: 100% !important;
   margin-left: auto !important;
   margin-right: auto !important;
   filter: drop-shadow(0 32px 64px rgba(61,48,131,0.18));
@@ -3333,4 +3334,6 @@ body   { background: #ffffff; }
 .mc-how-box-img {
   width: 100%;
   display: block;
+  /* Fondo blanco desaparece: blanco × blanco = blanco, cartón × blanco = cartón */
+  mix-blend-mode: multiply;
 }
