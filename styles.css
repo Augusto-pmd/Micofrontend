@@ -3316,26 +3316,7 @@ body   { background: #ffffff; }
 #root  { position: relative; z-index: 2; }
 #mc-aurora-canvas { z-index: 0; }
 
-/* ── Sección "Cómo funciona" — isla oscura con contraste fuerte ── */
+/* ── Sección "Cómo funciona" — lavanda suave, contraste sin romper el estilo ── */
 .mc-how::before {
-  background: linear-gradient(155deg, #130f2e 0%, #0c1a0e 100%) !important;
-}
-.mc-how,
-.mc-how h2,
-.mc-how h3,
-.mc-how-step h3   { color: #fff !important; }
-.mc-how-intro p,
-.mc-how-step p    { color: rgba(255,255,255,0.62) !important; }
-.mc-how-intro h2 .v { color: #b0a4ff !important; }
-.mc-how-step .n   { color: var(--mc-green) !important; letter-spacing: 0.12em; }
-.mc-how-step {
-  border-top-color:    rgba(255,255,255,0.08) !important;
-}
-.mc-how-step:last-child {
-  border-bottom-color: rgba(255,255,255,0.08) !important;
-}
-.mc-how-step .arrow { color: rgba(255,255,255,0.22) !important; }
-.mc-how-step:hover .arrow {
-  color: var(--mc-green) !important;
-  transform: translateX(6px);
+  background: linear-gradient(160deg, #eeeaff 0%, #edf5e8 100%) !important;
 }
