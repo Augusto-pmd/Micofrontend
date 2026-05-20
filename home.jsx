@@ -21,7 +21,7 @@ const BILLING_ENTITY = {
 };
 
 // URL del panel de administración — actualizar cuando se despliege en Vercel
-const ADMIN_URL = 'https://admin.micontainer.com';
+const ADMIN_URL = 'https://admin-panel-ten-pied.vercel.app';
 
 const PHONE = '+54 9 11 3620-7989';
 const PHONE_TEL = '+5491136207989';
