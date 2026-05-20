@@ -699,36 +699,12 @@ function How() {
   ];
   return (
     <section className="mc-how" id="how">
-      {/* Imagen real de la caja — el JS le saca el fondo beige */}
       <img
         id="how-box-img"
         src="assets/box-render.jpg"
-        alt=""
-        aria-hidden="true"
+        alt="Cómo funciona Mi Container"
         className="mc-how-box-img"
       />
-      {/* Contenido superpuesto sobre el interior de la caja */}
-      <div className="mc-how-overlay">
-        <div className="mc-how-grid">
-          <div className="mc-how-intro" data-reveal>
-            <span className="mc-eyebrow violet">Cómo funciona</span>
-            <h2>Lo hacés vos.<br /><span className="v">Cuando querés.</span></h2>
-            <p>Diseñamos Mi Container para que vos manejes tu espacio. Online, autogestivo, transparente.</p>
-          </div>
-          <div className="mc-how-steps" data-reveal>
-            {steps.map((s) => (
-              <div key={s.n} className="mc-how-step">
-                <div className="n">{s.n}</div>
-                <div>
-                  <h3>{s.t}</h3>
-                  <p>{s.d}</p>
-                </div>
-                <div className="arrow" aria-hidden="true">→</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
     </section>
   );
 }

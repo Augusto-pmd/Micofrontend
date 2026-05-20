@@ -3316,15 +3316,13 @@ body   { background: #ffffff; }
 #root  { position: relative; z-index: 2; }
 #mc-aurora-canvas { z-index: 0; }
 
-/* ── Sección "Cómo funciona" — render real de caja centrado ────── */
+/* ── Sección "Cómo funciona" — imagen de caja, sin texto HTML ──── */
 
 .mc-how {
   overflow: visible !important;
   padding: 0 !important;
   background: transparent !important;
-  position: relative;
-  /* Centra la caja y le da ancho máximo */
-  max-width: 860px !important;
+  max-width: 1000px !important;
   margin-left: auto !important;
   margin-right: auto !important;
   animation: box-float 7s ease-in-out infinite !important;
@@ -3340,36 +3338,9 @@ body   { background: #ffffff; }
   .mc-how { animation: none !important; filter: none !important; }
 }
 
-/* Sin pseudo-elementos — la imagen lo hace todo */
 .mc-how::before, .mc-how::after { display: none !important; }
 
-/* La imagen de la caja — ocupa todo el ancho del contenedor */
 .mc-how-box-img {
   width: 100%;
   display: block;
-  /* El JS le saca el fondo beige en tiempo de carga */
 }
-
-/* Contenido superpuesto sobre el interior de la caja
-   Interior aproximado: top 24%, bottom 24%, left 14%, right 12% */
-.mc-how-overlay {
-  position: absolute;
-  top:    24%;
-  bottom: 22%;
-  left:   14%;
-  right:  12%;
-  display: flex;
-  align-items: center;
-}
-
-.mc-how-overlay .mc-how-grid {
-  width: 100%;
-}
-
-/* Ajustes de tipografía para leer bien sobre cartón */
-.mc-how-overlay h2 { font-size: clamp(28px, 3.5vw, 52px) !important; }
-.mc-how-overlay .mc-how-step h3 { font-size: clamp(16px, 1.8vw, 26px) !important; }
-.mc-how-overlay .mc-how-step { border-top-color: rgba(100,60,20,0.18) !important; }
-.mc-how-overlay .mc-how-step:last-child { border-bottom-color: rgba(100,60,20,0.18) !important; }
-.mc-how-overlay .mc-how-step .n { color: var(--mc-green-ink) !important; }
-.mc-how-overlay .mc-eyebrow.violet { color: var(--mc-violet) !important; }
