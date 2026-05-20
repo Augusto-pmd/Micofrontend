@@ -3322,7 +3322,7 @@ body   { background: #ffffff; }
 .mc-how::before {
   inset: 12px clamp(12px, 4vw, 56px) !important;
   background: #ffffff !important;
-  border-radius: 52px 72px 64px 80px / 72px 56px 80px 52px !important;
+  border-radius: 42% 58% 55% 45% / 48% 44% 56% 52% !important;
   box-shadow:
     inset 0 2px 0 rgba(255,255,255,0.95),
     inset 0 -1px 0 rgba(61,48,131,0.04),
@@ -3335,9 +3335,14 @@ body   { background: #ffffff; }
 }
 
 @keyframes cloud-float {
-  0%   { transform: translateY(0px);  box-shadow: inset 0 2px 0 rgba(255,255,255,0.95), 0 16px 48px -8px rgba(61,48,131,0.14), 0 48px 96px -24px rgba(61,48,131,0.08); }
-  50%  { transform: translateY(-10px); box-shadow: inset 0 2px 0 rgba(255,255,255,0.95), 0 28px 72px -8px rgba(61,48,131,0.18), 0 72px 120px -24px rgba(61,48,131,0.12); }
-  100% { transform: translateY(0px);  box-shadow: inset 0 2px 0 rgba(255,255,255,0.95), 0 16px 48px -8px rgba(61,48,131,0.14), 0 48px 96px -24px rgba(61,48,131,0.08); }
+  0%   { transform: translateY(0px)   rotate(0deg);     border-radius: 42% 58% 55% 45% / 48% 44% 56% 52%;
+         box-shadow: inset 0 2px 0 rgba(255,255,255,0.95), 0 16px 48px -8px rgba(61,48,131,0.14), 0 48px 96px -24px rgba(61,48,131,0.08); }
+  25%  { transform: translateY(-6px)  rotate(0.4deg);   border-radius: 50% 50% 48% 52% / 52% 46% 54% 48%; }
+  50%  { transform: translateY(-11px) rotate(0deg);     border-radius: 45% 55% 60% 40% / 44% 52% 48% 56%;
+         box-shadow: inset 0 2px 0 rgba(255,255,255,0.95), 0 28px 72px -8px rgba(61,48,131,0.18), 0 72px 120px -24px rgba(61,48,131,0.12); }
+  75%  { transform: translateY(-5px)  rotate(-0.3deg);  border-radius: 48% 52% 50% 50% / 50% 48% 52% 50%; }
+  100% { transform: translateY(0px)   rotate(0deg);     border-radius: 42% 58% 55% 45% / 48% 44% 56% 52%;
+         box-shadow: inset 0 2px 0 rgba(255,255,255,0.95), 0 16px 48px -8px rgba(61,48,131,0.14), 0 48px 96px -24px rgba(61,48,131,0.08); }
 }
 
 @media (prefers-reduced-motion: reduce) {
