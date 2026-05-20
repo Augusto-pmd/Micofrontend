@@ -1,5 +1,5 @@
-// Base URL of the API — update after Firebase deploy
-const API_BASE = 'https://us-central1-micontainer-prod.cloudfunctions.net/api';
+// Base URL of the API
+const API_BASE = 'https://us-central1-mc-nordelta-2026.cloudfunctions.net/api';
 
 /**
  * Gets the JWT token from the authenticated Firebase user.

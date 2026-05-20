@@ -1495,52 +1495,37 @@ function decodeJWT(token) {
 }
 
 function GoogleButton({ onSuccess }) {
-  const realRef = useRef(null);
-  const [demoOpen, setDemoOpen] = useState(false);
-  useEffect(() => {
-    if (!GOOGLE_CLIENT_ID) return;
-    let canceled = false;
-    const init = () => {
-      if (canceled || !window.google?.accounts?.id || !realRef.current) return;
-      try {
-        window.google.accounts.id.initialize({
-          client_id: GOOGLE_CLIENT_ID,
-          callback: (response) => {
-            const info = decodeJWT(response.credential);
-            if (!info) return;
-            onSuccess({ email: info.email, name: info.name, picture: info.picture, provider: 'google' });
-          },
-        });
-        window.google.accounts.id.renderButton(realRef.current, {
-          type: 'standard', theme: 'outline', size: 'large',
-          text: 'continue_with', shape: 'pill',
-          width: realRef.current.offsetWidth || 320,
-        });
-      } catch (e) { console.warn('GIS init failed', e); }
-    };
-    if (window.google?.accounts?.id) init();
-    else {
-      const t = setInterval(() => { if (window.google?.accounts?.id) { clearInterval(t); init(); } }, 200);
-      setTimeout(() => clearInterval(t), 5000);
-    }
-    return () => { canceled = true; };
-  }, [onSuccess]);
+  const [loading, setLoading] = useState(false);
 
-  if (GOOGLE_CLIENT_ID) return <div ref={realRef} className="mc-google-real"></div>;
+  const handleClick = async () => {
+    if (!window._fb) return;
+    setLoading(true);
+    try {
+      const result = await window._fb.signInWithGoogle();
+      const u = result.user;
+      onSuccess({ uid: u.uid, email: u.email, name: u.displayName, picture: u.photoURL, provider: 'google' });
+    } catch (e) {
+      if (e.code !== 'auth/popup-closed-by-user') console.warn('Google sign-in error:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
-    <>
-      <button type="button" className="mc-google-btn" onClick={() => setDemoOpen(true)}>
-        <svg viewBox="0 0 48 48" width="18" height="18" aria-hidden="true">
-          <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.6-6 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.8 1.1 7.9 3l5.7-5.7C34.1 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.3-.4-3.5z" />
-          <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 16 19 13 24 13c3 0 5.8 1.1 7.9 3l5.7-5.7C34.1 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z" />
-          <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2c-2 1.5-4.5 2.4-7.2 2.4-5.3 0-9.7-3.4-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z" />
-          <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.1-4.1 5.6l6.2 5.2C41 35.5 44 30.2 44 24c0-1.3-.1-2.3-.4-3.5z" />
-        </svg>
-        <span>Continuar con Google</span>
-      </button>
-      {demoOpen && <GoogleDemoPicker onPick={onSuccess} onClose={() => setDemoOpen(false)} />}
-    </>
+    <button type="button" className="mc-google-btn" onClick={handleClick} disabled={loading}>
+      {loading
+        ? <span style={{ fontSize: 13 }}>Abriendo Google…</span>
+        : <>
+            <svg viewBox="0 0 48 48" width="18" height="18" aria-hidden="true">
+              <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.6-6 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.8 1.1 7.9 3l5.7-5.7C34.1 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.3-.4-3.5z" />
+              <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 16 19 13 24 13c3 0 5.8 1.1 7.9 3l5.7-5.7C34.1 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z" />
+              <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2c-2 1.5-4.5 2.4-7.2 2.4-5.3 0-9.7-3.4-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z" />
+              <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.1-4.1 5.6l6.2 5.2C41 35.5 44 30.2 44 24c0-1.3-.1-2.3-.4-3.5z" />
+            </svg>
+            <span>Continuar con Google</span>
+          </>
+      }
+    </button>
   );
 }
 
@@ -2400,7 +2385,7 @@ function App() {
             <PortalEntry
               user={user}
               reservations={userReservations}
-              onLogout={() => store.setUser(null)}
+              onLogout={() => { store.setUser(null); window._fb?.signOut(); }}
               onReserve={() => openWizard()}
             />
           ) : (
