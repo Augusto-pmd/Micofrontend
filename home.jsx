@@ -700,8 +700,7 @@ function How() {
   return (
     <section className="mc-how" id="how">
       <img
-        id="how-box-img"
-        src="assets/box-render.jpg"
+        src="assets/box-render.png"
         alt="Cómo funciona Mi Container"
         className="mc-how-box-img"
       />

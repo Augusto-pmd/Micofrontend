@@ -3325,17 +3325,7 @@ body   { background: #ffffff; }
   max-width: 1000px !important;
   margin-left: auto !important;
   margin-right: auto !important;
-  animation: box-float 7s ease-in-out infinite !important;
-}
-
-@keyframes box-float {
-  0%   { transform: translateY(0px);   filter: drop-shadow(0 32px 64px rgba(61,48,131,0.18)); }
-  50%  { transform: translateY(-14px); filter: drop-shadow(0 52px 88px rgba(61,48,131,0.28)); }
-  100% { transform: translateY(0px);   filter: drop-shadow(0 32px 64px rgba(61,48,131,0.18)); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .mc-how { animation: none !important; filter: none !important; }
+  filter: drop-shadow(0 32px 64px rgba(61,48,131,0.18));
 }
 
 .mc-how::before, .mc-how::after { display: none !important; }
