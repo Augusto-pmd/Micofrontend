@@ -3316,65 +3316,44 @@ body   { background: #ffffff; }
 #root  { position: relative; z-index: 2; }
 #mc-aurora-canvas { z-index: 0; }
 
-/* ── Sección "Cómo funciona" — caja de cartón flotante ────────── */
+/* ── Sección "Cómo funciona" — caja 3D desde arriba ────────────── */
 
-/* La sección entera flota; tapas y cuerpo se mueven juntos */
 .mc-how {
   overflow: visible !important;
-  padding-top: 96px !important;
+  /* Padding: top/bottom = tapa (≈21% del viewBox), lados = tapa lateral (≈16%) */
+  padding: 22% 18% !important;
   animation: box-float 7s ease-in-out infinite !important;
 }
 
 @keyframes box-float {
-  0%   { transform: translateY(0px);  filter: drop-shadow(0 24px 48px rgba(61,48,131,0.13)); }
-  50%  { transform: translateY(-12px); filter: drop-shadow(0 40px 72px rgba(61,48,131,0.22)); }
-  100% { transform: translateY(0px);  filter: drop-shadow(0 24px 48px rgba(61,48,131,0.13)); }
+  0%   { transform: translateY(0px);   filter: drop-shadow(0 28px 56px rgba(61,48,131,0.14)); }
+  50%  { transform: translateY(-14px); filter: drop-shadow(0 48px 80px rgba(61,48,131,0.24)); }
+  100% { transform: translateY(0px);   filter: drop-shadow(0 28px 56px rgba(61,48,131,0.14)); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .mc-how { animation: none !important; filter: none !important; }
 }
 
-/* Cuerpo de la caja — interior con líneas de corrugado */
+/* La caja SVG ocupa toda la sección como fondo */
 .mc-how::before {
-  inset: 0 clamp(16px, 4.5vw, 64px) !important;
-  top: 0 !important;
-  background-color: #e8c89a !important;
-  background-image: repeating-linear-gradient(
-    90deg,
-    rgba(140,88,38,0.08) 0px, rgba(140,88,38,0.08) 1px,
-    transparent          1px, transparent          18px
-  ) !important;
-  border: 2.5px solid #a87840 !important;
-  border-top: none !important;
-  border-radius: 0 0 12px 12px !important;
-  box-shadow: inset 0 20px 48px rgba(100,58,18,0.14) !important;
+  inset: 0 !important;
+  background-color: transparent !important;
+  background-image: url('assets/box-top.svg') !important;
+  background-size: 100% 100% !important;
+  background-repeat: no-repeat !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
   animation: none !important;
 }
 
-/* Tapas abiertas — izquierda y derecha con hueco central */
-.mc-how::after {
-  content: '';
-  position: absolute;
-  z-index: 1;
-  top: 0;
-  left:  clamp(16px, 4.5vw, 64px);
-  right: clamp(16px, 4.5vw, 64px);
-  height: 96px;
-  background:
-    linear-gradient(172deg, #b87a38 0%, #d4a262 40%, #e8c89a 100%)
-      0   0 / calc(50% - 6px) 100% no-repeat,
-    linear-gradient(188deg, #b87a38 0%, #d4a262 40%, #e8c89a 100%)
-      100% 0 / calc(50% - 6px) 100% no-repeat;
-  border-top:   2.5px solid #a87840;
-  border-left:  2.5px solid #a87840;
-  border-right: 2.5px solid #a87840;
-}
+/* Tapas viejas — ya no necesarias */
+.mc-how::after { display: none !important; }
 
-/* Contenido dentro de la caja — encima de todo */
+/* Contenido posicionado dentro del piso de la caja */
 .mc-how .mc-how-grid {
   position: relative;
   z-index: 3;
-  padding-left:  clamp(28px, 5vw, 80px);
-  padding-right: clamp(28px, 5vw, 80px);
+  padding: 0 !important;
 }
