@@ -69,7 +69,7 @@
 <body>
   <a class="mc-skip" href="#main">Saltar al contenido</a>
   <div class="mc-grain" aria-hidden="true"></div>
-  <canvas id="mc-aurora-canvas" aria-hidden="true" style="position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;filter:blur(55px);"></canvas>
+  <canvas id="mc-aurora-canvas" aria-hidden="true" style="position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;filter:blur(22px);"></canvas>
   <div id="root"></div>
   <script>
   (function() {
@@ -86,25 +86,33 @@
     resize();
     window.addEventListener('resize', resize);
 
-    // Cintas anchas que cubren todo el fondo — no solo el encabezado
+    // Los ribbons que te gustaban — misma velocidad, colores y forma de onda.
+    // scrollShift: cuánto baja cada cinta cuando llegás al final de la página (en fracción de H).
+    // Valores distintos = efecto parallax → al bajar, las cintas se separan y crecen.
     var ribbons = [
-      { yBase:0.00, amp:0.08, freq:0.0018, speed:0.00018, phase:0.0, thick:0.55, alpha:0.32, c1:[61,48,131],  c2:[94,202,0]   },
-      { yBase:0.25, amp:0.10, freq:0.0014, speed:0.00013, phase:2.1, thick:0.60, alpha:0.28, c1:[94,202,0],   c2:[80,55,180]  },
-      { yBase:0.50, amp:0.09, freq:0.0020, speed:0.00020, phase:4.0, thick:0.50, alpha:0.24, c1:[80,55,180],  c2:[40,195,115] },
-      { yBase:0.70, amp:0.07, freq:0.0016, speed:0.00015, phase:1.4, thick:0.45, alpha:0.22, c1:[40,195,115], c2:[61,48,131]  },
-      { yBase:0.10, amp:0.12, freq:0.0012, speed:0.00010, phase:5.5, thick:0.65, alpha:0.20, c1:[100,70,200], c2:[94,202,0]   },
+      { yBase:0.07, amp:0.055, freq:0.0032, speed:0.00022, phase:0.0, thick:0.20, alpha:0.28, scrollShift:0.40, c1:[61,48,131],  c2:[94,202,0]   },
+      { yBase:0.03, amp:0.040, freq:0.0025, speed:0.00016, phase:2.1, thick:0.14, alpha:0.22, scrollShift:0.60, c1:[94,202,0],   c2:[61,48,131]  },
+      { yBase:0.18, amp:0.065, freq:0.0040, speed:0.00027, phase:4.0, thick:0.13, alpha:0.20, scrollShift:0.28, c1:[80,55,180],  c2:[40,195,115] },
+      { yBase:0.22, amp:0.050, freq:0.0028, speed:0.00019, phase:1.4, thick:0.10, alpha:0.17, scrollShift:0.50, c1:[40,195,115], c2:[61,48,131]  },
+      { yBase:0.12, amp:0.045, freq:0.0048, speed:0.00032, phase:5.5, thick:0.09, alpha:0.15, scrollShift:0.35, c1:[100,70,200], c2:[94,202,0]   },
     ];
+
+    // Scroll suavizado — se interpola para que el movimiento sea fluido, no brusco
+    var scrollSmooth = 0;
 
     function rgba(c, a) { return 'rgba('+c[0]+','+c[1]+','+c[2]+','+a+')'; }
 
-    function drawRibbon(r, t) {
-      var y0    = H * r.yBase;
+    function drawRibbon(r, t, scrollP) {
+      // Cada cinta baja según su propio scrollShift (parallax) y crece en grosor
+      var yShift   = scrollP * r.scrollShift;
+      var thickMul = 1 + scrollP * 1.2;          // crece hasta 2.2× al llegar abajo
+      var y0    = H * (r.yBase + yShift);
       var amp   = H * r.amp;
-      var thick = H * r.thick;
+      var thick = H * r.thick * thickMul;
 
       // borde superior
       function topY(x) { return y0 + amp * Math.sin(x * r.freq + t * r.speed + r.phase); }
-      // borde inferior: misma onda ligeramente desplazada + grosor
+      // borde inferior: onda levemente desfasada + grosor
       function botY(x) { return y0 + thick + amp * 0.8 * Math.sin(x * r.freq + t * r.speed * 0.88 + r.phase + 0.35); }
 
       ctx.beginPath();
@@ -129,9 +137,14 @@
 
     var raf = null;
     function draw() {
+      // Scroll normalizado 0→1, con interpolación suave (lerp)
+      var maxScroll = Math.max(1, document.body.scrollHeight - window.innerHeight);
+      var targetScroll = window.scrollY / maxScroll;
+      scrollSmooth += (targetScroll - scrollSmooth) * 0.04;
+
       ctx.clearRect(0, 0, W, H);
       var t = performance.now();
-      for (var i = 0; i < ribbons.length; i++) drawRibbon(ribbons[i], t);
+      for (var i = 0; i < ribbons.length; i++) drawRibbon(ribbons[i], t, scrollSmooth);
       raf = requestAnimationFrame(draw);
     }
     draw();
