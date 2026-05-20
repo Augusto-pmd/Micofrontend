@@ -895,7 +895,7 @@ function BigCTA({ onReserve }) {
   return (
     <section className="mc-bigcta" data-reveal>
       <div className="mc-bigcta-inner">
-        <h2><span>Guardá hoy.</span><span>Pagá mañana.</span></h2>
+        <h2><span>Guardá lo que</span><span>querés.</span></h2>
         <div className="mc-bigcta-actions">
           <button className="mc-btn mc-btn-green big" onClick={onReserve}>
             <span>Elegí tu espacio</span>
