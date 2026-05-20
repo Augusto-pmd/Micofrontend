@@ -72,6 +72,37 @@
   <canvas id="mc-aurora-canvas" aria-hidden="true" style="position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;filter:blur(22px);"></canvas>
   <div id="root"></div>
   <script>
+  /* Saca el fondo beige de la imagen de la caja usando canvas color-keying */
+  (function() {
+    function removeBg() {
+      var img = document.getElementById('how-box-img');
+      if (!img) return;
+      function process() {
+        try {
+          var c = document.createElement('canvas');
+          c.width = img.naturalWidth; c.height = img.naturalHeight;
+          var ctx = c.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          var d = ctx.getImageData(0, 0, c.width, c.height), px = d.data;
+          /* Color del fondo beige: ~rgb(212,190,164) */
+          var tr=212, tg=190, tb=164, tol=42;
+          for (var i=0; i<px.length; i+=4) {
+            var dist = Math.sqrt(
+              (px[i]-tr)*(px[i]-tr)+(px[i+1]-tg)*(px[i+1]-tg)+(px[i+2]-tb)*(px[i+2]-tb)
+            );
+            if (dist < tol) px[i+3] = Math.round(px[i+3] * Math.min(1, dist/tol * 0.4));
+          }
+          ctx.putImageData(d, 0, 0);
+          img.src = c.toDataURL('image/png');
+        } catch(e) {}
+      }
+      if (img.complete && img.naturalWidth) process(); else img.onload = process;
+    }
+    document.addEventListener('DOMContentLoaded', removeBg);
+  })();
+  </script>
+
+  <script>
   (function() {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 

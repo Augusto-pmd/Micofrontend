@@ -699,7 +699,16 @@ function How() {
   ];
   return (
     <section className="mc-how" id="how">
-      <div className="mc-container">
+      {/* Imagen real de la caja — el JS le saca el fondo beige */}
+      <img
+        id="how-box-img"
+        src="assets/box-render.jpg"
+        alt=""
+        aria-hidden="true"
+        className="mc-how-box-img"
+      />
+      {/* Contenido superpuesto sobre el interior de la caja */}
+      <div className="mc-how-overlay">
         <div className="mc-how-grid">
           <div className="mc-how-intro" data-reveal>
             <span className="mc-eyebrow violet">Cómo funciona</span>
