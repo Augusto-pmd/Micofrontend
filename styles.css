@@ -3320,18 +3320,28 @@ body   { background: #ffffff; }
 .mc-how { overflow: visible !important; }
 
 .mc-how::before {
-  /* Forma de nube: inset + bordes asimétricos orgánicos */
   inset: 12px clamp(12px, 4vw, 56px) !important;
   background: #ffffff !important;
   border-radius: 52px 72px 64px 80px / 72px 56px 80px 52px !important;
-
-  /* Sombra multicapa: brilla arriba (highlight), flota abajo (violeta difuso) */
   box-shadow:
     inset 0 2px 0 rgba(255,255,255,0.95),
     inset 0 -1px 0 rgba(61,48,131,0.04),
     0 2px  12px  -4px rgba(61,48,131,0.10),
     0 16px 48px  -8px rgba(61,48,131,0.14),
     0 48px 96px -24px rgba(61,48,131,0.08) !important;
+
+  /* La nube flota — sube y baja muy despacio */
+  animation: cloud-float 7s ease-in-out infinite !important;
+}
+
+@keyframes cloud-float {
+  0%   { transform: translateY(0px);  box-shadow: inset 0 2px 0 rgba(255,255,255,0.95), 0 16px 48px -8px rgba(61,48,131,0.14), 0 48px 96px -24px rgba(61,48,131,0.08); }
+  50%  { transform: translateY(-10px); box-shadow: inset 0 2px 0 rgba(255,255,255,0.95), 0 28px 72px -8px rgba(61,48,131,0.18), 0 72px 120px -24px rgba(61,48,131,0.12); }
+  100% { transform: translateY(0px);  box-shadow: inset 0 2px 0 rgba(255,255,255,0.95), 0 16px 48px -8px rgba(61,48,131,0.14), 0 48px 96px -24px rgba(61,48,131,0.08); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mc-how::before { animation: none !important; }
 }
 
 /* El contenido necesita padding lateral para quedar dentro de la nube */
