@@ -3320,8 +3320,8 @@ body   { background: #ffffff; }
 
 .mc-how {
   overflow: visible !important;
-  /* Padding: top/bottom = tapa (≈21% del viewBox), lados = tapa lateral (≈16%) */
-  padding: 22% 18% !important;
+  /* Alinea el texto con la pared trasera del SVG: y 19.5–82.6%, x 12.3–87.7% */
+  padding: 21% 13% 19% !important;
   animation: box-float 7s ease-in-out infinite !important;
 }
 

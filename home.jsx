@@ -703,7 +703,7 @@ function How() {
         <div className="mc-how-grid">
           <div className="mc-how-intro" data-reveal>
             <span className="mc-eyebrow violet">Cómo funciona</span>
-            <h2>Sin vueltas.<br /><span className="v">Literalmente.</span></h2>
+            <h2>Lo hacés vos.<br /><span className="v">Cuando querés.</span></h2>
             <p>Diseñamos Mi Container para que vos manejes tu espacio. Online, autogestivo, transparente.</p>
           </div>
           <div className="mc-how-steps" data-reveal>
