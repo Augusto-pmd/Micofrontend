@@ -20,6 +20,9 @@ const BILLING_ENTITY = {
   provincia: 'Buenos Aires',
 };
 
+// URL del panel de administración — actualizar cuando se despliege en Vercel
+const ADMIN_URL = 'https://admin.micontainer.com';
+
 const PHONE = '+54 9 11 3620-7989';
 const PHONE_TEL = '+5491136207989';
 const WHATSAPP = 'https://wa.me/5491136207989';
@@ -945,7 +948,17 @@ function Footer({ onReserve }) {
         </div>
       </div>
       <div className="mc-footer-base">
-        <span>© 2026 Mi Container · Guardá lo que querés</span>
+        <span>
+          © 2026 Mi Container · Guardá lo que querés
+          {' '}
+          <a
+            href={ADMIN_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: 'rgba(0,0,0,0.13)', textDecoration: 'none' }}
+            title="Acceso equipo interno"
+          >·</a>
+        </span>
         <span>Hecho en Buenos Aires</span>
       </div>
     </footer>
