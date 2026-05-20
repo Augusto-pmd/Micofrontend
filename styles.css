@@ -679,6 +679,8 @@ section { position: relative; z-index: 2; }
 .mc-suc-pill .badge.avail-media    { background: #fff2d0; color: #8a6100; }
 .mc-suc-pill .badge.avail-limitada { background: #fde0db; color: #a91f0a; }
 .mc-suc-pill .badge.scarce         { background: #fde0db; color: #a91f0a; }
+.mc-suc-pill .badge.coming         { background: #ede9fe; color: #6d28d9; }
+.mc-suc-pill.coming-soon           { opacity: 0.6; cursor: default; pointer-events: none; }
 
 @media (max-width: 900px) {
   .mc-sucs-strip { padding: 20px 0 0; }
@@ -1570,6 +1572,8 @@ section { position: relative; z-index: 2; }
 }
 .mc-wiz-option .pill-avail.media     { background: #fff2d0; color: #8a6100; }
 .mc-wiz-option .pill-avail.limitada  { background: #fde0db; color: #a91f0a; }
+.mc-wiz-option .pill-avail.coming    { background: #ede9fe; color: #6d28d9; }
+.mc-wiz-option.disabled              { opacity: 0.5; cursor: default; pointer-events: none; }
 
 /* Promo card inside wizard step 3 (duration) */
 .mc-wiz-promo-card {

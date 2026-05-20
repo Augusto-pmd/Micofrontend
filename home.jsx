@@ -109,10 +109,8 @@ const addDays = (days) => {
 };
 
 const SUCURSALES = [
-  { id: 'nordelta',  name: 'Nordelta',      hood: 'GBA Norte', address: 'Av. de los Lagos 7250', hours: 'Lun–Vie 8–17 hs · Sáb 9–13 hs', availability: 'Alta',     scarcity: null                              },
-  { id: 'palermo',   name: 'Palermo',       hood: 'CABA',      address: 'Av. Córdoba 4500',      hours: 'Horarios a confirmar',           availability: 'Alta',     scarcity: null                              },
-  { id: 'crespo',    name: 'Villa Crespo',  hood: 'CABA',      address: 'Av. Warnes 1280',       hours: 'Horarios a confirmar',           availability: 'Media',    scarcity: 'Pocos espacios disponibles'      },
-  { id: 'vlopez',    name: 'Vicente López', hood: 'GBA Norte', address: 'Av. Maipú 2840',        hours: 'Horarios a confirmar',           availability: 'Limitada', scarcity: 'Casi sin lugar · reservá pronto' },
+  { id: 'nordelta', name: 'Nordelta',      hood: 'GBA Norte', address: 'Av. de los Lagos 7250', hours: 'Lun–Vie 8–17 hs · Sáb 9–13 hs', availability: 'Alta', scarcity: null, comingSoon: false },
+  { id: 'vlopez',  name: 'Vicente López', hood: 'GBA Norte', address: 'Av. Maipú 2840',        hours: 'Próximamente',                   availability: null,   scarcity: null, comingSoon: true  },
 ];
 
 const ADDONS = [
@@ -483,7 +481,7 @@ function ExitIntent({ promo, data, onAccept, onDecline }) {
         <div className="mc-exit-trust">
           <span>· Sin tarjeta hasta que confirmes</span>
           <span>· Cancelás cuando quieras</span>
-          <span>· +2.300 clientes</span>
+          <span>· Sin permanencia mínima</span>
         </div>
       </div>
     </div>
@@ -553,8 +551,8 @@ function Hero({ onReserve }) {
   return (
     <section className="mc-hero mc-container" id="top">
       <div className="mc-hero-meta" data-reveal>
-        <span className="pill"><span className="dot" />4 sucursales · CABA + GBA Norte</span>
-        <span>Desde 2019 · +2.300 clientes</span>
+        <span className="pill"><span className="dot" />Nordelta · GBA Norte · Acceso 24/7</span>
+        <span>Próximamente Vicente López</span>
       </div>
 
       <h1 className="mc-hero-title">
@@ -598,18 +596,25 @@ function Sucursales({ onReserve }) {
   return (
     <section className="mc-sucs-strip mc-container" id="sucursales" data-reveal>
       <div className="mc-sucs-strip-head">
-        <span className="mc-eyebrow violet" style={{ marginBottom: 0 }}>4 sucursales · CABA y GBA Norte · Acceso 24/7</span>
+        <span className="mc-eyebrow violet" style={{ marginBottom: 0 }}>Nordelta · GBA Norte · Acceso 24/7</span>
       </div>
       <div className="mc-sucs-strip-list">
         {SUCURSALES.map((s) => (
-          <button key={s.id} className={`mc-suc-pill ${s.availability.toLowerCase()}`} onClick={() => onReserve(s)}>
-            <span className="name">{s.name}</span>
-            <span className="detail">{s.hood} · {s.address}</span>
-            {s.scarcity
-              ? <span className="badge scarce">{s.scarcity}</span>
-              : <span className={`badge avail-${s.availability.toLowerCase()}`}>{s.availability}</span>
-            }
-          </button>
+          s.comingSoon
+            ? (
+              <div key={s.id} className="mc-suc-pill coming-soon">
+                <span className="name">{s.name}</span>
+                <span className="detail">{s.hood} · {s.address}</span>
+                <span className="badge coming">Próximamente</span>
+              </div>
+            )
+            : (
+              <button key={s.id} className={`mc-suc-pill alta`} onClick={() => onReserve(s)}>
+                <span className="name">{s.name}</span>
+                <span className="detail">{s.hood} · {s.address}</span>
+                <span className="badge avail-alta">{s.availability}</span>
+              </button>
+            )
         ))}
       </div>
     </section>
@@ -688,7 +693,7 @@ function Categorias({ onReserveCategory }) {
 /* ════════════════════════════════════════════════════════════════ */
 function How() {
   const steps = [
-    { n: '01', t: 'Elegí sucursal y tamaño', d: 'Cuatro ubicaciones, cuatro categorías con opciones reales en m².' },
+    { n: '01', t: 'Elegí tamaño y fecha', d: 'Nordelta, GBA Norte. Cuatro categorías con opciones reales en m².' },
     { n: '02', t: 'Suscribite con tarjeta',  d: 'Mercado Pago, mensualidad automática. Cinco minutos. Sin depósito.' },
     { n: '03', t: 'Gestionás desde tu cuenta', d: 'Pagos, accesos, facturación — todo en el portal con tu QR digital.' },
   ];
@@ -837,7 +842,7 @@ function Testimonials() {
         <div className="mc-testi-side">
           <figure data-reveal="2">
             <div className="stars" aria-label="5 estrellas">★★★★★</div>
-            <blockquote>Tengo dos boxes — uno en Nordelta y otro en Palermo. Los manejo desde la misma cuenta.</blockquote>
+            <blockquote>Tengo dos boxes en Nordelta. Guardo mercadería y muestras por separado. Los manejo desde la misma cuenta.</blockquote>
             <figcaption><span className="avatar">TR</span><div><b>Tomás R.</b><span>PyME · Importación</span></div></figcaption>
           </figure>
           <figure data-reveal="3">
@@ -1114,7 +1119,7 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
           {step === 0 && (
             <>
               <h2 id="wiz-title">¿En qué sucursal?</h2>
-              <p className="lead">Elegí la más cercana. Todas tienen los mismos servicios y acceso 24/7.</p>
+              <p className="lead">Nordelta, GBA Norte. Con más sucursales en camino.</p>
 
               <div className="mc-wiz-how-access">
                 <span className="lbl">Cómo funciona el acceso</span>
@@ -1128,17 +1133,28 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
 
               <div className="mc-wiz-options sucursales">
                 {SUCURSALES.map((s) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    className={`mc-wiz-option ${data.sucursal.id === s.id ? 'selected' : ''}`}
-                    onClick={() => setData({ ...data, sucursal: s })}
-                  >
-                    <span className="name">{s.name}</span>
-                    <span className="range">{s.hood} · {s.address}</span>
-                    <span className="desc">{s.hours}</span>
-                    <span className={`pill-avail ${s.availability.toLowerCase()}`}>Disponibilidad: {s.availability}</span>
-                  </button>
+                  s.comingSoon
+                    ? (
+                      <div key={s.id} className="mc-wiz-option disabled">
+                        <span className="name">{s.name}</span>
+                        <span className="range">{s.hood} · {s.address}</span>
+                        <span className="desc">Apertura próximamente</span>
+                        <span className="pill-avail coming">Próximamente</span>
+                      </div>
+                    )
+                    : (
+                      <button
+                        key={s.id}
+                        type="button"
+                        className={`mc-wiz-option ${data.sucursal.id === s.id ? 'selected' : ''}`}
+                        onClick={() => setData({ ...data, sucursal: s })}
+                      >
+                        <span className="name">{s.name}</span>
+                        <span className="range">{s.hood} · {s.address}</span>
+                        <span className="desc">{s.hours}</span>
+                        <span className="pill-avail alta">Disponible</span>
+                      </button>
+                    )
                 ))}
               </div>
             </>
