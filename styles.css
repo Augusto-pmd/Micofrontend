@@ -3316,41 +3316,65 @@ body   { background: #ffffff; }
 #root  { position: relative; z-index: 2; }
 #mc-aurora-canvas { z-index: 0; }
 
-/* ── Sección "Cómo funciona" — nube flotante ──────────────────── */
-.mc-how { overflow: visible !important; }
+/* ── Sección "Cómo funciona" — caja de cartón flotante ────────── */
 
-.mc-how::before {
-  inset: 12px clamp(12px, 4vw, 56px) !important;
-  background: #ffffff !important;
-  border-radius: 42% 58% 55% 45% / 48% 44% 56% 52% !important;
-  box-shadow:
-    inset 0 2px 0 rgba(255,255,255,0.95),
-    inset 0 -1px 0 rgba(61,48,131,0.04),
-    0 2px  12px  -4px rgba(61,48,131,0.10),
-    0 16px 48px  -8px rgba(61,48,131,0.14),
-    0 48px 96px -24px rgba(61,48,131,0.08) !important;
-
-  /* La nube flota — sube y baja muy despacio */
-  animation: cloud-float 7s ease-in-out infinite !important;
+/* La sección entera flota; tapas y cuerpo se mueven juntos */
+.mc-how {
+  overflow: visible !important;
+  padding-top: 96px !important;
+  animation: box-float 7s ease-in-out infinite !important;
 }
 
-@keyframes cloud-float {
-  0%   { transform: translateY(0px)   rotate(0deg);     border-radius: 42% 58% 55% 45% / 48% 44% 56% 52%;
-         box-shadow: inset 0 2px 0 rgba(255,255,255,0.95), 0 16px 48px -8px rgba(61,48,131,0.14), 0 48px 96px -24px rgba(61,48,131,0.08); }
-  25%  { transform: translateY(-6px)  rotate(0.4deg);   border-radius: 50% 50% 48% 52% / 52% 46% 54% 48%; }
-  50%  { transform: translateY(-11px) rotate(0deg);     border-radius: 45% 55% 60% 40% / 44% 52% 48% 56%;
-         box-shadow: inset 0 2px 0 rgba(255,255,255,0.95), 0 28px 72px -8px rgba(61,48,131,0.18), 0 72px 120px -24px rgba(61,48,131,0.12); }
-  75%  { transform: translateY(-5px)  rotate(-0.3deg);  border-radius: 48% 52% 50% 50% / 50% 48% 52% 50%; }
-  100% { transform: translateY(0px)   rotate(0deg);     border-radius: 42% 58% 55% 45% / 48% 44% 56% 52%;
-         box-shadow: inset 0 2px 0 rgba(255,255,255,0.95), 0 16px 48px -8px rgba(61,48,131,0.14), 0 48px 96px -24px rgba(61,48,131,0.08); }
+@keyframes box-float {
+  0%   { transform: translateY(0px);  filter: drop-shadow(0 24px 48px rgba(61,48,131,0.13)); }
+  50%  { transform: translateY(-12px); filter: drop-shadow(0 40px 72px rgba(61,48,131,0.22)); }
+  100% { transform: translateY(0px);  filter: drop-shadow(0 24px 48px rgba(61,48,131,0.13)); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .mc-how::before { animation: none !important; }
+  .mc-how { animation: none !important; filter: none !important; }
 }
 
-/* El contenido necesita padding lateral para quedar dentro de la nube */
+/* Cuerpo de la caja — interior con líneas de corrugado */
+.mc-how::before {
+  inset: 0 clamp(16px, 4.5vw, 64px) !important;
+  top: 0 !important;
+  background-color: #e8c89a !important;
+  background-image: repeating-linear-gradient(
+    90deg,
+    rgba(140,88,38,0.08) 0px, rgba(140,88,38,0.08) 1px,
+    transparent          1px, transparent          18px
+  ) !important;
+  border: 2.5px solid #a87840 !important;
+  border-top: none !important;
+  border-radius: 0 0 12px 12px !important;
+  box-shadow: inset 0 20px 48px rgba(100,58,18,0.14) !important;
+  animation: none !important;
+}
+
+/* Tapas abiertas — izquierda y derecha con hueco central */
+.mc-how::after {
+  content: '';
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  left:  clamp(16px, 4.5vw, 64px);
+  right: clamp(16px, 4.5vw, 64px);
+  height: 96px;
+  background:
+    linear-gradient(172deg, #b87a38 0%, #d4a262 40%, #e8c89a 100%)
+      0   0 / calc(50% - 6px) 100% no-repeat,
+    linear-gradient(188deg, #b87a38 0%, #d4a262 40%, #e8c89a 100%)
+      100% 0 / calc(50% - 6px) 100% no-repeat;
+  border-top:   2.5px solid #a87840;
+  border-left:  2.5px solid #a87840;
+  border-right: 2.5px solid #a87840;
+}
+
+/* Contenido dentro de la caja — encima de todo */
 .mc-how .mc-how-grid {
-  padding-left:  clamp(20px, 5vw, 72px);
-  padding-right: clamp(20px, 5vw, 72px);
+  position: relative;
+  z-index: 3;
+  padding-left:  clamp(28px, 5vw, 80px);
+  padding-right: clamp(28px, 5vw, 80px);
 }
