@@ -751,7 +751,7 @@ function Guarantees({ onReserve }) {
         <article className="mc-bento-item mc-bento-5" data-reveal="3">
           <div>
             <h3>¿Listo para guardar?</h3>
-            <p>Reservá online en cinco minutos. Sin firmas, sin papeleo.</p>
+            <p>Reservá online en cinco minutos. Firmás el contrato una sola vez al llegar.</p>
           </div>
           <button className="mc-btn mc-btn-green" onClick={onReserve}>
             <span>Reservar ahora</span>
@@ -782,7 +782,7 @@ function SelfService({ onReserve }) {
             <li>Elegís sucursal, tamaño exacto en m² y add-ons</li>
             <li>Suscripción mensual con tarjeta de crédito vía Mercado Pago</li>
             <li>Registrás tu cara una vez desde el portal</li>
-            <li>Sin firmas, sin contratos físicos</li>
+            <li>Contrato físico una sola vez, al llegar</li>
           </ul>
           <button className="mc-btn mc-btn-green" onClick={onReserve}>
             <span>Empezar reserva</span>
@@ -844,7 +844,7 @@ function Testimonials() {
 function FAQ() {
   const [open, setOpen] = useState(0);
   const qa = [
-    { q: '¿Necesito firmar un contrato largo?', a: 'No. Alquilás mes a mes y cancelás cuando quieras, sin permanencia mínima ni cargos por salida anticipada.' },
+    { q: '¿Necesito firmar un contrato?', a: 'Sí, pero una sola vez: firmás el contrato físico la primera vez que venís. Después todo es online — pagos, accesos y cancelación cuando quieras, sin permanencia mínima.' },
     { q: '¿Puedo tener más de un box?',          a: 'Sí. Podés tener tantas reservas como necesites, incluso en distintas sucursales. Las manejás todas desde la misma cuenta.' },
     { q: '¿Cómo pago?',                          a: 'Suscripción mensual con tarjeta de crédito a través de Mercado Pago. Te cobramos automáticamente cada mes mientras tu cuenta esté activa. Cancelás cuando quieras desde el portal. Los precios incluyen IVA.' },
     { q: '¿Cómo accedo al box?',                 a: 'Con reconocimiento facial. Subís una selfie desde el portal, el sistema registra tu cara y desde ese momento entrás mirando la cámara de la entrada. Sin turno, sin tarjeta, sin nada. Funciona 24/7.' },
