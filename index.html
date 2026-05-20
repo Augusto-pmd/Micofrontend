@@ -86,13 +86,13 @@
     resize();
     window.addEventListener('resize', resize);
 
-    // violetBoost: cuánto se intensifica ese ribbon cuando la nube está en pantalla
+    // alpha más bajos + violetBoost suave = colores naturales, no eléctricos
     var ribbons = [
-      { yBase:0.07, amp:0.055, freq:0.0032, speed:0.00022, phase:0.0, thick:0.20, alpha:0.28, scrollShift:0.40, violetBoost:0.30, c1:[61,48,131],  c2:[94,202,0]   },
-      { yBase:0.03, amp:0.040, freq:0.0025, speed:0.00016, phase:2.1, thick:0.14, alpha:0.22, scrollShift:0.60, violetBoost:0.10, c1:[94,202,0],   c2:[61,48,131]  },
-      { yBase:0.18, amp:0.065, freq:0.0040, speed:0.00027, phase:4.0, thick:0.13, alpha:0.20, scrollShift:0.28, violetBoost:0.22, c1:[80,55,180],  c2:[40,195,115] },
-      { yBase:0.22, amp:0.050, freq:0.0028, speed:0.00019, phase:1.4, thick:0.10, alpha:0.17, scrollShift:0.50, violetBoost:0.08, c1:[40,195,115], c2:[61,48,131]  },
-      { yBase:0.12, amp:0.045, freq:0.0048, speed:0.00032, phase:5.5, thick:0.09, alpha:0.15, scrollShift:0.35, violetBoost:0.18, c1:[100,70,200], c2:[94,202,0]   },
+      { yBase:0.07, amp:0.055, freq:0.0032, speed:0.00022, phase:0.0, thick:0.20, alpha:0.14, scrollShift:0.40, violetBoost:0.10, c1:[61,48,131],  c2:[94,202,0]   },
+      { yBase:0.03, amp:0.040, freq:0.0025, speed:0.00016, phase:2.1, thick:0.14, alpha:0.11, scrollShift:0.60, violetBoost:0.05, c1:[94,202,0],   c2:[61,48,131]  },
+      { yBase:0.18, amp:0.065, freq:0.0040, speed:0.00027, phase:4.0, thick:0.13, alpha:0.10, scrollShift:0.28, violetBoost:0.08, c1:[80,55,180],  c2:[40,195,115] },
+      { yBase:0.22, amp:0.050, freq:0.0028, speed:0.00019, phase:1.4, thick:0.10, alpha:0.09, scrollShift:0.50, violetBoost:0.04, c1:[40,195,115], c2:[61,48,131]  },
+      { yBase:0.12, amp:0.045, freq:0.0048, speed:0.00032, phase:5.5, thick:0.09, alpha:0.08, scrollShift:0.35, violetBoost:0.06, c1:[100,70,200], c2:[94,202,0]   },
     ];
 
     var scrollSmooth  = 0;
