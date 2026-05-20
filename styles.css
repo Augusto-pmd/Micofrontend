@@ -3334,6 +3334,5 @@ body   { background: #ffffff; }
 .mc-how-box-img {
   width: 100%;
   display: block;
-  /* Fondo blanco desaparece: blanco × blanco = blanco, cartón × blanco = cartón */
-  mix-blend-mode: multiply;
+  /* El JS elimina el fondo blanco pixel a pixel */
 }

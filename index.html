@@ -72,6 +72,42 @@
   <canvas id="mc-aurora-canvas" aria-hidden="true" style="position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;filter:blur(22px);"></canvas>
   <div id="root"></div>
   <script>
+  /* Elimina el fondo blanco de la imagen de la caja — pixel a pixel */
+  (function() {
+    function removeBg() {
+      var img = document.getElementById('how-box-img');
+      if (!img) return;
+      function process() {
+        try {
+          var c = document.createElement('canvas');
+          c.width = img.naturalWidth; c.height = img.naturalHeight;
+          var ctx = c.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          var d = ctx.getImageData(0, 0, c.width, c.height), px = d.data;
+          for (var i = 0; i < px.length; i += 4) {
+            var r = px[i], g = px[i+1], b = px[i+2];
+            /* Brillo del pixel: cerca de blanco = fondo */
+            var brightness = (r + g + b) / 3;
+            /* Saturación: píxeles de fondo son casi grises/blancos */
+            var maxC = Math.max(r,g,b), minC = Math.min(r,g,b);
+            var sat = maxC > 0 ? (maxC - minC) / maxC : 0;
+            /* Si es muy brillante Y poco saturado → fondo */
+            if (brightness > 230 && sat < 0.08) {
+              var fade = (brightness - 230) / 25; /* suaviza el borde */
+              px[i+3] = Math.round(px[i+3] * Math.max(0, 1 - fade));
+            }
+          }
+          ctx.putImageData(d, 0, 0);
+          img.src = c.toDataURL('image/png');
+        } catch(e) { console.warn('removeBg:', e); }
+      }
+      if (img.complete && img.naturalWidth) process(); else img.onload = process;
+    }
+    document.addEventListener('DOMContentLoaded', removeBg);
+  })();
+  </script>
+
+  <script>
   (function() {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
