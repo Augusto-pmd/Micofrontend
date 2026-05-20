@@ -568,7 +568,7 @@ function Hero({ onReserve }) {
 
       <div className="mc-hero-grid" data-reveal>
         <p className="mc-hero-lead">
-          Alquilá un espacio para guardar tus cosas en Buenos Aires. Reservá en 5 minutos, pagás mensual con tarjeta y accedés 24/7 con tu QR — todo online, sin llamar a nadie.
+          Alquilá un espacio para guardar tus cosas en Buenos Aires. Reservá en 5 minutos, pagás mensual con tarjeta y accedés 24/7 por reconocimiento facial — todo online, sin llamar a nadie.
         </p>
         <div className="mc-hero-actions">
           <div className="row">
@@ -695,7 +695,7 @@ function How() {
   const steps = [
     { n: '01', t: 'Elegí tamaño y fecha', d: 'Nordelta, GBA Norte. Cuatro categorías con opciones reales en m².' },
     { n: '02', t: 'Suscribite con tarjeta',  d: 'Mercado Pago, mensualidad automática. Cinco minutos. Sin depósito.' },
-    { n: '03', t: 'Gestionás desde tu cuenta', d: 'Pagos, accesos, facturación — todo en el portal con tu QR digital.' },
+    { n: '03', t: 'Gestionás desde tu cuenta', d: 'Pagos, accesos, facturación — todo en el portal. El acceso es por reconocimiento facial.' },
   ];
   return (
     <section className="mc-how" id="how">
@@ -796,7 +796,7 @@ function SelfService({ onReserve }) {
           <ul>
             <li>Elegís sucursal, tamaño exacto en m² y add-ons</li>
             <li>Suscripción mensual con tarjeta de crédito vía Mercado Pago</li>
-            <li>Recibís tu credencial QR al instante</li>
+            <li>Registrás tu cara una vez desde el portal</li>
             <li>Sin firmas, sin contratos físicos</li>
           </ul>
           <button className="mc-btn mc-btn-green" onClick={onReserve}>
@@ -809,7 +809,7 @@ function SelfService({ onReserve }) {
           <h3>Gestioná todo desde tu cuenta.</h3>
           <ul>
             <li>Múltiples reservas en distintas sucursales</li>
-            <li>Acceso 24/7 con QR digital</li>
+            <li>Acceso 24/7 por reconocimiento facial</li>
             <li>Cambiar de tamaño con un click</li>
             <li>Pausar o cancelar cuando quieras</li>
           </ul>
@@ -862,7 +862,7 @@ function FAQ() {
     { q: '¿Necesito firmar un contrato largo?', a: 'No. Alquilás mes a mes y cancelás cuando quieras, sin permanencia mínima ni cargos por salida anticipada.' },
     { q: '¿Puedo tener más de un box?',          a: 'Sí. Podés tener tantas reservas como necesites, incluso en distintas sucursales. Las manejás todas desde la misma cuenta.' },
     { q: '¿Cómo pago?',                          a: 'Suscripción mensual con tarjeta de crédito a través de Mercado Pago. Te cobramos automáticamente cada mes mientras tu cuenta esté activa. Cancelás cuando quieras desde el portal. Los precios incluyen IVA.' },
-    { q: '¿Cómo accedo al box?',                 a: 'Con un QR personal generado desde tu cuenta. Lo escaneás en el ingreso y entrás. Funciona 24/7.' },
+    { q: '¿Cómo accedo al box?',                 a: 'Con reconocimiento facial. Subís una selfie desde el portal, el sistema registra tu cara y desde ese momento entrás mirando la cámara de la entrada. Sin turno, sin tarjeta, sin nada. Funciona 24/7.' },
     { q: '¿Cómo aplican las promos?',            a: 'Se aplican automáticamente al hacer la reserva si cumplís los requisitos. El primer mes gratis aplica siempre; la mudanza gratis desde 10 m² al elegir "retiro a domicilio".' },
     { q: '¿Puedo cambiar de tamaño después?',    a: 'Sí. Desde el portal cambiás de tamaño sin penalidad. Si crece tu necesidad o si querés achicar, lo hacés con un click.' },
     { q: '¿Qué no puedo guardar?',               a: 'Materiales inflamables, tóxicos, alimentos perecederos, seres vivos y productos ilegales. El resto, todo.' },
@@ -1125,8 +1125,8 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
                 <span className="lbl">Cómo funciona el acceso</span>
                 <div className="steps">
                   <div><span className="n">1</span><span>Reservás online y pagás con tarjeta</span></div>
-                  <div><span className="n">2</span><span>Te enviamos un <b>QR personal</b> por email</span></div>
-                  <div><span className="n">3</span><span>Lo mostrás en el ingreso y entrás — las 24 hs, sin turno</span></div>
+                  <div><span className="n">2</span><span>Subís una <b>selfie</b> desde el portal para registrar tu cara</span></div>
+                  <div><span className="n">3</span><span>Mirás la cámara en el ingreso y entrás — las 24 hs, sin turno</span></div>
                   <div><span className="n">4</span><span>Gestionás todo (pagos, accesos, facturas) desde tu cuenta online</span></div>
                 </div>
               </div>
@@ -1429,9 +1429,9 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
 
               <div className="mc-wiz-next-steps">
                 <span className="lbl">¿Qué pasa ahora?</span>
-                <div className="step"><span className="n">1</span><span>Te llega un email con tu <b>QR de acceso</b> y el comprobante de pago.</span></div>
+                <div className="step"><span className="n">1</span><span>Te llega un email de confirmación con el comprobante de pago.</span></div>
                 <div className="step"><span className="n">2</span><span>El día <b>{data.startDate}</b> tu espacio queda activo en <b>{data.sucursal.name}</b>.</span></div>
-                <div className="step"><span className="n">3</span><span>Ingresás mostrando el QR en el lector de la entrada — sin turno, sin esperar.</span></div>
+                <div className="step"><span className="n">3</span><span>Mirás la cámara en la entrada — el sistema te reconoce y abre. Sin turno, sin esperar.</span></div>
                 <div className="step"><span className="n">4</span><span>Cada mes Mercado Pago cobra automáticamente. Cancelás desde el portal cuando quieras.</span></div>
               </div>
 
