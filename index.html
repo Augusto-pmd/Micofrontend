@@ -86,33 +86,31 @@
     resize();
     window.addEventListener('resize', resize);
 
-    // Los ribbons que te gustaban — misma velocidad, colores y forma de onda.
-    // scrollShift: cuánto baja cada cinta cuando llegás al final de la página (en fracción de H).
-    // Valores distintos = efecto parallax → al bajar, las cintas se separan y crecen.
+    // violetBoost: cuánto se intensifica ese ribbon cuando la nube está en pantalla
     var ribbons = [
-      { yBase:0.07, amp:0.055, freq:0.0032, speed:0.00022, phase:0.0, thick:0.20, alpha:0.28, scrollShift:0.40, c1:[61,48,131],  c2:[94,202,0]   },
-      { yBase:0.03, amp:0.040, freq:0.0025, speed:0.00016, phase:2.1, thick:0.14, alpha:0.22, scrollShift:0.60, c1:[94,202,0],   c2:[61,48,131]  },
-      { yBase:0.18, amp:0.065, freq:0.0040, speed:0.00027, phase:4.0, thick:0.13, alpha:0.20, scrollShift:0.28, c1:[80,55,180],  c2:[40,195,115] },
-      { yBase:0.22, amp:0.050, freq:0.0028, speed:0.00019, phase:1.4, thick:0.10, alpha:0.17, scrollShift:0.50, c1:[40,195,115], c2:[61,48,131]  },
-      { yBase:0.12, amp:0.045, freq:0.0048, speed:0.00032, phase:5.5, thick:0.09, alpha:0.15, scrollShift:0.35, c1:[100,70,200], c2:[94,202,0]   },
+      { yBase:0.07, amp:0.055, freq:0.0032, speed:0.00022, phase:0.0, thick:0.20, alpha:0.28, scrollShift:0.40, violetBoost:0.30, c1:[61,48,131],  c2:[94,202,0]   },
+      { yBase:0.03, amp:0.040, freq:0.0025, speed:0.00016, phase:2.1, thick:0.14, alpha:0.22, scrollShift:0.60, violetBoost:0.10, c1:[94,202,0],   c2:[61,48,131]  },
+      { yBase:0.18, amp:0.065, freq:0.0040, speed:0.00027, phase:4.0, thick:0.13, alpha:0.20, scrollShift:0.28, violetBoost:0.22, c1:[80,55,180],  c2:[40,195,115] },
+      { yBase:0.22, amp:0.050, freq:0.0028, speed:0.00019, phase:1.4, thick:0.10, alpha:0.17, scrollShift:0.50, violetBoost:0.08, c1:[40,195,115], c2:[61,48,131]  },
+      { yBase:0.12, amp:0.045, freq:0.0048, speed:0.00032, phase:5.5, thick:0.09, alpha:0.15, scrollShift:0.35, violetBoost:0.18, c1:[100,70,200], c2:[94,202,0]   },
     ];
 
-    // Scroll suavizado — se interpola para que el movimiento sea fluido, no brusco
-    var scrollSmooth = 0;
+    var scrollSmooth  = 0;
+    var howProximity  = 0;  // 0 = lejos de la nube, 1 = centrada en pantalla
+    var howEl         = document.getElementById('how');
 
     function rgba(c, a) { return 'rgba('+c[0]+','+c[1]+','+c[2]+','+a+')'; }
 
-    function drawRibbon(r, t, scrollP) {
-      // Cada cinta baja según su propio scrollShift (parallax) y crece en grosor
+    function drawRibbon(r, t, scrollP, vBoost) {
       var yShift   = scrollP * r.scrollShift;
-      var thickMul = 1 + scrollP * 1.2;          // crece hasta 2.2× al llegar abajo
+      var thickMul = 1 + scrollP * 1.2;
       var y0    = H * (r.yBase + yShift);
       var amp   = H * r.amp;
       var thick = H * r.thick * thickMul;
+      // Alpha aumenta según la proximidad a la nube × el boost propio de cada ribbon
+      var a = r.alpha + r.violetBoost * vBoost;
 
-      // borde superior
       function topY(x) { return y0 + amp * Math.sin(x * r.freq + t * r.speed + r.phase); }
-      // borde inferior: onda levemente desfasada + grosor
       function botY(x) { return y0 + thick + amp * 0.8 * Math.sin(x * r.freq + t * r.speed * 0.88 + r.phase + 0.35); }
 
       ctx.beginPath();
@@ -122,13 +120,12 @@
       for (var x = W; x >= 0; x -= 3) { ctx.lineTo(x, botY(x)); }
       ctx.closePath();
 
-      // Gradiente horizontal: color1 → color2 → color1, fade en los bordes
       var g = ctx.createLinearGradient(0, 0, W, 0);
       g.addColorStop(0,    rgba(r.c1, 0));
-      g.addColorStop(0.10, rgba(r.c1, r.alpha));
-      g.addColorStop(0.38, rgba(r.c2, r.alpha));
-      g.addColorStop(0.62, rgba(r.c1, r.alpha * 0.9));
-      g.addColorStop(0.88, rgba(r.c2, r.alpha));
+      g.addColorStop(0.10, rgba(r.c1, a));
+      g.addColorStop(0.38, rgba(r.c2, a));
+      g.addColorStop(0.62, rgba(r.c1, a * 0.9));
+      g.addColorStop(0.88, rgba(r.c2, a));
       g.addColorStop(1,    rgba(r.c1, 0));
 
       ctx.fillStyle = g;
@@ -137,14 +134,22 @@
 
     var raf = null;
     function draw() {
-      // Scroll normalizado 0→1, con interpolación suave (lerp)
       var maxScroll = Math.max(1, document.body.scrollHeight - window.innerHeight);
-      var targetScroll = window.scrollY / maxScroll;
-      scrollSmooth += (targetScroll - scrollSmooth) * 0.04;
+      scrollSmooth += (window.scrollY / maxScroll - scrollSmooth) * 0.04;
+
+      // Proximidad de la sección "Cómo funciona" al centro del viewport (0→1→0)
+      if (howEl) {
+        var rect   = howEl.getBoundingClientRect();
+        var center = rect.top + rect.height / 2;
+        var dist   = Math.abs(center - H / 2);
+        var range  = H / 2 + rect.height / 2;
+        var raw    = Math.max(0, 1 - dist / range);
+        howProximity += (raw - howProximity) * 0.04;  // lerp suave
+      }
 
       ctx.clearRect(0, 0, W, H);
       var t = performance.now();
-      for (var i = 0; i < ribbons.length; i++) drawRibbon(ribbons[i], t, scrollSmooth);
+      for (var i = 0; i < ribbons.length; i++) drawRibbon(ribbons[i], t, scrollSmooth, howProximity);
       raf = requestAnimationFrame(draw);
     }
     draw();
