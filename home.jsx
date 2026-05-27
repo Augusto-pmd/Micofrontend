@@ -6,23 +6,35 @@ const { useState, useEffect, useMemo, useRef, useCallback } = React;
 // ─── Mercado Pago API ──────────────────────────────────────────────────────
 const MC_API = 'https://us-central1-mc-nordelta-2026.cloudfunctions.net/api';
 
-async function _getFirebaseToken() {
-  const { getAuth } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
-  const user = getAuth().currentUser;
-  if (!user) throw new Error('Necesitás iniciar sesión para reservar.');
-  return user.getIdToken();
+// Intenta obtener un token Firebase si el usuario está logueado.
+// Si no hay sesión activa, devuelve null (guest checkout).
+async function _tryGetFirebaseToken() {
+  try {
+    const { getAuth } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+    const user = getAuth().currentUser;
+    if (!user) return null;
+    return user.getIdToken();
+  } catch {
+    return null;
+  }
 }
 
+// Crea una reserva en el backend.
+// Si el usuario está logueado con Firebase, envía el Bearer token.
+// Si no, envía los datos del cliente en el body (guest checkout).
 async function crearReserva(payload) {
-  const token = await _getFirebaseToken();
+  const token = await _tryGetFirebaseToken();
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
   const res = await fetch(`${MC_API}/reservations`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    headers,
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || `Error ${res.status}`);
+    throw new Error(err.error || err.detail || `Error ${res.status}`);
   }
   return res.json(); // { reservationId, initPoint }
 }
@@ -1078,6 +1090,11 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
         duration:   data.duration || 1,
         addons:     (data.addons || []).map(a => a.key || a),
         promosApplied: promos.map(p => ({ key: p.key, badge: p.badge, name: p.name })),
+        // Datos del cliente (para guest checkout sin Firebase Auth)
+        name:  data.name?.trim()  || '',
+        email: data.email?.trim().toLowerCase() || '',
+        phone: data.phone?.trim() || '',
+        dni:   data.dni?.replace(/\D/g, '') || '',
       }).then(({ reservationId, initPoint }) => {
         // Guardar reserva pendiente localmente y redirigir a MP
         const u = {
