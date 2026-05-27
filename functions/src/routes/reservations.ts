@@ -9,7 +9,7 @@ export const reservationsRouter = Router();
 
 const REQUIRED_FIELDS = ['sucursalId', 'category', 'm2', 'monthly', 'firstMonth', 'startDate', 'duration'];
 
-const BACK_URL = 'https://augusto-pmd.github.io/Micofrontend/#/portal';
+const BACK_URL = 'https://micontainer.com/#/portal';
 
 // POST /reservations — create reservation + start MP subscription
 reservationsRouter.post('/', requireAuth, async (req, res: Response) => {

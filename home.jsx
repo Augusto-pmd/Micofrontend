@@ -3,6 +3,30 @@
 
 const { useState, useEffect, useMemo, useRef, useCallback } = React;
 
+// ─── Mercado Pago API ──────────────────────────────────────────────────────
+const MC_API = 'https://us-central1-mc-nordelta-2026.cloudfunctions.net/api';
+
+async function _getFirebaseToken() {
+  const { getAuth } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+  const user = getAuth().currentUser;
+  if (!user) throw new Error('Necesitás iniciar sesión para reservar.');
+  return user.getIdToken();
+}
+
+async function crearReserva(payload) {
+  const token = await _getFirebaseToken();
+  const res = await fetch(`${MC_API}/reservations`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Error ${res.status}`);
+  }
+  return res.json(); // { reservationId, initPoint }
+}
+
 // ─────────────────────────────────────────────────────────────────
 // Contacto real (del flyer Mayo 2026)
 // ─────────────────────────────────────────────────────────────────
@@ -1041,23 +1065,34 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
   const next = () => {
     if (step === 4) {
       if (!validateData()) return;
-      // Simulate MP checkout flow
       setPaying(true);
-      setTimeout(() => {
+
+      // ── Flujo real: crear reserva en Firebase + redirigir a Mercado Pago ──
+      crearReserva({
+        sucursalId: data.sucursal?.id || 'nordelta',
+        category:   data.category?.label || data.category?.key || '',
+        m2:         data.option?.m2 || 0,
+        monthly:    totals.monthlyEff,
+        firstMonth: totals.firstMonth,
+        startDate:  data.startDate,
+        duration:   data.duration || 1,
+        addons:     (data.addons || []).map(a => a.key || a),
+        promosApplied: promos.map(p => ({ key: p.key, badge: p.badge, name: p.name })),
+      }).then(({ reservationId, initPoint }) => {
+        // Guardar reserva pendiente localmente y redirigir a MP
         const u = {
           ...user,
-          name: data.name.trim(),
-          email: data.email.trim().toLowerCase(),
-          phone: data.phone,
-          dni: data.dni,
+          name:  data.name?.trim()  || user?.name  || '',
+          email: data.email?.trim().toLowerCase() || user?.email || '',
+          phone: data.phone || user?.phone || '',
+          dni:   data.dni   || user?.dni   || '',
           provider: user?.provider || 'email',
         };
         store.setUser(u);
-        const code = generateCode();
-        const reservation = {
-          id: code,
+        store.addReservation({
+          id: reservationId,
           userEmail: u.email,
-          status: 'active',
+          status: 'pending_payment',
           sucursal: data.sucursal,
           category: data.category,
           option: data.option,
@@ -1068,13 +1103,15 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
           monthlyBase: data.option.monthly,
           firstMonth: totals.firstMonth,
           payment: data.payment,
-          promosApplied: promos.map((p) => ({ key: p.key, badge: p.badge, name: p.name })),
+          promosApplied: promos.map(p => ({ key: p.key, badge: p.badge, name: p.name })),
           createdAt: new Date().toISOString(),
-        };
-        store.addReservation(reservation);
+        });
+        // Redirigir a la página de pago de Mercado Pago
+        window.location.href = initPoint;
+      }).catch(err => {
         setPaying(false);
-        setStep(5);
-      }, 1800);
+        alert('No se pudo iniciar el pago: ' + (err.message || err));
+      });
       return;
     }
     setStep(step + 1);
