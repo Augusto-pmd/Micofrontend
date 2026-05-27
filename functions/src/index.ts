@@ -22,8 +22,11 @@ const app = express();
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:3000',
+  'http://localhost:8080',
   'https://admin-panel-ten-pied.vercel.app',
   'https://augusto-pmd.github.io',
+  'https://micontainer.com',
+  'https://www.micontainer.com',
 ];
 
 app.use(
@@ -64,6 +67,10 @@ app.use('/inventory', inventoryRouter);
 app.use('/seed', seedRouter);
 
 export const api = onRequest(
-  { region: 'us-central1', memory: '256MiB' },
+  {
+    region: 'us-central1',
+    memory: '256MiB',
+    secrets: ['MP_ACCESS_TOKEN', 'MP_WEBHOOK_SECRET'],
+  },
   app
 );

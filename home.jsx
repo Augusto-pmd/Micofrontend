@@ -67,7 +67,7 @@ const GOOGLE_CLIENT_ID = '';
 //   Credenciales de producción → Public Key (prefijo APP_USR-...)
 //   Pegar acá ↓ (la integración real requiere backend para crear la preference)
 // ─────────────────────────────────────────────────────────────────
-const MERCADOPAGO_PUBLIC_KEY = '';
+const MERCADOPAGO_PUBLIC_KEY = 'APP_USR-b2352e9e-d851-455a-9f8e-018254f73ffa';
 
 // ─────────────────────────────────────────────────────────────────
 // Categorías con opciones reales (precios de Nordelta · Mayo 2026)
