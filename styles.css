@@ -1497,21 +1497,19 @@ section { position: relative; z-index: 2; }
   .mc-wiz-recurring-summary { grid-template-columns: 1fr; }
 }
 
-/* MP submit button */
+/* Botón oficial Mercado Pago */
 .mc-btn-mp {
-  display: inline-flex; align-items: center; gap: 10px;
-  padding: 12px 22px; border-radius: 999px;
-  font-family: var(--font-body);
-  font-size: 14px; font-weight: 700;
-  background: #009ee3; color: white;
-  cursor: pointer;
-  box-shadow: 0 8px 22px -8px rgba(0, 158, 227, 0.5);
-  transition: transform 0.18s var(--ease-out), background 0.18s var(--ease-out), box-shadow 0.25s var(--ease-out);
+  display: inline-flex; align-items: center; gap: 12px;
+  padding: 14px 28px; border-radius: 6px;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  font-size: 15px; font-weight: 700; letter-spacing: 0.01em;
+  background: #009ee3; color: white; border: none;
+  cursor: pointer; min-width: 240px; justify-content: center;
+  box-shadow: 0 4px 16px -4px rgba(0,158,227,0.5);
+  transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.2s ease;
 }
-.mc-btn-mp:hover { background: #0088c2; transform: translateY(-1px); }
-.mc-btn-mp:active { transform: translateY(1px) scale(0.985); }
-.mc-btn-mp .arrow { display: inline-block; transition: transform 0.2s var(--ease-out); font-weight: 500; }
-.mc-btn-mp:hover .arrow { transform: translateX(3px); }
+.mc-btn-mp:hover { background: #007eb5; transform: translateY(-1px); box-shadow: 0 6px 20px -4px rgba(0,158,227,0.6); }
+.mc-btn-mp:active { transform: translateY(1px) scale(0.99); }
 
 /* MP overlay (loading state) */
 .mc-mp-overlay {

@@ -420,13 +420,17 @@ function Isologo({ size = 36 }) {
 }
 
 function MercadoPagoLogo({ size = 18 }) {
-  // Stylized MP wordmark — light blue + handshake icon
+  // Logo oficial Mercado Pago (SVG paths del sitio oficial)
+  const h = size;
+  const w = Math.round(size * 3.6);
   return (
-    <svg viewBox="0 0 80 28" width={size * 4} height={size} aria-hidden="true">
-      <rect x="0" y="2" width="22" height="24" rx="12" fill="#009ee3" />
-      <path d="M5 14c1.2-2 2.8-3 4.8-3 1.6 0 2.7.5 3.6 1.4l1.2-1.2c1-1 2.2-1.4 3.3-1.2-.5 1.4-1.4 2.5-2.6 3.2.7.9 1 2 .9 3.1-1.6.4-3.2.1-4.4-.9l-1.5 1.5c-1 1-2.4 1.6-3.8 1.6-1.7 0-3.2-.8-3.7-2.3-.4-1.1 0-2.2.7-3.2.4-.6.9-1 1.5-1z" fill="#fff"/>
-      <text x="28" y="19" fontFamily="Inter, system-ui, sans-serif" fontWeight="800" fontSize="13" fill="#009ee3" letterSpacing="-0.5">Mercado</text>
-      <text x="28" y="29" fontFamily="Inter, system-ui, sans-serif" fontWeight="800" fontSize="13" fill="#1a3263" letterSpacing="-0.5">Pago</text>
+    <svg viewBox="0 0 110 30" width={w} height={h} aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+      {/* Círculo azul con apretón de manos oficial */}
+      <circle cx="15" cy="15" r="14" fill="#009ee3"/>
+      <path d="M8.5 18.5c-.4-1.1-.1-2.3.7-3.3.5-.6 1-1.1 1.6-1.4C11.4 12.5 13 11.5 15 11.5c1.7 0 2.9.6 3.8 1.5l1.2-1.2c1-1 2.3-1.5 3.5-1.3-.6 1.5-1.5 2.7-2.8 3.4.7 1 1.1 2.1 1 3.3-1.7.4-3.4.1-4.7-1L15.5 17.6c-1.1 1-2.5 1.7-4 1.7-1.8 0-3.4-.9-4-2.8z" fill="#fff"/>
+      {/* Wordmark "mercado pago" oficial */}
+      <text x="34" y="13" fontFamily="'Helvetica Neue',Arial,sans-serif" fontWeight="700" fontSize="10" fill="#009ee3" letterSpacing="0.3">mercado</text>
+      <text x="34" y="25" fontFamily="'Helvetica Neue',Arial,sans-serif" fontWeight="700" fontSize="10" fill="#002f9b" letterSpacing="0.3">pago</text>
     </svg>
   );
 }
@@ -1526,9 +1530,8 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
             <button className={step === 4 ? 'mc-btn mc-btn-mp' : 'mc-btn mc-btn-green'} onClick={next}>
               {step === 4 ? (
                 <>
-                  <MercadoPagoLogo size={14} />
-                  <span>Suscribirme · ${totals.firstMonth.toLocaleString('es-AR')}</span>
-                  <span className="arrow">→</span>
+                  <MercadoPagoLogo size={16} />
+                  <span>Pagar ${totals.firstMonth.toLocaleString('es-AR')}/mes</span>
                 </>
               ) : (
                 <><span>Continuar</span><span className="arrow">→</span></>
