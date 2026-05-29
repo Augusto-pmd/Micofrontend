@@ -1504,7 +1504,7 @@ section { position: relative; z-index: 2; }
   font-family: 'Helvetica Neue', Arial, sans-serif;
   font-size: 15px; font-weight: 700; letter-spacing: 0.01em;
   background: #009ee3; color: white; border: none;
-  cursor: pointer; min-width: 240px; justify-content: center;
+  cursor: pointer; justify-content: center;
   box-shadow: 0 4px 16px -4px rgba(0,158,227,0.5);
   transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.2s ease;
 }
@@ -2330,7 +2330,7 @@ section { position: relative; z-index: 2; }
 }
 
 .mc-wiz-foot {
-  display: flex; justify-content: space-between; gap: 12px;
+  display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px;
   padding: 20px 40px;
   background: rgba(255, 255, 255, 0.5);
   border-top: 1px solid var(--mc-line-2);
