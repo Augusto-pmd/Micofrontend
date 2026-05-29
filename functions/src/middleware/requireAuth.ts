@@ -7,6 +7,30 @@ export interface AuthenticatedRequest extends Request {
 }
 
 /**
+ * Optional auth: tries to verify the Firebase JWT.
+ * If valid, attaches uid and email to request.
+ * If missing or invalid, continues as guest (uid/email will be empty strings).
+ */
+export async function optionalAuth(
+  req: Request,
+  _res: Response,
+  next: NextFunction
+): Promise<void> {
+  const header = req.headers.authorization;
+  if (header?.startsWith('Bearer ')) {
+    const token = header.slice('Bearer '.length);
+    try {
+      const decoded = await auth.verifyIdToken(token);
+      (req as AuthenticatedRequest).uid   = decoded.uid;
+      (req as AuthenticatedRequest).email = decoded.email ?? '';
+    } catch {
+      // token inválido → continuar como guest
+    }
+  }
+  next();
+}
+
+/**
  * Verifies the Firebase JWT in the Authorization header.
  * If valid, attaches uid and email to request and calls next().
  * If not, responds 401.

@@ -1,9 +1,10 @@
 import { Router, Response } from 'express';
-import { requireAuth, AuthenticatedRequest } from '../middleware/requireAuth';
+import { requireAuth, optionalAuth, AuthenticatedRequest } from '../middleware/requireAuth';
 import { createReservation, getUserReservations, getReservation, updateReservation } from '../models/reservation.model';
 import { createSubscription, cancelSubscription } from '../services/mercadopago.service';
 import { generateReservationId } from '../utils/generateId';
 import * as admin from 'firebase-admin';
+import * as crypto from 'crypto';
 
 export const reservationsRouter = Router();
 
@@ -12,8 +13,20 @@ const REQUIRED_FIELDS = ['sucursalId', 'category', 'm2', 'monthly', 'firstMonth'
 const BACK_URL = 'https://micontainer.com/#/portal';
 
 // POST /reservations — create reservation + start MP subscription
-reservationsRouter.post('/', requireAuth, async (req, res: Response) => {
-  const { uid, email } = req as AuthenticatedRequest;
+// Auth is OPTIONAL: logged-in users get linked to their Firebase uid;
+// guests are identified by a deterministic uid derived from their email.
+reservationsRouter.post('/', optionalAuth, async (req, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
+
+  // Resolve uid and email: prefer auth token, fall back to form body
+  const bodyEmail: string = (req.body.email ?? '').trim().toLowerCase();
+  const uid: string  = authReq.uid   || `guest_${crypto.createHash('sha1').update(bodyEmail).digest('hex').slice(0, 16)}`;
+  const email: string = authReq.email || bodyEmail;
+
+  if (!email) {
+    res.status(400).json({ error: 'email is required' });
+    return;
+  }
 
   // Validate required fields
   const missing = REQUIRED_FIELDS.filter((f) => req.body[f] === undefined);
@@ -25,6 +38,7 @@ reservationsRouter.post('/', requireAuth, async (req, res: Response) => {
   const {
     sucursalId, category, m2, monthly, firstMonth,
     startDate, duration, addons = [], promosApplied = [],
+    name = '', phone = '', dni = '',
   } = req.body;
 
   try {
@@ -40,7 +54,7 @@ reservationsRouter.post('/', requireAuth, async (req, res: Response) => {
       backUrl: BACK_URL,
     });
 
-    // Save reservation to Firestore
+    // Save reservation to Firestore (includes guest contact info)
     await createReservation({
       id,
       userUid: uid,
@@ -58,6 +72,11 @@ reservationsRouter.post('/', requireAuth, async (req, res: Response) => {
       mpSubscriptionStatus: 'pending',
       faceEnrollStatus: 'not_started',
       faceEnrollAttempts: 0,
+      // Guest contact info (populated from form when not logged in)
+      customerName:  name  || undefined,
+      customerEmail: email || undefined,
+      customerPhone: phone || undefined,
+      customerDni:   dni   || undefined,
     });
 
     res.status(201).json({ reservationId: id, initPoint });

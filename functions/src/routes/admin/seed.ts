@@ -57,6 +57,31 @@ function generateStorageRooms(buildingId: string, branchId: string): any[] {
   return rooms;
 }
 
+// DELETE /seed/clear — borra todas las colecciones (sin auth para poder usar desde CLI)
+seedRouter.delete('/clear', async (_req: Request, res: Response) => {
+  try {
+    const collections = ['branches', 'buildings', 'storageRooms', 'reservationOrders', 'customers', 'operators', 'pricingRules', 'users'];
+    const deleted: Record<string, number> = {};
+
+    for (const col of collections) {
+      const snapshot = await db.collection(col).get();
+      const CHUNK = 490;
+      const docs = snapshot.docs;
+      for (let i = 0; i < docs.length; i += CHUNK) {
+        const batch = db.batch();
+        docs.slice(i, i + CHUNK).forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }
+      deleted[col] = docs.length;
+    }
+
+    res.json({ message: 'All data cleared', deleted });
+  } catch (err) {
+    console.error('DELETE /seed/clear error:', err);
+    res.status(500).json({ message: 'Internal server error', detail: String(err) });
+  }
+});
+
 // POST /seed/initial
 seedRouter.post('/initial', verifyToken, async (_req: Request, res: Response) => {
   try {

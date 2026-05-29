@@ -23,6 +23,11 @@ export interface Reservation {
   faceEnrollAttempts: number;
   cancelledAt?: FirebaseFirestore.Timestamp;
   createdAt: FirebaseFirestore.Timestamp;
+  // Guest / customer contact info (populated when user is not logged in)
+  customerName?: string;
+  customerEmail?: string;
+  customerPhone?: string;
+  customerDni?: string;
 }
 
 export const reservationsCol = () => db.collection('reservations');
