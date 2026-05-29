@@ -35,10 +35,36 @@ storageRoomsRouter.get('/', verifyToken, async (req: Request, res: Response) => 
     if (buildingId) query = query.where('buildingId', '==', buildingId);
 
     const [snapshot, buildings] = await Promise.all([query.get(), getBuildingMap()]);
-    const all = snapshot.docs.map(d => {
-      const raw = { id: d.id, ...d.data() } as any;
-      return { ...raw, building: buildings[raw.buildingId] || null };
-    });
+    const rawRooms = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as any));
+
+    // Enrich occupied rooms with full tenant/customer data
+    const occupiedContractNums = rawRooms
+      .filter((r: any) => r.contractNumber)
+      .map((r: any) => r.contractNumber as string);
+
+    let customerByContract: Record<string, any> = {};
+    if (occupiedContractNums.length > 0) {
+      const custSnap = await db.collection('customers')
+        .where('contractNumber', 'in', occupiedContractNums.slice(0, 10)) // Firestore limit
+        .get();
+      custSnap.docs.forEach(d => {
+        const cust = { id: d.id, ...d.data() } as any;
+        if (cust.contractNumber) customerByContract[cust.contractNumber] = cust;
+        if (cust.contractNumbers) {
+          cust.contractNumbers.forEach((cn: string) => { customerByContract[cn] = cust; });
+        }
+      });
+    }
+
+    const all = rawRooms.map((raw: any) => ({
+      ...raw,
+      building: buildings[raw.buildingId] || null,
+      tenant: raw.contractNumber ? (customerByContract[raw.contractNumber] || {
+        fullName: raw.currentTenant,
+        contractNumber: raw.contractNumber,
+      }) : null,
+    }));
+
     const total = all.length;
     const start = (page - 1) * limit;
     const data = all.slice(start, start + limit);
@@ -53,12 +79,24 @@ storageRoomsRouter.get('/', verifyToken, async (req: Request, res: Response) => 
 // GET /storage-room/:id
 storageRoomsRouter.get('/:id', verifyToken, async (req: Request, res: Response) => {
   try {
-    const doc = await db.collection('storageRooms').doc(req.params['id']).get();
+    const [doc, buildings] = await Promise.all([
+      db.collection('storageRooms').doc(req.params['id']).get(),
+      getBuildingMap(),
+    ]);
     if (!doc.exists) {
       res.status(404).json({ message: 'Storage room not found' });
       return;
     }
-    res.json({ id: doc.id, ...doc.data() });
+    const raw = { id: doc.id, ...doc.data() } as any;
+    // Get tenant if occupied
+    let tenant = null;
+    if (raw.contractNumber) {
+      const custSnap = await db.collection('customers')
+        .where('contractNumber', '==', raw.contractNumber).limit(1).get();
+      if (!custSnap.empty) tenant = { id: custSnap.docs[0].id, ...custSnap.docs[0].data() };
+    }
+    const result = { ...raw, building: buildings[raw.buildingId] || null, tenant };
+    res.json(result);
   } catch (err) {
     console.error('GET /storage-room/:id error:', err);
     res.status(500).json({ message: 'Internal server error' });

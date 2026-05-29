@@ -62,6 +62,34 @@ const CONTRATOS = [
   { cto:'054',baulera:'A2-034',fecha:'29/5/2026',titular:'Javier Cascasi',dni:'21.565.816',tel:'11 4022-7798',m2:9.00,precio:207900 },
 ];
 
+// Emails reales (02 - BAULERAS ALQUILADAS.xlsx, col H)
+const EMAIL_BY_CTO: Record<string, string> = {
+  '001':'pkitay@gmail.com','002':'tusnackdelivery@gmail.com','003':'gf@palcare.com.ar',
+  '004':'gf@palcare.com.ar','005':'gf@palcare.com.ar','006':'tusnackdelivery@gmail.com',
+  '007':'panchobarreto1972@gmail.com','008':'leonardoperrotta_l@yahoo.com.ar',
+  '009':'bajukpe@yahoo.com.ar','010':'feluf@live.com.ar','011':'marutomasello@gmail.com',
+  '012':'analiarodri1986@gmail.com','013':'lopezg@exodoinformes.com',
+  '014':'gabrielmcubric@hotmail.com','015':'ltproducciones@hotmail.com',
+  '017':'rulolepra@hotmail.com','018':'keglevich@me.com','019':'bernardadeco@gmail.com',
+  '020':'lauritafernandezc@gmail.com','021':'quijano.rosario@gmail.com',
+  '022':'nypablodam@gmail.com','023':'mateopag98@gmail.com',
+  '024':'blummatiassebastian@gmail.com','025':'cecipollola@hotmail.com',
+  '026':'mgabrieladagostino@hotmail.com','027':'sebastian_m04@hotmail.com',
+  '028':'feluss@gmail.com','029':'marcelo@mdnetworks.com.ar','030':'nicolasdbs@msn.com',
+  '031':'sm@hernanmoyano.com','032':'mora_2310@yahoo.com.ar',
+  '033':'rolandomarincovich@gmail.com','034':'danielrobol@inoutcontrol.com.ar',
+  '035':'pcmacloughlin@gmail.com','036':'snocito@icloud.com',
+  '037':'emergencias32@gmail.com','038':'deborasunico@gmail.com',
+  '039':'emergencias32@gmail.com','040':'xime.etchart@gmail.com',
+  '041':'daniel@piedrabuenapropiedades.com','042':'deborasunico@gmail.com',
+  '043':'party2mil@hotmail.com','044':'ruben.sanchezperco@gmail.com',
+  '045':'alicialegaspi1@gmail.com','046':'postscript.arg@gmail.com',
+  '047':'marcecimas@hotmail.com.ar','048':'eduardoraulscolari@yahoo.es',
+  '049':'alejandro_logullo@yahoo.com.ar','050':'arte_y_belleza@yahoo.com.ar',
+  '051':'thehomeshop03@gmail.com','052':'cdiker@dydsi.com.ar',
+  '053':'julietadeco18@gmail.com','054':'jcascasi@gmail.com',
+};
+
 // Precio por m2 (FACTURACION RESUMEN)
 const PRICE_TABLE: Record<string, number> = {
   '1.50': 53550,  '2.00': 71400,   '3.00': 88200,
@@ -252,6 +280,15 @@ seedRouter.post('/nordelta', async (_req: Request, res: Response) => {
     const customerMap = new Map<string, string>(); // dni → customerId
     const customerBatch = db.batch();
 
+    // Build per-customer list of bauleras (some clients have multiple)
+    const customerBauleras = new Map<string, {bauleras: string[], contracts: string[]}>();
+    for (const c of CONTRATOS) {
+      const key = c.dni;
+      if (!customerBauleras.has(key)) customerBauleras.set(key, { bauleras:[], contracts:[] });
+      customerBauleras.get(key)!.bauleras.push(c.baulera);
+      customerBauleras.get(key)!.contracts.push(c.cto);
+    }
+
     for (const c of CONTRATOS) {
       if (!customerMap.has(c.dni)) {
         const custId = `cust-${c.cto}`;
@@ -259,6 +296,7 @@ seedRouter.post('/nordelta', async (_req: Request, res: Response) => {
         const parts = c.titular.split(' ');
         const firstName = parts[0] ?? c.titular;
         const lastName = parts.slice(1).join(' ');
+        const info = customerBauleras.get(c.dni)!;
         const custRef = db.collection('customers').doc(custId);
         customerBatch.set(custRef, {
           firstName,
@@ -268,10 +306,20 @@ seedRouter.post('/nordelta', async (_req: Request, res: Response) => {
           cuit: c.dni.includes('-') ? c.dni : null,
           personType: c.dni.includes('-') ? 'juridica' : 'fisica',
           phone: c.tel === '-' ? '' : c.tel,
-          email: '',
+          email: EMAIL_BY_CTO[c.cto] || '',
           address: '',
           branchId: 'nordelta',
           isActive: true,
+          isApproved: true,
+          // Link bidireccional: el cliente sabe sus bauleras
+          bauleraCodigo: info.bauleras[0],         // baulera principal
+          bauleras: info.bauleras,                  // todas las bauleras (si tiene varias)
+          storageRoomId: info.bauleras[0].replace('-',''),
+          contractNumber: info.contracts[0],
+          contractNumbers: info.contracts,
+          startDate: parseDate(c.fecha),
+          monthlyPrice: c.precio,
+          m2: c.m2,
           createdAt: now,
           updatedAt: now,
         });
