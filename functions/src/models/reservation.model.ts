@@ -1,3 +1,4 @@
+import * as admin from 'firebase-admin';
 import { db } from '../config/firebase';
 
 export type ReservationStatus = 'pending_payment' | 'active' | 'cancelled' | 'payment_failed';
@@ -21,8 +22,8 @@ export interface Reservation {
   mpSubscriptionStatus: MpSubscriptionStatus;
   faceEnrollStatus: FaceEnrollStatus;
   faceEnrollAttempts: number;
-  cancelledAt?: FirebaseFirestore.Timestamp;
-  createdAt: FirebaseFirestore.Timestamp;
+  cancelledAt?: admin.firestore.Timestamp;
+  createdAt: admin.firestore.Timestamp;
   // Guest / customer contact info (populated when user is not logged in)
   customerName?: string;
   customerEmail?: string;
@@ -40,7 +41,7 @@ export async function getReservation(id: string): Promise<Reservation | null> {
 export async function createReservation(data: Omit<Reservation, 'createdAt'>): Promise<Reservation> {
   const reservation: Reservation = {
     ...data,
-    createdAt: FirebaseFirestore.Timestamp.now(),
+    createdAt: admin.firestore.Timestamp.now(),
   };
   await reservationsCol().doc(data.id).set(reservation);
   return reservation;

@@ -49,6 +49,23 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok', version: '2.0.0' });
 });
 
+// ── MP token debug (temp) ────────────────────────────────────────────────────
+app.get('/debug/mp', async (_req, res) => {
+  const token = process.env.MP_ACCESS_TOKEN;
+  if (!token) { res.status(500).json({ error: 'MP_ACCESS_TOKEN not set' }); return; }
+  try {
+    const r = await fetch('https://api.mercadopago.com/users/me', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const body = await r.text();
+    let parsed: unknown = body;
+    try { parsed = JSON.parse(body); } catch { /* keep raw */ }
+    res.json({ status: r.status, tokenPrefix: token.slice(0, 20) + '...', body: parsed });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── Existing public/customer routes ──────────────────────────────────────────
 app.use('/reservations', reservationsRouter);
 app.use('/webhooks/mp', mpWebhookRouter);

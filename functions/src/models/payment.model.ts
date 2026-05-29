@@ -1,3 +1,4 @@
+import * as admin from 'firebase-admin';
 import { db } from '../config/firebase';
 
 export type PaymentStatus = 'approved' | 'pending' | 'rejected' | 'cancelled' | 'refunded';
@@ -14,7 +15,7 @@ export interface Payment {
   currency: string;
   status: PaymentStatus;
   period: string;           // 'YYYY-MM'
-  receivedAt: FirebaseFirestore.Timestamp;
+  receivedAt: admin.firestore.Timestamp;
 }
 
 export const paymentsCol = () => db.collection('payments');
@@ -22,7 +23,7 @@ export const paymentsCol = () => db.collection('payments');
 export async function createPayment(data: Omit<Payment, 'receivedAt'>): Promise<Payment> {
   const payment: Payment = {
     ...data,
-    receivedAt: FirebaseFirestore.Timestamp.now(),
+    receivedAt: admin.firestore.Timestamp.now(),
   };
   await paymentsCol().doc(data.id).set(payment);
   return payment;
