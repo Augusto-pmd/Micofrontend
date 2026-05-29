@@ -1944,7 +1944,7 @@ function ProximoPago({ reservation }) {
   };
 
   const nextDate = calcNextPayment();
-  const monthly = reservation.monthly || 0;
+  const monthly = reservation.monthly || reservation.monthlyPrice || 0;
   const isFailed = reservation.status === 'payment_failed';
 
   const mockHistory = (() => {
@@ -2014,18 +2014,25 @@ function TuEspacio({ reservation, m2Label, catLabel }) {
     .map((k) => ADDONS.find((a) => a.key === k)?.name)
     .filter(Boolean);
 
+  // Para contratos manuales: mostrar baulera real
+  const espacioLabel = reservation.bauleraCodigo
+    ? `${reservation.bauleraCodigo} · ${m2Label}`
+    : `${catLabel} · ${m2Label}`;
+  const edificioLabel = reservation.edificio || null;
+
   return (
     <div className="mc-portal-block mc-espacio">
       <span className="mc-portal-block-title">Tu espacio</span>
       <div className="mc-espacio-grid">
         <div className="mc-espacio-item">
           <span className="lbl">Espacio</span>
-          <b>{catLabel} · {m2Label}</b>
+          <b>{espacioLabel}</b>
+          {edificioLabel && <span>{edificioLabel}</span>}
         </div>
         <div className="mc-espacio-item">
           <span className="lbl">Sucursal</span>
-          <b>{reservation.sucursal?.name}</b>
-          <span>{reservation.sucursal?.address}</span>
+          <b>{reservation.sucursal?.name || 'Nordelta'}</b>
+          <span>{reservation.sucursal?.address || 'Av. de los Lagos 7250, Tigre'}</span>
         </div>
         <div className="mc-espacio-item">
           <span className="lbl">Horarios de atención</span>
@@ -2385,7 +2392,47 @@ function AccesoFacial({ reservation, onUpdate }) {
   );
 }
 
-function ReservationPortal({ reservation, user, initialView, onUpdate, allCategories, onReserve }) {
+// Normaliza contratos del backend (manual/MP) al formato que usa ReservationPortal
+function normalizeReservation(r) {
+  if (!r) return r;
+  // Si ya tiene el formato completo del wizard (tiene category.label y option.m2), dejarlo
+  if (r.category?.label && r.option?.m2) return r;
+
+  const isManual = r.source === 'manual';
+  const catLabel = r.category?.label || r.category || 'Baulera';
+  const m2 = parseFloat(r.m2) || 0;
+  const monthly = r.monthly || r.monthlyPrice || 0;
+  const firstMonth = r.firstMonth || monthly;
+  const bauleraNombre = r.bauleraCodigo || r.storageRoom?.space || '—';
+  const piso = r.storageRoom?.floor || '';
+
+  return {
+    ...r,
+    // Campos normalizados para los componentes internos
+    category: { label: catLabel, key: r.category || 'pequeno' },
+    option:   { m2, monthly, label: `${m2}m²` },
+    monthly,
+    firstMonth,
+    sucursal: r.sucursal || {
+      id:   r.branchId || 'nordelta',
+      name: 'Nordelta',
+      hood: 'GBA Norte',
+      address: 'Av. de los Lagos 7250',
+    },
+    // Datos extra para mostrar en TuEspacio
+    bauleraCodigo: bauleraNombre,
+    edificio: isManual ? `Edificio A · Piso ${piso}` : null,
+    startDate: r.startDate || r.entryDate,
+    // Normalizar status para los statusConfig
+    status: (() => {
+      if (r.status === 'CONFIRMED' || r.status === 'authorized') return 'active';
+      return r.status || 'pending_payment';
+    })(),
+  };
+}
+
+function ReservationPortal({ reservation: rawReservation, user, initialView, onUpdate, allCategories, onReserve }) {
+  const reservation = normalizeReservation(rawReservation);
   const [resizeOpen, setResizeOpen] = useState(initialView === 'cambiar');
   const [cancelStep, setCancelStep] = useState(0); // 0=hidden, 1=confirm, 2=done
 
@@ -2406,7 +2453,12 @@ function ReservationPortal({ reservation, user, initialView, onUpdate, allCatego
   }
 
   const catLabel = reservation.category?.label || reservation.size?.label || '—';
-  const m2Label = reservation.option ? `${formatM2(reservation.option.m2)} m²` : reservation.size?.range || '—';
+  const m2Label = reservation.option
+    ? `${formatM2(reservation.option.m2)} m²`
+    : reservation.size?.range || (reservation.m2 ? `${reservation.m2} m²` : '—');
+  const headerTitle = reservation.bauleraCodigo
+    ? `${reservation.bauleraCodigo} · ${reservation.edificio || reservation.sucursal?.name || 'Nordelta'}`
+    : `${catLabel} · ${reservation.sucursal?.name || 'Nordelta'}`;
 
   const statusConfig = {
     active:                 { label: 'Activa',                                         cls: 'active' },
@@ -2424,9 +2476,10 @@ function ReservationPortal({ reservation, user, initialView, onUpdate, allCatego
           <a className="mc-res-portal-back" href="#/portal">← Tus espacios</a>
           <div className="mc-res-portal-header">
             <div>
-              <h1>{catLabel} <span className="g">· {reservation.sucursal?.name}</span></h1>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.06em' }}>
-                {reservation.id}
+              <h1>{headerTitle}</h1>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.06em', marginTop: 4 }}>
+                {reservation.contractNumber ? `CTO-${reservation.contractNumber}` : reservation.id}
+                {reservation.startDate && ` · Desde ${reservation.startDate}`}
               </div>
             </div>
             <span className={`mc-portal-status ${sc.cls}`}>{sc.label}</span>
