@@ -1332,13 +1332,14 @@ section { position: relative; z-index: 2; }
 
 .mc-wiz-pay-mp-btn__top {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  padding: 14px 18px 10px;
-  background: #009ee3;
+  padding: 16px 18px 12px;
+  background: #fff;
+  border-bottom: 1px solid #d8eefa;
 }
-.mc-mp-official-logo { display: block; filter: brightness(0) invert(1); }
+.mc-mp-official-logo { display: block; }
 .mc-wiz-pay-mp-btn__top .featured-tag {
   padding: 3px 9px; border-radius: 999px;
-  background: rgba(255,255,255,0.25); color: white;
+  background: #009ee3; color: white;
   font-family: var(--font-mono); font-size: 9px; font-weight: 700;
   letter-spacing: 0.1em; text-transform: uppercase;
 }

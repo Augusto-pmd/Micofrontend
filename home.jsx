@@ -1461,10 +1461,10 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
                 >
                   <div className="mc-wiz-pay-mp-btn__top">
                     <img
-                      src="https://http2.mlstatic.com/frontend-assets/ui-navigation/5.18.9/mercadopago/logo__large.png"
+                      src="assets/mp-logo.png"
                       alt="Mercado Pago"
                       className="mc-mp-official-logo"
-                      height="22"
+                      height="28"
                     />
                     <span className="featured-tag">Suscripción mensual</span>
                   </div>
@@ -1527,7 +1527,7 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
         {paying && (
           <div className="mc-mp-overlay" role="status" aria-live="polite">
             <div className="mc-mp-loader">
-              <div className="logo-big"><MercadoPagoLogo size={32} /></div>
+              <div className="logo-big"><img src="assets/mp-logo.png" alt="Mercado Pago" height="48" /></div>
               <div className="spinner" aria-hidden="true"></div>
               <p>Conectando con <b>Mercado Pago</b>…</p>
               <p className="sub">No cierres la ventana. Te redirigimos al checkout seguro.</p>
