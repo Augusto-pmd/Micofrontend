@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { requireAuth, AuthenticatedRequest } from '../../middleware/requireAuth';
+import { requireAuth } from '../../middleware/requireAuth';
 import { db } from '../../config/firebase';
 import * as admin from 'firebase-admin';
 
