@@ -1075,6 +1075,16 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
     if (!/^\S+@\S+\.\S+$/.test(data.email)) e.email = 'Email inválido';
     if (!/^[\d\s\-+()]{8,}$/.test(data.phone)) e.phone = 'Teléfono inválido';
     setErrors(e);
+    // Scroll al primer campo con error para que el usuario lo vea
+    if (Object.keys(e).length > 0) {
+      const firstKey = Object.keys(e)[0];
+      const fieldMap = { name: '#w-name', email: '#w-email', phone: '#w-phone', dni: '#w-dni', razonSocial: '#w-razon', cuit: '#w-cuit' };
+      const el = document.querySelector(fieldMap[firstKey]);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.focus();
+      }
+    }
     return Object.keys(e).length === 0;
   };
 
