@@ -19,6 +19,7 @@ export interface Reservation {
   promosApplied: string[];
   status: ReservationStatus;
   mpPreapprovalId?: string;
+  mpInitPoint?: string;        // URL de checkout MP para retomar el pago
   mpSubscriptionStatus: MpSubscriptionStatus;
   faceEnrollStatus: FaceEnrollStatus;
   faceEnrollAttempts: number;

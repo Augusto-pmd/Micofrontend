@@ -69,6 +69,7 @@ reservationsRouter.post('/', optionalAuth, async (req, res: Response) => {
       promosApplied,
       status: 'pending_payment',
       mpPreapprovalId: preapprovalId,
+      mpInitPoint: initPoint,          // guardamos el link para poder retomar el pago
       mpSubscriptionStatus: 'pending',
       faceEnrollStatus: 'not_started',
       faceEnrollAttempts: 0,

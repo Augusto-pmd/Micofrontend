@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "micofrontend",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["-y", "serve@latest", "-p", "5173", "."],
+      "port": 5173
+    }
+  ]
+}

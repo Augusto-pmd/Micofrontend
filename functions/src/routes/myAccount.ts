@@ -76,6 +76,11 @@ myAccountRouter.get('/', optionalAuth, async (req, res: Response) => {
 
     const mpReservations = mpDocs.map(d => {
       const r = { id: d.id, ...d.data() } as any;
+      // Construir initPoint desde el guardado o desde el preapprovalId como fallback
+      const initPoint = r.mpInitPoint ||
+        (r.mpPreapprovalId
+          ? `https://www.mercadopago.com.ar/subscriptions/checkout?preapproval_id=${r.mpPreapprovalId}`
+          : null);
       return {
         id: d.id,
         contractNumber: null,
@@ -88,6 +93,8 @@ myAccountRouter.get('/', optionalAuth, async (req, res: Response) => {
         status: r.status,
         mpPreapprovalId: r.mpPreapprovalId,
         mpSubscriptionStatus: r.mpSubscriptionStatus,
+        mpInitPoint: initPoint,
+        customerName: r.customerName,
         source: 'mp',
         branchId: r.sucursalId,
       };

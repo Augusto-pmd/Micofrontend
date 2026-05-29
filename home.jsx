@@ -1722,33 +1722,60 @@ function PortalDashboard({ user, reservations, accountData, accountLoading, onLo
             ) : (
               <div className="mc-res-list">
                 {reservations.map((r, i) => {
-                  // Soporte para contratos manuales (backend) y reservas MP (localStorage)
                   const isManual = r.source === 'manual';
+                  const isPending = r.status === 'pending_payment' || r.mpSubscriptionStatus === 'pending';
+                  const isActive  = r.status === 'active' || r.status === 'CONFIRMED' || r.status === 'authorized';
+
                   const title = isManual
                     ? `${r.bauleraCodigo || r.storageRoom?.space || 'Baulera'} · ${r.m2}m²`
-                    : `${r.category?.label || r.category || 'Baulera'} · ${r.option ? `${formatM2(r.option.m2)} m²` : `${r.m2 || ''}m²`}`;
+                    : `${r.category?.label || r.category || 'Pequeño'} · ${r.m2 || ''}m²`;
                   const location = isManual
                     ? `Nordelta · Edificio A · Piso ${r.storageRoom?.floor || '—'}`
-                    : `${r.sucursal?.name || 'Nordelta'} · ${r.sucursal?.hood || ''}`;
+                    : `Nordelta · GBA Norte`;
                   const monthly = r.monthly || r.monthlyPrice || 0;
-                  const statusKey = r.status === 'active' || r.status === 'CONFIRMED' || r.status === 'authorized'
-                    ? 'active' : r.status === 'cancelled' ? 'cancelled' : 'pending';
-                  const statusLabel = statusKey === 'active' ? 'Activa' : statusKey === 'cancelled' ? 'Cancelada' : 'Pendiente';
+                  const statusKey = isActive ? 'active' : r.status === 'cancelled' ? 'cancelled' : 'pending';
+                  const statusLabel = isActive ? 'Activa' : r.status === 'cancelled' ? 'Cancelada' : 'Pago pendiente';
                   const contractNum = r.contractNumber ? `CTO-${r.contractNumber}` : r.id;
+
+                  // Reservas con pago pendiente → botón de completar pago en MP
+                  const mpLink = r.mpInitPoint ||
+                    (r.mpPreapprovalId ? `https://www.mercadopago.com.ar/subscriptions/checkout?preapproval_id=${r.mpPreapprovalId}` : null);
+
+                  if (isPending && mpLink) {
+                    return (
+                      <div key={r.id} className="mc-res-card mc-res-card-pending">
+                        <span className="num">0{i + 1}</span>
+                        <div className="info">
+                          <b>{title}</b>
+                          <span>{location}</span>
+                          <span>{contractNum}</span>
+                          <span className="badge pending">Pago pendiente</span>
+                        </div>
+                        <div className="price">
+                          <a href={mpLink} className="mc-btn mc-btn-mp compact" style={{ textDecoration:'none', display:'inline-flex', alignItems:'center', gap:6, padding:'8px 14px', borderRadius:6, background:'#009ee3', color:'white', fontSize:13, fontWeight:700 }}>
+                            <svg viewBox="0 0 80 28" width="40" height="14" style={{filter:'brightness(0) invert(1)'}}><circle cx="10" cy="14" r="10" fill="#fff" opacity=".3"/><text x="25" y="19" fontFamily="Arial" fontWeight="800" fontSize="11" fill="#fff">pago</text></svg>
+                            Completar pago
+                          </a>
+                          <small style={{display:'block', marginTop:4, color:'#999'}}>${monthly.toLocaleString('es-AR')}/mes</small>
+                        </div>
+                      </div>
+                    );
+                  }
+
                   return (
-                  <a key={r.id} className="mc-res-card" href={`#/portal/r/${r.id}`}>
-                    <span className="num">0{i + 1}</span>
-                    <div className="info">
-                      <b>{title}</b>
-                      <span>{location}</span>
-                      <span>Inicio: {r.startDate || r.entryDate} · {contractNum}</span>
-                      <span className={`badge ${statusKey}`}>{statusLabel}</span>
-                    </div>
-                    <div className="price">
-                      ${monthly.toLocaleString('es-AR')}
-                      <small>por mes</small>
-                    </div>
-                  </a>
+                    <a key={r.id} className="mc-res-card" href={`#/portal/r/${r.id}`}>
+                      <span className="num">0{i + 1}</span>
+                      <div className="info">
+                        <b>{title}</b>
+                        <span>{location}</span>
+                        <span>Inicio: {r.startDate || r.entryDate} · {contractNum}</span>
+                        <span className={`badge ${statusKey}`}>{statusLabel}</span>
+                      </div>
+                      <div className="price">
+                        ${monthly.toLocaleString('es-AR')}
+                        <small>por mes</small>
+                      </div>
+                    </a>
                   );
                 })}
               </div>
@@ -1811,15 +1838,18 @@ function PortalEntry({ user, reservations, accountData, accountLoading, onLogout
     );
   }
 
-  // Auto-redirect when exactly 1 active reservation exists
+  // Auto-redirect SOLO cuando hay exactamente 1 reserva ACTIVA (no pendiente)
+  const confirmedActive = active.filter(r =>
+    r.status === 'active' || r.status === 'CONFIRMED' || r.status === 'authorized'
+  );
   useEffect(() => {
-    if (!accountLoading && active.length === 1) {
-      window.location.hash = `#/portal/r/${active[0].id}`;
+    if (!accountLoading && confirmedActive.length === 1 && active.length === 1) {
+      window.location.hash = `#/portal/r/${confirmedActive[0].id}`;
     }
-  }, [active.length, active[0]?.id, accountLoading]);
+  }, [confirmedActive.length, active.length, accountLoading]);
 
-  // 0 active reservations — empty state
-  if (active.length === 0) {
+  // 0 reservations (activas + pendientes) — empty state
+  if (active.length === 0 && reservations.length === 0) {
     return (
       <>
         <section className="mc-portal-hero">
