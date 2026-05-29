@@ -4,6 +4,25 @@ import { verifyToken } from '../../middleware/verifyToken';
 
 export const customersRouter = Router();
 
+// Normaliza un doc de cliente al formato que espera el frontend
+function normalizeCustomer(raw: any) {
+  // Si ya tiene estructura user anidada, dejarlo como está
+  if (raw.user) return raw;
+  // Si tiene firstName/lastName planos (formato seed), construir el user wrapper
+  return {
+    ...raw,
+    fullName: raw.fullName || `${raw.firstName || ''} ${raw.lastName || ''}`.trim(),
+    user: {
+      id:        raw.id || raw.userId || '',
+      firstName: raw.firstName || '',
+      lastName:  raw.lastName  || '',
+      email:     raw.email     || '',
+      createdAt: raw.createdAt || '',
+      updatedAt: raw.updatedAt || '',
+    },
+  };
+}
+
 // GET /customer
 customersRouter.get('/', verifyToken, async (req: Request, res: Response) => {
   try {
@@ -12,14 +31,16 @@ customersRouter.get('/', verifyToken, async (req: Request, res: Response) => {
     const search = (req.query['search'] as string | undefined)?.toLowerCase();
 
     const snapshot = await db.collection('customers').orderBy('createdAt', 'desc').get();
-    let all = snapshot.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
+    let all = snapshot.docs.map(d => normalizeCustomer({ id: d.id, ...d.data() })) as any[];
 
     if (search) {
       all = all.filter((c: any) =>
+        c.user?.firstName?.toLowerCase().includes(search) ||
+        c.user?.lastName?.toLowerCase().includes(search) ||
+        c.user?.email?.toLowerCase().includes(search) ||
         c.firstName?.toLowerCase().includes(search) ||
-        c.lastName?.toLowerCase().includes(search) ||
-        c.email?.toLowerCase().includes(search) ||
-        c.dni?.toLowerCase().includes(search)
+        c.dni?.toLowerCase().includes(search) ||
+        c.fullName?.toLowerCase().includes(search)
       );
     }
 
@@ -42,7 +63,7 @@ customersRouter.get('/:id', verifyToken, async (req: Request, res: Response) => 
       res.status(404).json({ message: 'Customer not found' });
       return;
     }
-    res.json({ id: doc.id, ...doc.data() });
+    res.json(normalizeCustomer({ id: doc.id, ...doc.data() }));
   } catch (err) {
     console.error('GET /customer/:id error:', err);
     res.status(500).json({ message: 'Internal server error' });

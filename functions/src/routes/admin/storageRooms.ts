@@ -4,6 +4,22 @@ import { verifyToken } from '../../middleware/verifyToken';
 
 export const storageRoomsRouter = Router();
 
+async function getBuildingMap() {
+  const [bldSnap, brSnap] = await Promise.all([
+    db.collection('buildings').get(),
+    db.collection('branches').get(),
+  ]);
+  const branches: Record<string, any> = {};
+  brSnap.docs.forEach(d => { branches[d.id] = { id: d.id, ...d.data() }; });
+  const buildings: Record<string, any> = {};
+  bldSnap.docs.forEach(d => {
+    const b = { id: d.id, ...d.data() } as any;
+    b.branch = branches[b.branchId] || null;
+    buildings[d.id] = b;
+  });
+  return buildings;
+}
+
 // GET /storage-room
 storageRoomsRouter.get('/', verifyToken, async (req: Request, res: Response) => {
   try {
@@ -18,8 +34,11 @@ storageRoomsRouter.get('/', verifyToken, async (req: Request, res: Response) => 
     if (branchId) query = query.where('branchId', '==', branchId);
     if (buildingId) query = query.where('buildingId', '==', buildingId);
 
-    const snapshot = await query.get();
-    const all = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    const [snapshot, buildings] = await Promise.all([query.get(), getBuildingMap()]);
+    const all = snapshot.docs.map(d => {
+      const raw = { id: d.id, ...d.data() } as any;
+      return { ...raw, building: buildings[raw.buildingId] || null };
+    });
     const total = all.length;
     const start = (page - 1) * limit;
     const data = all.slice(start, start + limit);
