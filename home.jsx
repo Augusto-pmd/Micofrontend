@@ -1442,14 +1442,33 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
 
               <div className="mc-wiz-pay">
                 <span className="lbl">Forma de pago</span>
-                <div className="mc-wiz-pay-mp">
-                  <div className="mp-head">
-                    <MercadoPagoLogo size={18} />
+                {/* Botón real de MP — al hacer click inicia el pago */}
+                <button
+                  type="button"
+                  className="mc-wiz-pay-mp-btn"
+                  onClick={next}
+                  aria-label="Pagar con Mercado Pago"
+                >
+                  <div className="mc-wiz-pay-mp-btn__top">
+                    <img
+                      src="https://http2.mlstatic.com/frontend-assets/ui-navigation/5.18.9/mercadopago/logo__large.png"
+                      alt="Mercado Pago"
+                      className="mc-mp-official-logo"
+                      height="22"
+                    />
                     <span className="featured-tag">Suscripción mensual</span>
                   </div>
-                  <b>Tarjeta de crédito vía Mercado Pago</b>
-                  <p>Cobro automático cada mes mientras tu cuenta esté activa. Cancelás cuando quieras desde el portal.</p>
-                </div>
+                  <div className="mc-wiz-pay-mp-btn__body">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+                    <div>
+                      <b>Tarjeta de crédito o débito</b>
+                      <p>Cobro automático cada mes. Cancelás cuando quieras.</p>
+                    </div>
+                  </div>
+                  <div className="mc-wiz-pay-mp-btn__cta">
+                    Pagar <b>${totals.firstMonth.toLocaleString('es-AR')}</b> ahora →
+                  </div>
+                </button>
                 <div className="mc-wiz-recurring-note">
                   <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <path d="M21 12a9 9 0 11-3-6.7L21 8" />
@@ -1527,13 +1546,8 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
             {step > 0 ? (
               <button className="mc-btn mc-btn-ghost" onClick={back}><span>← Atrás</span></button>
             ) : <span />}
-            <button className={step === 4 ? 'mc-btn mc-btn-mp' : 'mc-btn mc-btn-green'} onClick={next}>
-              {step === 4 ? (
-                <>
-                  <MercadoPagoLogo size={16} />
-                  <span>Pagar ${totals.firstMonth.toLocaleString('es-AR')}/mes</span>
-                </>
-              ) : (
+            <button className="mc-btn mc-btn-green" onClick={next} style={step === 4 ? {display:'none'} : {}}>
+              {step !== 4 && (
                 <><span>Continuar</span><span className="arrow">→</span></>
               )}
             </button>

@@ -1316,36 +1316,45 @@ section { position: relative; z-index: 2; }
 }
 .mc-suc-meta .avail.limitada ~ .scarcity { color: #a91f0a; }
 
-/* Wizard MP card (single payment method, info card) */
-.mc-wiz-pay-mp {
-  padding: 18px 20px 18px;
-  background: #e7f5fd;
-  border: 1.5px solid #009ee3;
-  border-radius: var(--mc-r-md);
-  box-shadow: 0 0 0 3px rgba(0, 158, 227, 0.12);
-  position: relative;
+/* Botón-card oficial Mercado Pago (paso 5 del wizard) */
+.mc-wiz-pay-mp-btn {
+  width: 100%; text-align: left; cursor: pointer;
+  background: #fff; border: 2px solid #009ee3;
+  border-radius: 10px; padding: 0; overflow: hidden;
+  box-shadow: 0 2px 12px rgba(0,158,227,0.15);
+  transition: box-shadow 0.2s, transform 0.15s, border-color 0.2s;
 }
-.mc-wiz-pay-mp .mp-head {
+.mc-wiz-pay-mp-btn:hover {
+  box-shadow: 0 4px 20px rgba(0,158,227,0.28);
+  transform: translateY(-1px); border-color: #007eb5;
+}
+.mc-wiz-pay-mp-btn:active { transform: translateY(0) scale(0.995); }
+
+.mc-wiz-pay-mp-btn__top {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  margin-bottom: 12px;
+  padding: 14px 18px 10px;
+  background: #009ee3;
 }
-.mc-wiz-pay-mp .featured-tag {
+.mc-mp-official-logo { display: block; filter: brightness(0) invert(1); }
+.mc-wiz-pay-mp-btn__top .featured-tag {
   padding: 3px 9px; border-radius: 999px;
-  background: #009ee3; color: white;
+  background: rgba(255,255,255,0.25); color: white;
   font-family: var(--font-mono); font-size: 9px; font-weight: 700;
   letter-spacing: 0.1em; text-transform: uppercase;
 }
-.mc-wiz-pay-mp b {
-  display: block;
-  font-family: var(--font-cond);
-  font-size: 17px; font-weight: 700;
-  letter-spacing: -0.015em;
-  color: var(--mc-black);
-  margin-bottom: 4px;
+
+.mc-wiz-pay-mp-btn__body {
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px 18px; border-bottom: 1px solid #e8f5fc;
 }
-.mc-wiz-pay-mp p {
-  font-size: 13px; color: var(--mc-ink-2);
-  line-height: 1.5; margin: 0;
+.mc-wiz-pay-mp-btn__body svg { flex-shrink: 0; color: #009ee3; }
+.mc-wiz-pay-mp-btn__body b { display: block; font-size: 15px; font-weight: 700; color: var(--mc-black); margin-bottom: 2px; }
+.mc-wiz-pay-mp-btn__body p { margin: 0; font-size: 12px; color: var(--mc-ink-2); line-height: 1.4; }
+
+.mc-wiz-pay-mp-btn__cta {
+  padding: 12px 18px; background: #f0fafe;
+  font-size: 14px; font-weight: 600; color: #007eb5;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
 }
 
 /* Wizard success: billing entity note */
