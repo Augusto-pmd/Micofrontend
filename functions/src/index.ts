@@ -17,6 +17,7 @@ import { pricingRouter } from './routes/admin/pricing';
 import { inventoryRouter } from './routes/admin/inventory';
 import { seedRouter } from './routes/admin/seed';
 import { adminReservationsRouter } from './routes/admin/reservations';
+import { myAccountRouter } from './routes/myAccount';
 
 const app = express();
 
@@ -67,6 +68,7 @@ app.use('/pricing-engine', pricingRouter);
 app.use('/inventory', inventoryRouter);
 app.use('/seed', seedRouter);
 app.use('/admin/reservations', adminReservationsRouter);
+app.use('/my-account', myAccountRouter);
 
 export const api = onRequest(
   {

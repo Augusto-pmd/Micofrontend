@@ -1690,10 +1690,14 @@ function PortalLogin({ onLogin }) {
   );
 }
 
-function PortalDashboard({ user, reservations, onLogout, onReserve }) {
-  const active = reservations.filter((r) => r.status === 'active');
-  const totalMonthly = active.reduce((sum, r) => sum + r.monthly, 0);
-  const sucursalCount = new Set(active.map((r) => r.sucursal?.id || 'unknown')).size;
+function PortalDashboard({ user, reservations, accountData, accountLoading, onLogout, onReserve }) {
+  // Contratos activos — tanto MP (status=active) como manuales (status=CONFIRMED)
+  const active = reservations.filter((r) =>
+    r.status === 'active' || r.status === 'CONFIRMED' || r.status === 'authorized'
+  );
+  const totalMonthly = accountData?.totalMonthly ||
+    active.reduce((sum, r) => sum + (r.monthly || r.monthlyPrice || 0), 0);
+  const sucursalCount = new Set(active.map((r) => r.sucursal?.id || r.branchId || 'nordelta')).size;
   return (
     <>
       <section className="mc-portal-hero">
@@ -1717,26 +1721,36 @@ function PortalDashboard({ user, reservations, onLogout, onReserve }) {
               </div>
             ) : (
               <div className="mc-res-list">
-                {reservations.map((r, i) => (
+                {reservations.map((r, i) => {
+                  // Soporte para contratos manuales (backend) y reservas MP (localStorage)
+                  const isManual = r.source === 'manual';
+                  const title = isManual
+                    ? `${r.bauleraCodigo || r.storageRoom?.space || 'Baulera'} · ${r.m2}m²`
+                    : `${r.category?.label || r.category || 'Baulera'} · ${r.option ? `${formatM2(r.option.m2)} m²` : `${r.m2 || ''}m²`}`;
+                  const location = isManual
+                    ? `Nordelta · Edificio A · Piso ${r.storageRoom?.floor || '—'}`
+                    : `${r.sucursal?.name || 'Nordelta'} · ${r.sucursal?.hood || ''}`;
+                  const monthly = r.monthly || r.monthlyPrice || 0;
+                  const statusKey = r.status === 'active' || r.status === 'CONFIRMED' || r.status === 'authorized'
+                    ? 'active' : r.status === 'cancelled' ? 'cancelled' : 'pending';
+                  const statusLabel = statusKey === 'active' ? 'Activa' : statusKey === 'cancelled' ? 'Cancelada' : 'Pendiente';
+                  const contractNum = r.contractNumber ? `CTO-${r.contractNumber}` : r.id;
+                  return (
                   <a key={r.id} className="mc-res-card" href={`#/portal/r/${r.id}`}>
                     <span className="num">0{i + 1}</span>
                     <div className="info">
-                      <b>{r.category?.label || r.size?.label} · {r.option ? `${formatM2(r.option.m2)} m²` : r.size?.range}</b>
-                      <span>{r.sucursal?.name || '—'} · {r.sucursal?.hood || ''}</span>
-                      <span>Inicio: {r.startDate} · {r.id}</span>
-                      <span className={`badge ${r.status === 'active' ? 'active' : r.status === 'cancelled' ? 'cancelled' : 'pending'}`}>{r.status === 'active' ? 'Activa' : r.status === 'cancelled' ? 'Cancelada' : 'Pendiente'}</span>
-                      {r.promosApplied && r.promosApplied.length > 0 && (
-                        <div className="promos-row">
-                          {r.promosApplied.map((p) => <span key={p.key} className="mc-promo-badge green tiny">{p.badge}</span>)}
-                        </div>
-                      )}
+                      <b>{title}</b>
+                      <span>{location}</span>
+                      <span>Inicio: {r.startDate || r.entryDate} · {contractNum}</span>
+                      <span className={`badge ${statusKey}`}>{statusLabel}</span>
                     </div>
                     <div className="price">
-                      ${r.monthly.toLocaleString('es-AR')}
+                      ${monthly.toLocaleString('es-AR')}
                       <small>por mes</small>
                     </div>
                   </a>
-                ))}
+                  );
+                })}
               </div>
             )}
             <div style={{ marginTop: 18, paddingTop: 18, borderTop: '1px solid var(--mc-line)' }}>
@@ -1774,15 +1788,35 @@ function PortalDashboard({ user, reservations, onLogout, onReserve }) {
 }
 
 // PortalEntry: decides what to show based on reservation count (0 / 1 / 2+)
-function PortalEntry({ user, reservations, onLogout, onReserve }) {
-  const active = reservations.filter((r) => r.status !== 'cancelled');
+function PortalEntry({ user, reservations, accountData, accountLoading, onLogout, onReserve }) {
+  const active = reservations.filter((r) =>
+    r.status !== 'cancelled' && r.status !== 'payment_failed'
+  );
+
+  // Nombre de bienvenida: prefiere el nombre real del backend
+  const displayName = accountData?.customer?.fullName?.split(' ')[0]
+    || accountData?.customer?.firstName
+    || user.name
+    || user.email.split('@')[0];
+
+  // Loading state
+  if (accountLoading) {
+    return (
+      <div className="mc-portal-loading">
+        <div className="mc-mp-loader">
+          <div className="spinner" aria-hidden="true"></div>
+          <p>Cargando tu cuenta…</p>
+        </div>
+      </div>
+    );
+  }
 
   // Auto-redirect when exactly 1 active reservation exists
   useEffect(() => {
-    if (active.length === 1) {
+    if (!accountLoading && active.length === 1) {
       window.location.hash = `#/portal/r/${active[0].id}`;
     }
-  }, [active.length, active[0]?.id]);
+  }, [active.length, active[0]?.id, accountLoading]);
 
   // 0 active reservations — empty state
   if (active.length === 0) {
@@ -2399,13 +2433,63 @@ function ReservationPortal({ reservation, user, initialView, onUpdate, allCatego
 /* ════════════════════════════════════════════════════════════════ */
 /* App                                                                */
 /* ════════════════════════════════════════════════════════════════ */
+// Carga la cuenta real del cliente desde el backend
+async function fetchMyAccount(email) {
+  if (!email) return null;
+  try {
+    // Intentar con Firebase token si está disponible
+    let headers = { 'Content-Type': 'application/json' };
+    try {
+      const { getAuth } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+      const fbUser = getAuth().currentUser;
+      if (fbUser) {
+        const token = await fbUser.getIdToken();
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+    } catch { /* sin token, usar email como fallback */ }
+
+    const url = `${MC_API}/my-account${!headers['Authorization'] ? `?email=${encodeURIComponent(email)}` : ''}`;
+    const res = await fetch(url, { headers });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (err) {
+    console.warn('[portal] Error cargando cuenta:', err);
+    return null;
+  }
+}
+
 function App() {
   const route = useHashRoute();
   const [user, setUser] = useState(store.getUser());
   const [reservations, setReservations] = useState(store.getReservations());
+  const [accountData, setAccountData] = useState(null);  // datos reales del backend
+  const [accountLoading, setAccountLoading] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardCategory, setWizardCategory] = useState(null);
   const [wizardSucursal, setWizardSucursal] = useState(null);
+
+  // Cargar datos reales del cliente cuando entra al portal
+  useEffect(() => {
+    const isPortalRoute = route.name === 'portal' || route.name === 'reservation';
+    if (isPortalRoute && user?.email && !accountData && !accountLoading) {
+      setAccountLoading(true);
+      fetchMyAccount(user.email)
+        .then(data => { if (data) setAccountData(data); })
+        .finally(() => setAccountLoading(false));
+    }
+  }, [route.name, user?.email]);
+
+  // Recargar cuando cambia el usuario
+  useEffect(() => {
+    if (user?.email) {
+      setAccountLoading(true);
+      fetchMyAccount(user.email)
+        .then(data => { if (data) setAccountData(data); })
+        .finally(() => setAccountLoading(false));
+    } else {
+      setAccountData(null);
+    }
+  }, [user?.email]);
 
   useEffect(() => {
     const onU = () => setUser(store.getUser());
@@ -2440,7 +2524,18 @@ function App() {
 
   const isPortal = route.name === 'portal' || route.name === 'reservation';
   const showHomeChrome = !isPortal;
-  const userReservations = user ? reservations.filter((r) => r.userEmail === user.email) : [];
+
+  // Contratos reales del backend (prioritarios sobre localStorage)
+  const backendContracts = accountData?.contracts || [];
+  // Reservas de localStorage (para las hechas online en esta sesión antes de persistir)
+  const localReservations = user ? reservations.filter((r) => r.userEmail === user.email) : [];
+  // Merge: priorizar backend, agregar locales que no estén en el backend
+  const backendIds = new Set(backendContracts.map(c => c.id));
+  const mergedReservations = [
+    ...backendContracts,
+    ...localReservations.filter(r => !backendIds.has(r.id)),
+  ];
+  const userReservations = mergedReservations;
 
   return (
     <>
@@ -2465,12 +2560,14 @@ function App() {
       {(route.name === 'portal' || route.name === 'reservation') && (
         <main id="main" className="mc-portal-bg">
           {!user ? (
-            <PortalLogin />
+            <PortalLogin onLogin={(u) => setUser(u)} />
           ) : route.name === 'portal' ? (
             <PortalEntry
               user={user}
               reservations={userReservations}
-              onLogout={() => { store.setUser(null); window._fb?.signOut(); }}
+              accountData={accountData}
+              accountLoading={accountLoading}
+              onLogout={() => { store.setUser(null); setAccountData(null); window._fb?.signOut?.(); }}
               onReserve={() => openWizard()}
             />
           ) : (
