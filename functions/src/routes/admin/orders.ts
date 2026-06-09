@@ -109,7 +109,10 @@ ordersRouter.get('/:id', verifyToken, async (req: Request, res: Response) => {
       res.status(404).json({ message: 'Order not found' });
       return;
     }
-    res.json({ id: doc.id, ...doc.data() });
+    // #7: enriquecer el detalle igual que el listado -> trae cliente, baulera
+    // (storageRoom) y ubicacion (building + branch). Antes devolvia la orden cruda.
+    const [enriched] = await enrichOrders([{ id: doc.id, ...doc.data() }]);
+    res.json(enriched);
   } catch (err) {
     console.error('GET /reservation-order/:id error:', err);
     res.status(500).json({ message: 'Internal server error' });
