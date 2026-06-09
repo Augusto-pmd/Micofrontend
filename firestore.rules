@@ -42,5 +42,47 @@ service cloud.firestore {
       allow read: if true;
       allow write: if isAdmin();
     }
+
+    // ─── Colecciones gestionadas SOLO por el backend (Admin SDK) ───────
+    // El backend usa Admin SDK y bypassea estas reglas. El cliente NO debe
+    // leer ni escribir estas colecciones directo desde Firestore: el portal
+    // del cliente accede vía el endpoint /my-account (Admin SDK). Por eso se
+    // cierran a isAdmin() (deniega a clientes; el backend no se ve afectado).
+
+    // customers: datos de clientes (PII: DNI, email, teléfono)
+    match /customers/{customerId} {
+      allow read, write: if isAdmin();
+    }
+
+    // storageRooms: inventario de bauleras
+    match /storageRooms/{roomId} {
+      allow read, write: if isAdmin();
+    }
+
+    // reservationOrders: contratos / órdenes
+    match /reservationOrders/{orderId} {
+      allow read, write: if isAdmin();
+    }
+
+    // branches: sucursales (datos internos)
+    match /branches/{branchId} {
+      allow read, write: if isAdmin();
+    }
+
+    // buildings: edificios
+    match /buildings/{buildingId} {
+      allow read, write: if isAdmin();
+    }
+
+    // pricingRules: reglas de precio por m²
+    match /pricingRules/{ruleId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Default deny: cualquier colección no listada queda denegada al cliente.
+    // (El backend con Admin SDK sigue teniendo acceso completo.)
+    match /{document=**} {
+      allow read, write: if false;
+    }
   }
 }
