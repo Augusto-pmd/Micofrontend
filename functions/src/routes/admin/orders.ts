@@ -1,32 +1,25 @@
 import { Router, Request, Response } from 'express';
 import { db } from '../../config/firebase';
 import { verifyToken } from '../../middleware/verifyToken';
+import { paginate } from '../../utils/pagination';
+import { getBuildingMap } from '../../utils/buildingCache';
 
 export const ordersRouter = Router();
 
+// Enriquece SOLO los docs de la página actual (≤ limit), no toda la colección.
+// buildings/branches vienen del cache (TTL), evitando releerlos por request.
 async function enrichOrders(orders: any[]) {
   if (orders.length === 0) return orders;
 
-  // Collect unique IDs
+  // Collect unique IDs (acotados al tamaño de página)
   const custIds = [...new Set(orders.map((o: any) => o.customerId).filter(Boolean))];
   const roomIds = [...new Set(orders.map((o: any) => o.storageRoomId).filter(Boolean))];
 
-  // Fetch customers and rooms in parallel
-  const [custSnap, roomSnap, bldSnap, brSnap] = await Promise.all([
-    custIds.length ? db.getAll(...custIds.map(id => db.collection('customers').doc(id))) : Promise.resolve([]),
-    roomIds.length ? db.getAll(...roomIds.map(id => db.collection('storageRooms').doc(id))) : Promise.resolve([]),
-    db.collection('buildings').get(),
-    db.collection('branches').get(),
+  const [buildings, custSnap, roomSnap] = await Promise.all([
+    getBuildingMap(),
+    custIds.length ? db.getAll(...custIds.map((id) => db.collection('customers').doc(id))) : Promise.resolve([] as any[]),
+    roomIds.length ? db.getAll(...roomIds.map((id) => db.collection('storageRooms').doc(id))) : Promise.resolve([] as any[]),
   ]);
-
-  const branches: Record<string, any> = {};
-  (brSnap as any).docs.forEach((d: any) => { branches[d.id] = { id: d.id, ...d.data() }; });
-  const buildings: Record<string, any> = {};
-  (bldSnap as any).docs.forEach((d: any) => {
-    const b = { id: d.id, ...d.data() } as any;
-    b.branch = branches[b.branchId] || null;
-    buildings[d.id] = b;
-  });
 
   const customers: Record<string, any> = {};
   (custSnap as any[]).forEach((d: any) => {
@@ -74,25 +67,34 @@ async function enrichOrders(orders: any[]) {
 }
 
 // GET /reservation-order
+// Pagina en Firestore y enriquece SOLO la página actual (antes traía toda la
+// colección y hacía 1000+ lecturas de join). Acepta ?cursor=<id>.
 ordersRouter.get('/', verifyToken, async (req: Request, res: Response) => {
   try {
     const page = parseInt(req.query['page'] as string) || 1;
     const limit = parseInt(req.query['limit'] as string) || 10;
+    const cursor = req.query['cursor'] as string | undefined;
     const status = req.query['status'] as string | undefined;
     const customerId = req.query['customerId'] as string | undefined;
 
-    let query: FirebaseFirestore.Query = db.collection('reservationOrders').orderBy('createdAt', 'desc');
-    if (status) query = query.where('status', '==', status);
-    if (customerId) query = query.where('customerId', '==', customerId);
+    // where() ANTES de orderBy para que el índice compuesto aplique
+    let baseQuery: FirebaseFirestore.Query = db.collection('reservationOrders');
+    if (status) baseQuery = baseQuery.where('status', '==', status);
+    if (customerId) baseQuery = baseQuery.where('customerId', '==', customerId);
+    baseQuery = baseQuery.orderBy('createdAt', 'desc');
 
-    const snapshot = await query.get();
-    const raw = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-    const all = await enrichOrders(raw);
-    const total = all.length;
-    const start = (page - 1) * limit;
-    const data = all.slice(start, start + limit);
+    const result = await paginate('reservationOrders', baseQuery, { page, limit, cursor });
+    const raw = result.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const data = await enrichOrders(raw); // solo ≤ limit docs
 
-    res.json({ data, total, page, limit, totalPages: Math.ceil(total / limit) });
+    res.json({
+      data,
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
+      totalPages: result.totalPages,
+      nextCursor: result.nextCursor,
+    });
   } catch (err) {
     console.error('GET /reservation-order error:', err);
     res.status(500).json({ message: 'Internal server error' });

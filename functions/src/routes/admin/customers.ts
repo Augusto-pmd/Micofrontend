@@ -1,8 +1,13 @@
 import { Router, Request, Response } from 'express';
 import { db } from '../../config/firebase';
 import { verifyToken } from '../../middleware/verifyToken';
+import { paginate } from '../../utils/pagination';
 
 export const customersRouter = Router();
+
+// Tope de seguridad para el path de búsqueda en memoria (substring no es
+// indexable en Firestore). A esta escala (cientos-miles) es aceptable.
+const SEARCH_SCAN_CAP = 3000;
 
 // Normaliza un doc de cliente al formato que espera el frontend
 function normalizeCustomer(raw: any) {
@@ -24,16 +29,28 @@ function normalizeCustomer(raw: any) {
 }
 
 // GET /customer
+// Soporta dos modos:
+//  - Navegación normal → paginación en Firestore (count + limit/cursor), eficiente.
+//  - Con ?search= → fallback en memoria acotado (substring no es indexable).
+// Acepta ?cursor=<id> para paginación por cursor; mantiene page/limit/total/totalPages.
 customersRouter.get('/', verifyToken, async (req: Request, res: Response) => {
   try {
     const page = parseInt(req.query['page'] as string) || 1;
     const limit = parseInt(req.query['limit'] as string) || 10;
+    const cursor = req.query['cursor'] as string | undefined;
     const search = (req.query['search'] as string | undefined)?.toLowerCase();
 
-    const snapshot = await db.collection('customers').orderBy('createdAt', 'desc').get();
-    let all = snapshot.docs.map(d => normalizeCustomer({ id: d.id, ...d.data() })) as any[];
-
+    // ── Path de búsqueda: escaneo acotado en memoria ──────────────────
     if (search) {
+      const snapshot = await db
+        .collection('customers')
+        .orderBy('createdAt', 'desc')
+        .limit(SEARCH_SCAN_CAP)
+        .get();
+      if (snapshot.size === SEARCH_SCAN_CAP) {
+        console.warn(`[customers] búsqueda alcanzó el tope de ${SEARCH_SCAN_CAP} docs`);
+      }
+      let all = snapshot.docs.map((d) => normalizeCustomer({ id: d.id, ...d.data() })) as any[];
       all = all.filter((c: any) =>
         c.user?.firstName?.toLowerCase().includes(search) ||
         c.user?.lastName?.toLowerCase().includes(search) ||
@@ -42,13 +59,33 @@ customersRouter.get('/', verifyToken, async (req: Request, res: Response) => {
         c.dni?.toLowerCase().includes(search) ||
         c.fullName?.toLowerCase().includes(search)
       );
+      const total = all.length;
+      const start = (page - 1) * limit;
+      const data = all.slice(start, start + limit);
+      res.json({
+        data,
+        total,
+        page,
+        limit,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+        nextCursor: null, // el cursor no aplica al modo búsqueda
+      });
+      return;
     }
 
-    const total = all.length;
-    const start = (page - 1) * limit;
-    const data = all.slice(start, start + limit);
+    // ── Path normal: paginación en Firestore ──────────────────────────
+    const baseQuery = db.collection('customers').orderBy('createdAt', 'desc');
+    const result = await paginate('customers', baseQuery, { page, limit, cursor });
+    const data = result.docs.map((d) => normalizeCustomer({ id: d.id, ...d.data() }));
 
-    res.json({ data, total, page, limit, totalPages: Math.ceil(total / limit) });
+    res.json({
+      data,
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
+      totalPages: result.totalPages,
+      nextCursor: result.nextCursor,
+    });
   } catch (err) {
     console.error('GET /customer error:', err);
     res.status(500).json({ message: 'Internal server error' });
