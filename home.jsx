@@ -1017,6 +1017,19 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
   });
   const [errors, setErrors] = useState({});
 
+  // #3: disponibilidad real de stock por m2 (endpoint publico /availability)
+  const [availByM2, setAvailByM2] = useState({});
+  useEffect(() => {
+    fetch(`${MC_API}/availability`).then((r) => r.json()).then((d) => setAvailByM2(d.byM2 || {})).catch(() => {});
+  }, []);
+  // si la medida elegida quedo sin stock, saltar a la primera disponible de la categoria
+  useEffect(() => {
+    const cur = data.option?.m2;
+    if (cur != null && (availByM2[String(cur)] ?? 0) > 0) return;
+    const firstAvail = data.category?.options?.find((o) => (availByM2[String(o.m2)] ?? 0) > 0);
+    if (firstAvail) setOption(firstAvail);
+  }, [availByM2, data.category]);
+
   // Exit-intent: si está intentando cerrar entre steps 1-3 (después de empezar a elegir)
   // y todavía no le ofrecimos retención esta sesión → ofrecer.
   const tryClose = useCallback(() => {
@@ -1241,17 +1254,25 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
                 <div className="mc-wiz-cat-opts">
                   <span className="opts-lbl">Elegí los m² exactos</span>
                   <div className="opts-grid">
-                    {data.category.options.map((o) => (
+                    {data.category.options.map((o) => {
+                      const stock = availByM2[String(o.m2)] ?? 0;
+                      const agotado = stock === 0;
+                      return (
                       <button
                         key={o.m2}
                         type="button"
+                        disabled={agotado}
                         className={`mc-wiz-opt ${data.option.m2 === o.m2 ? 'selected' : ''}`}
-                        onClick={() => setOption(o)}
+                        onClick={() => !agotado && setOption(o)}
+                        style={agotado ? { opacity: 0.45, cursor: 'not-allowed' } : undefined}
+                        title={agotado ? 'Sin disponibilidad' : `${stock} disponible(s)`}
                       >
                         <b>{formatM2(o.m2)} m²</b>
                         <span>${o.monthly.toLocaleString('es-AR')} <small>/ mes</small></span>
+                        {agotado && <span style={{ display: 'block', fontSize: '0.7em', color: '#b00020', fontWeight: 700, marginTop: 2 }}>Sin stock</span>}
                       </button>
-                    ))}
+                      );
+                    })}
                   </div>
                   <span className="hint">Precios finales con IVA · Sucursal {data.sucursal.name}</span>
                 </div>
