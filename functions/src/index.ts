@@ -3,6 +3,8 @@ import express from 'express';
 import cors from 'cors';
 import { reservationsRouter } from './routes/reservations';
 import { mpWebhookRouter } from './routes/webhooks/mercadopago';
+import { availabilityRouter } from './routes/availability';
+import { waitlistRouter } from './routes/waitlist';
 
 // Admin routes
 import { authRouter } from './routes/admin/auth';
@@ -65,6 +67,8 @@ app.get('/health', (_req, res) => {
 // ── Existing public/customer routes ──────────────────────────────────────────
 app.use('/reservations', reservationsRouter);
 app.use('/webhooks/mp', mpWebhookRouter);
+app.use('/availability', availabilityRouter); // público
+app.use('/waitlist', waitlistRouter); // POST público, GET admin
 
 // ── Admin routes ──────────────────────────────────────────────────────────────
 app.use('/auth', authRouter);
