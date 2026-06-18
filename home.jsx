@@ -1,3 +1,4 @@
+/** @jsxRuntime classic */
 // Mi Container v6 — categorías con opciones reales (Nordelta prices) + Mercado Pago + Google login
 // Brand: Roboto · #5ECA00 · #3D3083 · Manual de Marca Junio 2022
 
