@@ -119,6 +119,22 @@ ordersRouter.get('/:id', verifyToken, async (req: Request, res: Response) => {
   }
 });
 
+// GET /reservation-order/customer/:customerId — ordenes (enriquecidas) de un cliente.
+// #2: el admin lo usa para mostrar las bauleras contratadas de cada cliente.
+ordersRouter.get('/customer/:customerId', verifyToken, async (req: Request, res: Response) => {
+  try {
+    const snap = await db.collection('reservationOrders')
+      .where('customerId', '==', req.params['customerId'])
+      .get();
+    const raw = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const data = await enrichOrders(raw);
+    res.json(data);
+  } catch (err) {
+    console.error('GET /reservation-order/customer/:customerId error:', err);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
 // POST /reservation-order
 ordersRouter.post('/', verifyToken, async (req: Request, res: Response) => {
   try {

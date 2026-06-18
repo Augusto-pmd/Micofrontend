@@ -46,6 +46,17 @@ app.use(
 );
 app.use(express.json());
 
+// ── Method override ───────────────────────────────────────────────────
+// El admin panel usa PATCH para los updates, pero el backend implementa PUT.
+// Convertimos PATCH->PUT salvo en /admin/reservations (que tiene su PATCH propio).
+app.use((req, _res, next) => {
+  if (req.method === 'PATCH' && !req.path.startsWith('/admin/reservations')) {
+    req.method = 'PUT';
+  }
+  next();
+});
+
+
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', version: '2.0.0' });
