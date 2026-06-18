@@ -168,6 +168,37 @@ storageRoomsRouter.put('/:id', verifyToken, async (req: Request, res: Response) 
 });
 
 // DELETE /storage-room/:id
+// PUT /storage-room/:id/assign-customer — asigna un cliente y marca la baulera ocupada.
+// El admin la llama por PATCH; el middleware de index.ts la convierte a PUT.
+// Al quedar 'occupied' deja de contar como disponible en el stock.
+async function assignCustomer(req: Request, res: Response) {
+  try {
+    const roomId = req.params['id'];
+    const customerId = req.body?.customerId;
+    if (!customerId) { res.status(400).json({ message: 'customerId requerido' }); return; }
+    const custDoc = await db.collection('customers').doc(customerId).get();
+    if (!custDoc.exists) { res.status(404).json({ message: 'Cliente no encontrado' }); return; }
+    const c = custDoc.data() as any;
+    const tenant = c.fullName || `${c.firstName || ''} ${c.lastName || ''}`.trim();
+    const now = new Date().toISOString();
+    await db.collection('storageRooms').doc(roomId).set({
+      status: 'occupied',
+      customerId,
+      currentTenant: tenant,
+      contractNumber: c.contractNumber ?? null,
+      assignedAt: now,
+      updatedAt: now,
+    }, { merge: true });
+    const updated = await db.collection('storageRooms').doc(roomId).get();
+    res.json({ id: updated.id, ...updated.data() });
+  } catch (err) {
+    console.error('assign-customer error:', err);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+}
+storageRoomsRouter.put('/:id/assign-customer', verifyToken, assignCustomer);
+storageRoomsRouter.put('/:id/admin-assign-customer', verifyToken, assignCustomer);
+
 storageRoomsRouter.delete('/:id', verifyToken, async (req: Request, res: Response) => {
   try {
     await db.collection('storageRooms').doc(req.params['id']).delete();

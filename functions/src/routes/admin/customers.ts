@@ -135,6 +135,23 @@ customersRouter.put('/:id', verifyToken, async (req: Request, res: Response) => 
 });
 
 // DELETE /customer/:id
+// PUT /customer/:id/approve — valida el cliente/asignacion (compra online o presencial).
+// El admin la llama por PATCH; el middleware la convierte a PUT.
+customersRouter.put('/:id/approve', verifyToken, async (req: Request, res: Response) => {
+  try {
+    const now = new Date().toISOString();
+    await db.collection('customers').doc(req.params['id']).set(
+      { status: 'approved', approvedAt: now, isActive: true, updatedAt: now },
+      { merge: true },
+    );
+    const updated = await db.collection('customers').doc(req.params['id']).get();
+    res.json(normalizeCustomer({ id: updated.id, ...updated.data() }));
+  } catch (err) {
+    console.error('approve customer error:', err);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
 customersRouter.delete('/:id', verifyToken, async (req: Request, res: Response) => {
   try {
     await db.collection('customers').doc(req.params['id']).delete();
