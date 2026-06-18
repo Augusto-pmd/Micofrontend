@@ -1019,6 +1019,8 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
 
   // #3: disponibilidad real de stock por m2 (endpoint publico /availability)
   const [availByM2, setAvailByM2] = useState({});
+  const [wlEmail, setWlEmail] = useState('');
+  const [wlSent, setWlSent] = useState(false);
   useEffect(() => {
     fetch(`${MC_API}/availability`).then((r) => r.json()).then((d) => setAvailByM2(d.byM2 || {})).catch(() => {});
   }, []);
@@ -1275,6 +1277,23 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
                     })}
                   </div>
                   <span className="hint">Precios finales con IVA · Sucursal {data.sucursal.name}</span>
+                  {data.category.options.some((o) => (availByM2[String(o.m2)] ?? 0) === 0) && (
+                    <div style={{ marginTop: 14, padding: 12, background: "rgba(61,48,131,0.06)", borderRadius: 10 }}>
+                      {wlSent ? (
+                        <span style={{ color: "#2e7d00", fontWeight: 600 }}>Listo! Te avisamos cuando se libere una baulera de esa medida.</span>
+                      ) : (
+                        <>
+                          <span style={{ display: "block", fontSize: "0.85em", marginBottom: 6 }}>Hay medidas sin stock. Dejanos tu email y te avisamos cuando se libere una.</span>
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            <input type="email" value={wlEmail} onChange={(e) => setWlEmail(e.target.value)} placeholder="vos@email.com" style={{ flex: 1, minWidth: 180, padding: "8px 10px", borderRadius: 8, border: "1px solid #ccc" }} />
+                            <button type="button" className="mc-btn mc-btn-violet" disabled={!wlEmail} onClick={() => {
+                              fetch(`${MC_API}/waitlist`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: wlEmail, m2: data.option?.m2, category: data.category?.label, branchId: data.sucursal?.id || null }) }).then(() => setWlSent(true)).catch(() => setWlSent(true));
+                            }}>Anotarme</button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </>
