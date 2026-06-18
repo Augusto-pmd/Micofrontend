@@ -2756,4 +2756,52 @@ function App() {
 }
 
 window.App = App;
-ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+// #12: asesor virtual con Claude (endpoint /chat)
+function MCChat() {
+  const [open, setOpen] = useState(false);
+  const [msgs, setMsgs] = useState([{ role: 'assistant', content: 'Hola! Soy el asistente de Mi Container. Puedo contarte precios, medidas, disponibilidad o ayudarte a reservar. En que te ayudo?' }]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const boxRef = useRef(null);
+  useEffect(() => { if (boxRef.current) boxRef.current.scrollTop = boxRef.current.scrollHeight; }, [msgs, open, loading]);
+  const send = async () => {
+    const text = input.trim();
+    if (!text || loading) return;
+    const next = [...msgs, { role: 'user', content: text }];
+    setMsgs(next); setInput(''); setLoading(true);
+    try {
+      const r = await fetch(`${MC_API}/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: next }) });
+      const d = await r.json();
+      setMsgs((m) => [...m, { role: 'assistant', content: d.reply || 'Disculpa, no pude responder ahora.' }]);
+    } catch (e) {
+      setMsgs((m) => [...m, { role: 'assistant', content: 'Hubo un error. Proba de nuevo o escribinos por WhatsApp.' }]);
+    } finally { setLoading(false); }
+  };
+  return (
+    <div style={{ position: 'fixed', right: 24, bottom: 96, zIndex: 9999 }}>
+      {open && (
+        <div style={{ width: 340, maxWidth: '90vw', height: 460, maxHeight: '70vh', background: '#fff', borderRadius: 16, boxShadow: '0 12px 40px rgba(0,0,0,0.25)', display: 'flex', flexDirection: 'column', overflow: 'hidden', marginBottom: 12 }}>
+          <div style={{ background: '#3D3083', color: '#fff', padding: '12px 16px', fontWeight: 700, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>Asistente Mi Container</span>
+            <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 22, cursor: 'pointer', lineHeight: 1 }} aria-label='Cerrar'>{'\u00d7'}</button>
+          </div>
+          <div ref={boxRef} style={{ flex: 1, overflowY: 'auto', padding: 12, background: '#f6f6f8' }}>
+            {msgs.map((m, i) => (
+              <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
+                <span style={{ maxWidth: '82%', padding: '8px 12px', borderRadius: 12, fontSize: 14, lineHeight: 1.4, whiteSpace: 'pre-wrap', background: m.role === 'user' ? '#5ECA00' : '#fff', color: m.role === 'user' ? '#0a0a0a' : '#222', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>{m.content}</span>
+              </div>
+            ))}
+            {loading && <div style={{ fontSize: 13, color: '#888', padding: '4px 8px' }}>escribiendo...</div>}
+          </div>
+          <div style={{ display: 'flex', gap: 6, padding: 10, borderTop: '1px solid #eee', background: '#fff' }}>
+            <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') send(); }} placeholder='Escribi tu consulta...' style={{ flex: 1, padding: '9px 11px', borderRadius: 10, border: '1px solid #ccc', fontSize: 14 }} />
+            <button onClick={send} disabled={loading || !input.trim()} style={{ background: '#3D3083', color: '#fff', border: 'none', borderRadius: 10, padding: '0 14px', fontWeight: 700, cursor: 'pointer' }} aria-label='Enviar'>{'\u2192'}</button>
+          </div>
+        </div>
+      )}
+      <button onClick={() => setOpen((o) => !o)} aria-label='Abrir asistente' style={{ width: 56, height: 56, borderRadius: '50%', background: '#3D3083', color: '#fff', border: 'none', boxShadow: '0 6px 20px rgba(61,48,131,0.5)', cursor: 'pointer', fontSize: 22, marginLeft: 'auto', display: 'block' }}>{open ? '\u00d7' : '\ud83d\udcac'}</button>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<React.Fragment><App /><MCChat /></React.Fragment>);
