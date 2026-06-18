@@ -2766,7 +2766,7 @@ window.App = App;
 // #12: asesor virtual con Claude (endpoint /chat)
 function MCChat() {
   const [open, setOpen] = useState(false);
-  const [msgs, setMsgs] = useState([{ role: 'assistant', content: 'Hola! Soy el asistente de Mi Container. Puedo contarte precios, medidas, disponibilidad o ayudarte a reservar. En que te ayudo?' }]);
+  const [msgs, setMsgs] = useState([{ role: 'assistant', content: 'Hola! Soy Yamila, de Mi Container 😊 Contame, ¿qué estás buscando guardar? Te paso precios, medidas, disponibilidad o te ayudo a reservar.' }]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const boxRef = useRef(null);
@@ -2790,8 +2790,8 @@ function MCChat() {
     <div style={{ position: 'fixed', right: 24, bottom: 24, zIndex: 9999 }}>
       {open && (
         <div style={{ width: 340, maxWidth: '90vw', height: 460, maxHeight: '70vh', background: '#fff', borderRadius: 16, boxShadow: '0 12px 40px rgba(0,0,0,0.25)', display: 'flex', flexDirection: 'column', overflow: 'hidden', marginBottom: 12 }}>
-          <div style={{ background: '#3D3083', color: '#fff', padding: '12px 16px', fontWeight: 700, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span>Asistente Mi Container</span>
+          <div style={{ background: 'linear-gradient(135deg, #3D3083, #5ECA00)', color: '#fff', padding: '12px 16px', fontWeight: 700, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>Yamila · Mi Container</span>
             <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 22, cursor: 'pointer', lineHeight: 1 }} aria-label='Cerrar'>{'\u00d7'}</button>
           </div>
           <div ref={boxRef} style={{ flex: 1, overflowY: 'auto', padding: 12, background: '#f6f6f8' }}>
@@ -2809,9 +2809,20 @@ function MCChat() {
         </div>
       )}
       {!open && (
-        <div onClick={() => setOpen(true)} style={{ position: 'absolute', bottom: 70, right: 0, background: '#fff', color: '#222', padding: '9px 13px', borderRadius: 14, boxShadow: '0 4px 16px rgba(0,0,0,0.18)', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', cursor: 'pointer', opacity: teaser ? 1 : 0, transform: teaser ? 'translateY(0)' : 'translateY(6px)', transition: 'opacity .4s, transform .4s', pointerEvents: teaser ? 'auto' : 'none' }}>¿Tenés dudas? Hablá con un asesor</div>
+        <div onClick={() => setOpen(true)} style={{ position: 'absolute', bottom: 70, right: 0, background: '#fff', color: '#222', padding: '9px 13px', borderRadius: 14, boxShadow: '0 4px 16px rgba(0,0,0,0.18)', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', cursor: 'pointer', opacity: teaser ? 1 : 0, transform: teaser ? 'translateY(0)' : 'translateY(6px)', transition: 'opacity .4s, transform .4s', pointerEvents: teaser ? 'auto' : 'none' }}>¿Tenés dudas? Escribime, soy Yamila 😊</div>
       )}
-      <button onClick={() => setOpen((o) => !o)} aria-label='Abrir asistente' style={{ width: 56, height: 56, borderRadius: '50%', background: '#3D3083', color: '#fff', border: 'none', boxShadow: '0 6px 20px rgba(61,48,131,0.5)', cursor: 'pointer', fontSize: 22, marginLeft: 'auto', display: 'block' }}>{open ? '\u00d7' : '\ud83d\udcac'}</button>
+      <button onClick={() => setOpen((o) => !o)} aria-label='Abrir chat con Yamila' style={{ width: 62, height: 62, borderRadius: '50%', background: 'linear-gradient(135deg, #3D3083 0%, #5ECA00 135%)', color: '#fff', border: '2px solid rgba(255,255,255,0.9)', boxShadow: '0 8px 24px rgba(61,48,131,0.45)', cursor: 'pointer', marginLeft: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
+        {open ? (
+          <span style={{ fontSize: 28, lineHeight: 1, fontWeight: 300 }}>×</span>
+        ) : (
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M12 3C7.03 3 3 6.4 3 10.6c0 1.95.83 3.74 2.2 5.12-.1 1-.43 2.18-1.02 3.18 1.34-.19 2.57-.62 3.56-1.2.96.3 2.01.5 3.06.5h.2c4.97 0 9-3.4 9-7.6S16.97 3 12 3z" fill="white"/>
+            <circle cx="8.4" cy="10.6" r="1.25" fill="#3D3083"/>
+            <circle cx="12" cy="10.6" r="1.25" fill="#5ECA00"/>
+            <circle cx="15.6" cy="10.6" r="1.25" fill="#3D3083"/>
+          </svg>
+        )}
+      </button>
     </div>
   );
 }
