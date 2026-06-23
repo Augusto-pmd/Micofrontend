@@ -102,3 +102,14 @@ adminReservationsRouter.patch('/:id', requireAuth, async (req, res: Response) =>
     res.status(500).json({ error: 'Could not update reservation' });
   }
 });
+
+// DELETE /admin/reservations/:id — eliminar una solicitud/reserva (ej. pendiente sin pagar)
+adminReservationsRouter.delete('/:id', requireAuth, async (req, res: Response) => {
+  try {
+    await db.collection('reservations').doc(req.params.id).delete();
+    res.json({ message: 'Deleted' });
+  } catch (err) {
+    console.error('DELETE /admin/reservations/:id error:', err);
+    res.status(500).json({ error: 'Could not delete reservation' });
+  }
+});

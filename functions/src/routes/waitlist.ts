@@ -43,3 +43,14 @@ waitlistRouter.get('/', verifyToken, async (_req: Request, res: Response) => {
     res.status(500).json({ message: 'Internal server error' });
   }
 });
+
+// DELETE /waitlist/:id (ADMIN) — eliminar un anotado.
+waitlistRouter.delete('/:id', verifyToken, async (req: Request, res: Response) => {
+  try {
+    await db.collection('waitlist').doc(req.params['id']).delete();
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('DELETE /waitlist/:id error:', err);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
