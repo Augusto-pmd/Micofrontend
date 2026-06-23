@@ -6,6 +6,7 @@ import { mpWebhookRouter } from './routes/webhooks/mercadopago';
 import { availabilityRouter } from './routes/availability';
 import { waitlistRouter } from './routes/waitlist';
 import { chatRouter } from './routes/chat';
+import { syncRouter } from './routes/sync';
 
 // Admin routes
 import { authRouter } from './routes/admin/auth';
@@ -71,6 +72,7 @@ app.use('/webhooks/mp', mpWebhookRouter);
 app.use('/availability', availabilityRouter); // público
 app.use('/waitlist', waitlistRouter); // POST público, GET admin
 app.use('/chat', chatRouter); // asesor Claude (público)
+app.use('/sync', syncRouter); // import desde Sheet (token)
 
 // ── Admin routes ──────────────────────────────────────────────────────────────
 app.use('/auth', authRouter);
@@ -91,7 +93,7 @@ export const api = onRequest(
   {
     region: 'us-central1',
     memory: '256MiB',
-    secrets: ['MP_ACCESS_TOKEN', 'MP_WEBHOOK_SECRET', 'ANTHROPIC_API_KEY'],
+    secrets: ['MP_ACCESS_TOKEN', 'MP_WEBHOOK_SECRET', 'ANTHROPIC_API_KEY', 'SYNC_TOKEN'],
   },
   app
 );

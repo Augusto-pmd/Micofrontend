@@ -1,0 +1,155 @@
+import { Router, Request, Response } from 'express';
+import { db } from '../config/firebase';
+
+// Importación / sincronización del inventario desde la planilla (Google Sheet).
+// Recibe { bauleras:[...], clientes:[...] } y hace upsert en Firestore.
+// Protegido por token (header x-sync-token === SYNC_TOKEN).
+export const syncRouter = Router();
+
+const FLOOR: Record<string, string> = { A0: 'PB', A1: '1', A2: '2', A3: '3' };
+
+function roomDoc(b: any, now: string) {
+  const m2 = Number(b.m2) || 0;
+  return {
+    space: b.code,
+    name: b.code,
+    floor: FLOOR[b.floor] || b.floor || 'PB',
+    width: String(m2),
+    length: '2.50',
+    height: '2.40',
+    depth: '2.50',
+    areaM2: String(m2),
+    volumeM3: String((m2 * 2.4).toFixed(2)),
+    price: String(b.price ?? ''),
+    images: [],
+    status: b.status === 'occupied' ? 'occupied' : 'available',
+    description: `Baulera ${b.code} · ${m2}m2` + (b.titular ? ` · ${b.titular}` : ''),
+    buildingId: 'edificio-a',
+    branchId: 'nordelta',
+    contractNumber: b.contractNumber || null,
+    currentTenant: b.titular || null,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+syncRouter.post('/import', async (req: Request, res: Response) => {
+  try {
+    const token = req.header('x-sync-token');
+    if (!token || token !== process.env['SYNC_TOKEN']) {
+      res.status(401).json({ error: 'Token invalido' });
+      return;
+    }
+    const bauleras: any[] = req.body?.bauleras;
+    const clientes: any[] = req.body?.clientes || [];
+    if (!Array.isArray(bauleras) || bauleras.length === 0) {
+      res.status(400).json({ error: 'bauleras[] requerido' });
+      return;
+    }
+    const now = new Date().toISOString();
+
+    // 1. Branch + Building (idempotente)
+    await db.collection('branches').doc('nordelta').set({
+      name: 'Nordelta', address: 'Av. de los Lagos 7250', city: 'Nordelta - Tigre',
+      province: 'Buenos Aires', country: 'Argentina', zipCode: '1670',
+      phone: '+54 9 11 3620-7989', email: 'info@micontainer.com', isActive: true, updatedAt: now,
+    }, { merge: true });
+    await db.collection('buildings').doc('edificio-a').set({
+      name: 'Edificio A', branchId: 'nordelta', floors: 4, isActive: true, updatedAt: now,
+    }, { merge: true });
+
+    // 2. Storage rooms (overwrite: refleja status real)
+    const CHUNK = 450;
+    for (let i = 0; i < bauleras.length; i += CHUNK) {
+      const batch = db.batch();
+      bauleras.slice(i, i + CHUNK).forEach((b) => {
+        const id = String(b.code).replace('-', '');
+        batch.set(db.collection('storageRooms').doc(id), roomDoc(b, now));
+      });
+      await batch.commit();
+    }
+
+    // 3. Customers (dedupe por DNI) + Orders (uno por contrato)
+    const byDni = new Map<string, any[]>();
+    for (const c of clientes) {
+      const key = c.dni || c.contractNumber;
+      if (!byDni.has(key)) byDni.set(key, []);
+      byDni.get(key)!.push(c);
+    }
+    const custBatch = db.batch();
+    let custCount = 0;
+    for (const [, list] of byDni) {
+      const first = list[0];
+      const bauleras2 = list.map((x) => x.baulera);
+      const contracts = list.map((x) => x.contractNumber);
+      const parts = String(first.titular || '').split(' ');
+      const custId = `cust-${first.contractNumber}`;
+      custBatch.set(db.collection('customers').doc(custId), {
+        firstName: parts[0] || first.titular || '',
+        lastName: parts.slice(1).join(' '),
+        fullName: first.titular || '',
+        dni: first.dni || '',
+        cuit: (first.dni || '').includes('-') ? first.dni : null,
+        personType: (first.dni || '').includes('-') ? 'juridica' : 'fisica',
+        phone: first.telefono || '',
+        email: first.mail || '',
+        address: '',
+        branchId: 'nordelta',
+        isActive: true,
+        isApproved: true,
+        bauleraCodigo: bauleras2[0],
+        bauleras: bauleras2,
+        storageRoomId: String(bauleras2[0]).replace('-', ''),
+        contractNumber: contracts[0],
+        contractNumbers: contracts,
+        startDate: first.fechaIngreso || null,
+        monthlyPrice: first.price || 0,
+        m2: first.m2 || 0,
+        updatedAt: now,
+      }, { merge: true });
+      custCount++;
+    }
+    await custBatch.commit();
+
+    // 4. Orders + reconciliación (borra órdenes manuales que ya no están)
+    const incomingCtos = new Set(clientes.map((c) => String(c.contractNumber)));
+    const orderBatch = db.batch();
+    for (const c of clientes) {
+      const dniKey = c.dni || c.contractNumber;
+      const custId = `cust-${(byDni.get(dniKey)![0]).contractNumber}`;
+      orderBatch.set(db.collection('reservationOrders').doc(`order-${c.contractNumber}`), {
+        contractNumber: c.contractNumber,
+        customerId: custId,
+        customerName: c.titular,
+        storageRoomId: String(c.baulera).replace('-', ''),
+        bauleraCodigo: c.baulera,
+        branchId: 'nordelta',
+        buildingId: 'edificio-a',
+        entryDate: c.fechaIngreso || null,
+        m2: c.m2 || 0,
+        monthlyPrice: c.price || 0,
+        totalAmount: String(c.price || ''),
+        status: 'CONFIRMED',
+        source: 'manual',
+        updatedAt: now,
+        createdAt: now,
+      }, { merge: true });
+    }
+    await orderBatch.commit();
+
+    // reconciliar: borrar órdenes manuales cuyo contrato ya no figura
+    const existing = await db.collection('reservationOrders').where('source', '==', 'manual').get();
+    const delBatch = db.batch();
+    let deleted = 0;
+    existing.docs.forEach((d) => {
+      const cn = String((d.data() as any).contractNumber);
+      if (!incomingCtos.has(cn)) { delBatch.delete(d.ref); deleted++; }
+    });
+    if (deleted) await delBatch.commit();
+
+    res.json({ ok: true, rooms: bauleras.length, customers: custCount, orders: clientes.length, ordersDeleted: deleted });
+  } catch (err) {
+    console.error('POST /sync/import error:', err);
+    res.status(500).json({ error: 'Internal server error', detail: String(err) });
+  }
+});
