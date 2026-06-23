@@ -112,7 +112,6 @@ syncRouter.post('/import', async (req: Request, res: Response) => {
     await custBatch.commit();
 
     // 4. Orders + reconciliación (borra órdenes manuales que ya no están)
-    const incomingCtos = new Set(clientes.map((c) => String(c.contractNumber)));
     const orderBatch = db.batch();
     for (const c of clientes) {
       const dniKey = c.dni || c.contractNumber;
@@ -137,17 +136,10 @@ syncRouter.post('/import', async (req: Request, res: Response) => {
     }
     await orderBatch.commit();
 
-    // reconciliar: borrar órdenes manuales cuyo contrato ya no figura
-    const existing = await db.collection('reservationOrders').where('source', '==', 'manual').get();
-    const delBatch = db.batch();
-    let deleted = 0;
-    existing.docs.forEach((d) => {
-      const cn = String((d.data() as any).contractNumber);
-      if (!incomingCtos.has(cn)) { delBatch.delete(d.ref); deleted++; }
-    });
-    if (deleted) await delBatch.commit();
+    // MODO ADITIVO: el sync NO borra. Las cancelaciones se marcan a mano
+    // (una baulera liberada en la planilla queda 'available' al sincronizar).
 
-    res.json({ ok: true, rooms: bauleras.length, customers: custCount, orders: clientes.length, ordersDeleted: deleted });
+    res.json({ ok: true, rooms: bauleras.length, customers: custCount, orders: clientes.length, ordersDeleted: 0, mode: 'aditivo' });
   } catch (err) {
     console.error('POST /sync/import error:', err);
     res.status(500).json({ error: 'Internal server error', detail: String(err) });
