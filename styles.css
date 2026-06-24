@@ -1153,13 +1153,13 @@ section { position: relative; z-index: 2; }
 /* EXIT-INTENT MODAL — retención al cerrar el wizard                  */
 /* ════════════════════════════════════════════════════════════════ */
 .mc-exit-back {
-  position: absolute; inset: 0; z-index: 20;
+  position: fixed; inset: 0; z-index: 120;
   background: rgba(10, 10, 10, 0.55);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   display: flex; align-items: center; justify-content: center;
   padding: 24px 18px;
-  border-radius: var(--mc-r-lg);
+  overflow-y: auto;
   animation: fade 0.25s var(--ease-out);
 }
 .mc-exit {
