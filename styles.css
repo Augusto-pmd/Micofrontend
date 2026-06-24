@@ -3344,3 +3344,8 @@ body   { background: #ffffff; }
   width: 100%;
   display: block;
 }
+
+/* Ocultar el chat flotante en mobile mientras el wizard de reserva esta abierto */
+@media (max-width: 640px) {
+  body.mc-wizard-open .mc-chat-fab { display: none !important; }
+}

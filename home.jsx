@@ -192,7 +192,7 @@ const PROMOS = [
   {
     key: 'first-month-free',
     active: true,
-    placements: ['exit-intent'],                  // retención silenciosa
+    placements: ['auto-apply'],                   // 1° mes gratis para todos (auto)
     badge: '1° mes gratis',
     name: 'Primer mes gratis',
     description: 'Tu primer mes sin cargo para que te acomodes sin presión.',
@@ -1048,6 +1048,11 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
   }, [step, paying, exitShown, onClose]);
 
   useEffect(() => {
+    document.body.classList.add('mc-wizard-open');
+    return () => document.body.classList.remove('mc-wizard-open');
+  }, []);
+
+  useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape' && step < 5 && !paying) tryClose(); };
     document.addEventListener('keydown', onKey);
     document.body.style.overflow = 'hidden';
@@ -1113,10 +1118,11 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
         sucursalId: data.sucursal?.id || 'nordelta',
         category:   data.category?.label || data.category?.key || '',
         m2:         data.option?.m2 || 0,
-        monthly:    totals.monthlyEff,
+        monthly:    Math.round(totals.monthly * (1 - (totals.annualPctOff || 0))),
         firstMonth: totals.firstMonth,
         startDate:  data.startDate,
         duration:   data.duration || 1,
+        freeTrialMonths: totals.monthlyDiscount > 0 ? 1 : 0,
         addons:     (data.addons || []).map(a => a.key || a),
         promosApplied: promos.map(p => ({ key: p.key, badge: p.badge, name: p.name })),
         // Datos del cliente (para guest checkout sin Firebase Auth)
@@ -1399,12 +1405,12 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
                   <span>en {data.sucursal.name} · {data.sucursal.hood}</span>
                 </div>
                 <div className="row"><span>Inicio</span><b>{data.startDate || '—'}</b></div>
-                <div className="row"><span>Duración estimada</span><b>{data.duration} {data.duration === 1 ? 'mes' : 'meses'}</b></div>
+                <div className="row"><span>Duración estimada</span><b>{totals.monthlyDiscount > 0 ? `${data.duration + 1} meses (${data.duration} + 1° gratis)` : `${data.duration} ${data.duration === 1 ? 'mes' : 'meses'}`}</b></div>
 
-                {totals.monthlyDiscount > 0 ? (
+                {totals.annualPctOff > 0 ? (
                   <div className="row">
                     <span>Mensualidad</span>
-                    <b><s style={{ color: 'var(--mc-ink-4)', fontWeight: 500 }}>${totals.monthly.toLocaleString('es-AR')}</s> ${totals.monthlyEff.toLocaleString('es-AR')}</b>
+                    <b><s style={{ color: 'var(--mc-ink-4)', fontWeight: 500 }}>${totals.monthly.toLocaleString('es-AR')}</s> ${Math.round(totals.monthly * (1 - totals.annualPctOff)).toLocaleString('es-AR')}</b>
                   </div>
                 ) : (
                   <div className="row"><span>Mensualidad</span><b>${totals.monthly.toLocaleString('es-AR')}</b></div>
@@ -2787,7 +2793,7 @@ function MCChat() {
     } finally { setLoading(false); }
   };
   return (
-    <div style={{ position: 'fixed', right: 24, bottom: 24, zIndex: 9999 }}>
+    <div className="mc-chat-fab" style={{ position: 'fixed', right: 24, bottom: 24, zIndex: 9999 }}>
       {open && (
         <div style={{ width: 340, maxWidth: '90vw', height: 460, maxHeight: '70vh', background: '#fff', borderRadius: 16, boxShadow: '0 12px 40px rgba(0,0,0,0.25)', display: 'flex', flexDirection: 'column', overflow: 'hidden', marginBottom: 12 }}>
           <div style={{ background: 'linear-gradient(135deg, #3D3083, #5ECA00)', color: '#fff', padding: '12px 16px', fontWeight: 700, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
