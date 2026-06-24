@@ -3349,3 +3349,8 @@ body   { background: #ffffff; }
 @media (max-width: 640px) {
   body.mc-wizard-open .mc-chat-fab { display: none !important; }
 }
+
+/* Mobile: subir el chat por encima de la barra fija de Reservar (no taparla) */
+@media (max-width: 900px) {
+  .mc-chat-fab { bottom: calc(86px + env(safe-area-inset-bottom)) !important; }
+}
