@@ -192,7 +192,7 @@ const PROMOS = [
   {
     key: 'first-month-free',
     active: true,
-    placements: ['auto-apply'],                   // 1° mes gratis para todos (auto)
+    placements: ['auto-apply', 'exit-intent'],    // 1° mes gratis para todos + popup al cerrar
     badge: '1° mes gratis',
     name: 'Primer mes gratis',
     description: 'Tu primer mes sin cargo para que te acomodes sin presión.',
@@ -2603,7 +2603,6 @@ function App() {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardCategory, setWizardCategory] = useState(null);
   const [wizardSucursal, setWizardSucursal] = useState(null);
-
   // Cargar datos reales del cliente cuando entra al portal
   useEffect(() => {
     const isPortalRoute = route.name === 'portal' || route.name === 'reservation';
@@ -2777,7 +2776,15 @@ function MCChat() {
   const [loading, setLoading] = useState(false);
   const boxRef = useRef(null);
   const [teaser, setTeaser] = useState(true);
-  useEffect(() => { if (open) { setTeaser(false); return; } setTeaser(true); let on = true; const id = setInterval(() => { on = !on; setTeaser(on); }, 4000); return () => clearInterval(id); }, [open]);
+  useEffect(() => {
+    if (open) { setTeaser(false); return; }
+    let timer;
+    const SHOW_MS = 6000;   // se muestra ~6s
+    const HIDE_MS = 24000;  // se esconde ~24s antes de volver (menos invasivo)
+    const cycle = (show) => { setTeaser(show); timer = setTimeout(() => cycle(!show), show ? SHOW_MS : HIDE_MS); };
+    cycle(true);            // apenas carga la web, aparece
+    return () => clearTimeout(timer);
+  }, [open]);
   useEffect(() => { if (boxRef.current) boxRef.current.scrollTop = boxRef.current.scrollHeight; }, [msgs, open, loading]);
   const send = async () => {
     const text = input.trim();
