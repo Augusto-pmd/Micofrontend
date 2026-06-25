@@ -1,5 +1,6 @@
 import * as admin from 'firebase-admin';
 import { db } from '../config/firebase';
+import { Timestamp } from 'firebase-admin/firestore';
 
 export type ReservationStatus = 'pending_payment' | 'active' | 'cancelled' | 'payment_failed';
 export type FaceEnrollStatus = 'not_started' | 'queued' | 'enrolled' | 'failed' | 'revoked';
@@ -30,6 +31,7 @@ export interface Reservation {
   customerEmail?: string;
   customerPhone?: string;
   customerDni?: string;
+  storageRoomId?: string;   // baulera puntual asignada al pagar
 }
 
 export const reservationsCol = () => db.collection('reservations');
@@ -42,7 +44,7 @@ export async function getReservation(id: string): Promise<Reservation | null> {
 export async function createReservation(data: Omit<Reservation, 'createdAt'>): Promise<Reservation> {
   const reservation: Reservation = {
     ...data,
-    createdAt: admin.firestore.Timestamp.now(),
+    createdAt: Timestamp.now(),
   };
   await reservationsCol().doc(data.id).set(reservation);
   return reservation;

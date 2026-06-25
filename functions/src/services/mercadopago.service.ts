@@ -7,6 +7,7 @@ interface CreateSubscriptionParams {
   amount: number;
   email: string;
   backUrl: string;
+  freeTrialMonths?: number;
 }
 
 interface CreateSubscriptionResult {
@@ -20,14 +21,19 @@ export async function createSubscription(
   const accessToken = process.env.MP_ACCESS_TOKEN;
   if (!accessToken) throw new Error('MP_ACCESS_TOKEN not configured');
 
+  const autoRecurring: Record<string, unknown> = {
+    frequency: 1,
+    frequency_type: 'months',
+    transaction_amount: params.amount,
+    currency_id: 'ARS',
+  };
+  if (params.freeTrialMonths && params.freeTrialMonths > 0) {
+    autoRecurring.free_trial = { frequency: params.freeTrialMonths, frequency_type: 'months' };
+  }
+
   const body = {
     reason: `Mi Container — ${params.categoryLabel} ${params.m2}m² (${params.reservationId})`,
-    auto_recurring: {
-      frequency: 1,
-      frequency_type: 'months',
-      transaction_amount: params.amount,
-      currency_id: 'ARS',
-    },
+    auto_recurring: autoRecurring,
     payer_email: params.email,
     back_url: params.backUrl,
     status: 'pending',

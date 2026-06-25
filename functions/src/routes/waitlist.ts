@@ -9,7 +9,7 @@ export const waitlistRouter = Router();
 // POST /waitlist (PÚBLICO) — anotarse.
 waitlistRouter.post('/', async (req: Request, res: Response) => {
   try {
-    const { email, name, phone, m2, category, branchId } = req.body || {};
+    const { email, name, phone, m2, category, branchId, type, desiredDate, duration } = req.body || {};
     if (!email && !phone) {
       res.status(400).json({ message: 'Se requiere email o telefono' });
       return;
@@ -22,6 +22,9 @@ waitlistRouter.post('/', async (req: Request, res: Response) => {
       m2: m2 ?? null,
       category: category || null,
       branchId: branchId || null,
+      type: type === 'futuro' ? 'futuro' : 'sin_stock',  // futuro = reserva diferida con fecha
+      desiredDate: desiredDate || null,
+      duration: duration ?? null,
       status: 'waiting',
       createdAt: now,
       notifiedAt: null,

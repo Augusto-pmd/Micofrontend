@@ -2,6 +2,8 @@ import { Router, Response } from 'express';
 import { requireAuth, optionalAuth, AuthenticatedRequest } from '../middleware/requireAuth';
 import { createReservation, getUserReservations, getReservation, updateReservation } from '../models/reservation.model';
 import { createSubscription, cancelSubscription } from '../services/mercadopago.service';
+import { getPricingByM2, recurringFor } from '../services/pricing.service';
+import { db } from '../config/firebase';
 import { generateReservationId } from '../utils/generateId';
 import * as admin from 'firebase-admin';
 import * as crypto from 'crypto';
@@ -38,21 +40,61 @@ reservationsRouter.post('/', optionalAuth, async (req, res: Response) => {
   const {
     sucursalId, category, m2, monthly, firstMonth,
     startDate, duration, addons = [], promosApplied = [],
-    name = '', phone = '', dni = '',
+    name = '', phone = '', dni = '', freeTrialMonths = 0,
   } = req.body;
+
+  // Precio server-side: la fuente de verdad es la tabla por medida (admin),
+  // no lo que manda el cliente. Asi, si cambias el precio, aplica a toda venta nueva.
+  // El 1er mes gratis va por free_trial; el recurrente nunca debe ser 0 (MP lo rechaza).
+  const byM2 = await getPricingByM2(sucursalId);
+  const serverMonthly = recurringFor(byM2, m2, Number(duration) || 1);
+  let monthlyNum = serverMonthly ?? Number(monthly);
+  if (!Number.isFinite(monthlyNum) || monthlyNum <= 0) {
+    res.status(400).json({ error: 'monthly must be a positive amount' });
+    return;
+  }
+
+  // Descuento de la Promoción web (Opcion A): si el cliente entra por la promo,
+  // la promo de la sucursal esta activa y dentro de fechas, y la medida aplica.
+  let promoDiscountPct = 0;
+  if (req.body.viaPromo === true) {
+    try {
+      const pdoc = await db.collection('promos').doc(sucursalId).get();
+      const promo = pdoc.exists ? (pdoc.data() as Record<string, unknown>) : null;
+      if (promo && promo.active && Number(promo.discountPct) > 0) {
+        const today = new Date().toISOString().slice(0, 10);
+        const within = (!promo.startDate || today >= String(promo.startDate)) &&
+                       (!promo.endDate || today <= String(promo.endDate));
+        const dM2 = Array.isArray(promo.discountM2) ? (promo.discountM2 as string[]) : [];
+        const eligible = dM2.length === 0 || dM2.includes(String(Number(m2)));
+        if (within && eligible) {
+          promoDiscountPct = Number(promo.discountPct);
+          monthlyNum = Math.round(monthlyNum * (1 - promoDiscountPct / 100));
+        }
+      }
+    } catch (e) { console.warn('[reservations] promo discount check failed', e); }
+  }
 
   try {
     const id = generateReservationId();
 
-    // Create subscription in Mercado Pago
-    const { preapprovalId, initPoint } = await createSubscription({
-      reservationId: id,
-      categoryLabel: category,
-      m2,
-      amount: monthly,
-      email,
-      backUrl: BACK_URL,
-    });
+    // Create subscription in Mercado Pago (en el emulador local se saltea MP)
+    let preapprovalId: string;
+    let initPoint: string;
+    if (process.env.FUNCTIONS_EMULATOR === 'true') {
+      preapprovalId = `emu-${id}`;
+      initPoint = 'http://127.0.0.1:4000/emulator-no-mp';
+    } else {
+      ({ preapprovalId, initPoint } = await createSubscription({
+        reservationId: id,
+        categoryLabel: category,
+        m2,
+        amount: monthlyNum,
+        email,
+        backUrl: BACK_URL,
+        freeTrialMonths: Number(freeTrialMonths) || 0,
+      }));
+    }
 
     // Save reservation to Firestore (includes guest contact info)
     await createReservation({
@@ -61,7 +103,7 @@ reservationsRouter.post('/', optionalAuth, async (req, res: Response) => {
       sucursalId,
       category,
       m2,
-      monthly,
+      monthly: monthlyNum,
       firstMonth,
       startDate,
       duration,

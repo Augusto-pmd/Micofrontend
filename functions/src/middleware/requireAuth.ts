@@ -16,6 +16,13 @@ export async function optionalAuth(
   _res: Response,
   next: NextFunction
 ): Promise<void> {
+  // En el emulador local: identidad de prueba, sin verificar token.
+  if (process.env.FUNCTIONS_EMULATOR === 'true') {
+    (req as AuthenticatedRequest).uid = (req as AuthenticatedRequest).uid || 'emulator-user';
+    (req as AuthenticatedRequest).email = (req as AuthenticatedRequest).email || 'emulator@local';
+    next();
+    return;
+  }
   const header = req.headers.authorization;
   if (header?.startsWith('Bearer ')) {
     const token = header.slice('Bearer '.length);
@@ -40,6 +47,13 @@ export async function requireAuth(
   res: Response,
   next: NextFunction
 ): Promise<void> {
+  // En el emulador local: admin de prueba, sin verificar token.
+  if (process.env.FUNCTIONS_EMULATOR === 'true') {
+    (req as AuthenticatedRequest).uid = 'emulator-admin';
+    (req as AuthenticatedRequest).email = 'admin@local';
+    next();
+    return;
+  }
   const header = req.headers.authorization;
 
   if (!header?.startsWith('Bearer ')) {

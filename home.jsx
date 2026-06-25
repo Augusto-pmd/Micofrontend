@@ -4,7 +4,9 @@
 const { useState, useEffect, useMemo, useRef, useCallback } = React;
 
 // ─── Mercado Pago API ──────────────────────────────────────────────────────
-const MC_API = 'https://us-central1-mc-nordelta-2026.cloudfunctions.net/api';
+const MC_API = (typeof location !== 'undefined' && (location.hostname === 'localhost' || location.hostname === '127.0.0.1'))
+  ? 'http://127.0.0.1:5001/mc-nordelta-2026/us-central1/api'
+  : 'https://us-central1-mc-nordelta-2026.cloudfunctions.net/api';
 
 // Intenta obtener un token Firebase si el usuario está logueado.
 // Si no hay sesión activa, devuelve null (guest checkout).
@@ -57,7 +59,9 @@ const BILLING_ENTITY = {
 };
 
 // URL del panel de administración — actualizar cuando se despliege en Vercel
-const ADMIN_URL = 'https://admin-panel-ten-pied.vercel.app';
+const ADMIN_URL = (typeof location !== 'undefined' && (location.hostname === 'localhost' || location.hostname === '127.0.0.1'))
+  ? 'http://localhost:5173'
+  : 'https://admin-panel-ten-pied.vercel.app';
 
 const PHONE = '+54 9 11 3620-7989';
 const PHONE_TEL = '+5491136207989';
@@ -1005,6 +1009,7 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
     option: (initialCategory || CATEGORIES[0]).options[0],
     startDate: '',
     duration: 3,
+    mode: 'ahora',   // 'ahora' | 'futuro' (reserva diferida con prioridad)
     addons: [],
     name: user?.name || '',
     email: user?.email || '',
@@ -1070,6 +1075,8 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
   };
 
   const today = useMemo(() => { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().split('T')[0]; }, []);
+  const maxAhora = useMemo(() => { const d = new Date(); d.setDate(d.getDate() + 10); return d.toISOString().split('T')[0]; }, []);  // tope 10 dias para "ingreso ahora"
+  const minFuturo = useMemo(() => { const d = new Date(); d.setDate(d.getDate() + 11); return d.toISOString().split('T')[0]; }, []);
   useEffect(() => { if (!data.startDate) setData((d) => ({ ...d, startDate: today })); }, [today]);
 
   const totals = useMemo(() => computeTotals(data), [data, unlockTick]);
@@ -1113,6 +1120,19 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
       if (!validateData()) return;
       setPaying(true);
 
+      // ── Reserva a futuro: anotar con prioridad (sin pago) ──
+      if (data.mode === 'futuro') {
+        fetch(`${MC_API}/waitlist`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'futuro', email: data.email?.trim().toLowerCase(), name: data.name?.trim(),
+            phone: data.phone?.trim(), m2: data.option?.m2, category: data.category?.label,
+            branchId: data.sucursal?.id || 'nordelta', desiredDate: data.startDate, duration: data.duration,
+          }),
+        }).then(() => { setPaying(false); setStep(5); }).catch(() => { setPaying(false); setStep(5); });
+        return;
+      }
+
       // ── Flujo real: crear reserva en Firebase + redirigir a Mercado Pago ──
       crearReserva({
         sucursalId: data.sucursal?.id || 'nordelta',
@@ -1130,6 +1150,7 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
         email: data.email?.trim().toLowerCase() || '',
         phone: data.phone?.trim() || '',
         dni:   data.dni?.replace(/\D/g, '') || '',
+        viaPromo: (() => { try { return sessionStorage.getItem('mc.viaPromo') === '1'; } catch { return false; } })(),
       }).then(({ reservationId, initPoint }) => {
         // Guardar reserva pendiente localmente y redirigir a MP
         const u = {
@@ -1294,7 +1315,7 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
                             <input type="email" value={wlEmail} onChange={(e) => setWlEmail(e.target.value)} placeholder="vos@email.com" style={{ flex: 1, minWidth: 180, padding: "8px 10px", borderRadius: 8, border: "1px solid #ccc" }} />
                             <button type="button" className="mc-btn mc-btn-violet" disabled={!wlEmail} onClick={() => {
                               fetch(`${MC_API}/waitlist`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: wlEmail, m2: data.option?.m2, category: data.category?.label, branchId: data.sucursal?.id || null }) }).then(() => setWlSent(true)).catch(() => setWlSent(true));
-                            }}>Anotarme</button>
+                            }}>Quiero que me avisen</button>
                           </div>
                         </>
                       )}
@@ -1309,11 +1330,22 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
             <>
               <h2 id="wiz-title">¿Cuándo querés empezar?</h2>
               <p className="lead">Reservás la fecha y el espacio queda apartado a tu nombre.</p>
+              <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
+                {[['ahora', 'Ingreso ahora', 'En los próximos 5 a 10 días'], ['futuro', 'Reservar a futuro', 'Para más adelante, con prioridad']].map(([m, t, sub]) => (
+                  <button key={m} type="button" onClick={() => setData((d) => { const nx = { ...d, mode: m }; if (m === 'ahora' && (!d.startDate || d.startDate > maxAhora)) nx.startDate = today; if (m === 'futuro' && d.startDate && d.startDate < minFuturo) nx.startDate = ''; return nx; })}
+                    style={{ flex: 1, textAlign: 'left', padding: '12px 14px', borderRadius: 12, cursor: 'pointer',
+                      border: (data.mode || 'ahora') === m ? '2px solid #5ECA00' : '1px solid #ddd',
+                      background: (data.mode || 'ahora') === m ? '#f3fbe9' : '#fff' }}>
+                    <b style={{ display: 'block', fontSize: 14 }}>{t}</b>
+                    <span style={{ fontSize: 12, color: '#777' }}>{sub}</span>
+                  </button>
+                ))}
+              </div>
               <div className="mc-wiz-row2">
                 <div className="mc-wiz-field">
-                  <label htmlFor="startDate">Fecha de inicio</label>
-                  <input id="startDate" type="date" min={today} value={data.startDate} onChange={(e) => setData({ ...data, startDate: e.target.value })} />
-                  <span className="hint">Mañana o más adelante.</span>
+                  <label htmlFor="startDate">{data.mode === 'futuro' ? '¿Cuándo querés ingresar?' : 'Fecha de inicio'}</label>
+                  <input id="startDate" type="date" min={data.mode === 'futuro' ? minFuturo : today} max={data.mode === 'futuro' ? undefined : maxAhora} value={data.startDate} onChange={(e) => setData({ ...data, startDate: e.target.value })} />
+                  <span className="hint">{data.mode === 'futuro' ? 'La fecha que tenés pensada.' : 'Mañana o más adelante.'}</span>
                 </div>
                 <div className="mc-wiz-field">
                   <label htmlFor="duration">Duración estimada</label>
@@ -1327,6 +1359,12 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
                   <span className="hint">Es solo una estimación. Cancelás cuando quieras.</span>
                 </div>
               </div>
+              {data.mode === 'futuro' && (
+                <div className="mc-wiz-promo-card" style={{ background: '#f3f0ff', borderColor: '#d9cffc' }}>
+                  <span className="mc-promo-badge violet">Reserva con prioridad</span>
+                  <p>No garantiza la disponibilidad: cuando llegue esa fecha, si hay una libre de esa medida, tenés prioridad para que te la asignen. Si querés asegurarla, contratá en los próximos 5–10 días para no perder tu lugar.</p>
+                </div>
+              )}
               {data.duration >= 12 && (
                 <div className="mc-wiz-promo-card">
                   <span className="mc-promo-badge green">20% off anual</span>
@@ -1497,6 +1535,15 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
               )}
 
               <div className="mc-wiz-pay">
+                {data.mode === 'futuro' && (
+                  <>
+                    <button type="button" className="mc-btn mc-btn-violet big" onClick={next} style={{ width: '100%', justifyContent: 'center' }}>
+                      <span>Anotarme con prioridad</span><span className="arrow">→</span>
+                    </button>
+                    <div className="mc-wiz-recurring-note"><span>No se cobra nada ahora. Te avisamos cuando se libere una de {data.option?.m2} m² para tu fecha.</span></div>
+                  </>
+                )}
+                {data.mode !== 'futuro' && (<>
                 <span className="lbl">Forma de pago</span>
                 {/* Botón real de MP — al hacer click inicia el pago */}
                 <button
@@ -1532,6 +1579,7 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
                   </svg>
                   <span>Próximos cobros: <b>${Math.round(totals.monthly * (1 - totals.annualPctOff)).toLocaleString('es-AR')}/mes</b>. Primer cobro hoy de ${totals.firstMonth.toLocaleString('es-AR')}.</span>
                 </div>
+                </>)}
               </div>
             </>
           )}
@@ -1541,10 +1589,13 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
               <div className="badge" aria-hidden="true">
                 <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5L20 7" /></svg>
               </div>
-              <h2>¡Suscripción activa!</h2>
-              <p>Te enviamos a <b>{data.email}</b> la credencial digital, la factura y el resumen.</p>
+              <h2>{data.mode === 'futuro' ? '¡Quedaste anotado con prioridad!' : '¡Suscripción activa!'}</h2>
+              <p>{data.mode === 'futuro'
+                ? <>Te anotamos para una de <b>{data.option?.m2} m²</b> a partir del <b>{data.startDate}</b>. Cuando se libere una, te avisamos por orden de prioridad.</>
+                : <>Te enviamos a <b>{data.email}</b> la credencial digital, la factura y el resumen.</>}</p>
               <div className="code">{store.getReservations()[0]?.id}</div>
 
+              {data.mode !== 'futuro' && (<>
               <div className="mc-wiz-next-steps">
                 <span className="lbl">¿Qué pasa ahora?</span>
                 <div className="step"><span className="n">1</span><span>Te llega un email de confirmación con el comprobante de pago.</span></div>
@@ -1562,6 +1613,15 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
                 <div><span>Primer cobro · hoy</span><b>${totals.firstMonth.toLocaleString('es-AR')}</b></div>
                 <div><span>Próximos cobros · mensual</span><b>${Math.round(totals.monthly * (1 - totals.annualPctOff)).toLocaleString('es-AR')}</b></div>
               </div>
+              </>)}
+              {data.mode === 'futuro' && (
+                <div className="mc-wiz-next-steps">
+                  <span className="lbl">¿Qué pasa ahora?</span>
+                  <div className="step"><span className="n">1</span><span>Quedás en la lista de prioridad para esa medida y fecha.</span></div>
+                  <div className="step"><span className="n">2</span><span>Cuando se libere una, te contactamos por orden de llegada.</span></div>
+                  <div className="step"><span className="n">3</span><span>Si la querés asegurar ya, podés contratar una disponible en los próximos días.</span></div>
+                </div>
+              )}
               <div className="actions">
                 <a className="mc-btn mc-btn-violet" href="#/portal"><span>Ir al portal</span><span className="arrow">→</span></a>
                 <button className="mc-btn mc-btn-ghost" onClick={onClose}><span>Cerrar</span></button>
@@ -2603,6 +2663,22 @@ function App() {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardCategory, setWizardCategory] = useState(null);
   const [wizardSucursal, setWizardSucursal] = useState(null);
+  const [, setPriceTick] = useState(0);
+
+  // Precios desde el server: la tabla por medida es la fuente de verdad (admin).
+  useEffect(() => {
+    fetch(`${MC_API}/pricing?branchId=nordelta`).then((r) => r.json()).then((d) => {
+      const byM2 = d && d.byM2;
+      if (!byM2) return;
+      let changed = false;
+      CATEGORIES.forEach((c) => (c.options || []).forEach((o) => {
+        const v = byM2[String(o.m2)];
+        if (typeof v === 'number' && v > 0 && v !== o.monthly) { o.monthly = v; changed = true; }
+      }));
+      if (changed) setPriceTick((t) => t + 1);
+    }).catch(() => {});
+  }, []);
+
   // Cargar datos reales del cliente cuando entra al portal
   useEffect(() => {
     const isPortalRoute = route.name === 'portal' || route.name === 'reservation';
@@ -2840,4 +2916,49 @@ function MCChat() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<React.Fragment><App /><MCChat /></React.Fragment>);
+
+// Promoción web: cartel emergente configurable desde el admin (por sucursal)
+function MCPromo() {
+  const [promo, setPromo] = useState(null);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    let seen = false;
+    try { seen = sessionStorage.getItem('mc.promoSeen') === '1'; } catch {}
+    if (seen) return;
+    fetch(`${MC_API}/promo?branchId=nordelta`).then((r) => r.json()).then((d) => {
+      if (!d || !d.active) return;
+      setPromo(d); setOpen(true);
+      try { sessionStorage.setItem('mc.promoSeen', '1'); } catch {}
+      if (Number(d.discountPct) > 0) { try { sessionStorage.setItem('mc.viaPromo', '1'); } catch {} }
+    }).catch(() => {});
+  }, []);
+  useEffect(() => {
+    if (!open || !promo) return;
+    const secs = Math.max(2, Number(promo.autoCloseSec) || 5);
+    const id = setTimeout(() => setOpen(false), secs * 1000);
+    return () => clearTimeout(id);
+  }, [open, promo]);
+  if (!open || !promo) return null;
+  const FONTS = { cond: "'Roboto Condensed', sans-serif", sans: "'Roboto', sans-serif", mono: "'Roboto Mono', monospace" };
+  const anim = ({ fade: 'mcPromoFade .5s ease-out', slide: 'mcPromoSlide .5s ease-out', pulse: 'mcPromoPulse 1.4s ease-in-out infinite' })[promo.animation] || 'none';
+  return (
+    <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(10,10,10,0.6)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <style>{`@keyframes mcPromoFade{from{opacity:0}to{opacity:1}}@keyframes mcPromoSlide{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}@keyframes mcPromoPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.03)}}`}</style>
+      <div onClick={(e) => e.stopPropagation()} style={{ position: 'relative', width: '100%', maxWidth: 380, borderRadius: 18, overflow: 'hidden', boxShadow: '0 30px 80px rgba(0,0,0,0.5)', background: promo.type === 'text' ? (promo.bgColor || '#fff') : '#fff', animation: anim }}>
+        <button onClick={() => setOpen(false)} aria-label="Cerrar" style={{ position: 'absolute', top: 10, right: 10, zIndex: 2, width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.2)', color: '#fff', fontSize: 18, cursor: 'pointer', lineHeight: 1 }}>×</button>
+        {promo.type === 'image' && promo.imageData ? (
+          <img src={promo.imageData} alt="Promoción" style={{ display: 'block', width: '100%' }} />
+        ) : (
+          <div style={{ padding: '30px 26px', textAlign: 'center', fontFamily: FONTS[promo.fontFamily] || FONTS.cond, color: promo.color || '#0a0a0a' }}>
+            {promo.title && <h3 style={{ fontSize: 26, fontWeight: 800, margin: '0 0 8px', letterSpacing: '-0.02em' }}>{promo.title}</h3>}
+            {promo.text && <p style={{ fontSize: 15, lineHeight: 1.5, margin: 0, whiteSpace: 'pre-wrap', opacity: 0.92 }}>{promo.text}</p>}
+            {Number(promo.discountPct) > 0 && <div style={{ marginTop: 12, display: 'inline-block', fontSize: 13, fontWeight: 800, padding: '4px 12px', borderRadius: 999, background: promo.color || '#0a0a0a', color: promo.bgColor || '#fff' }}>{promo.discountPct}% OFF</div>}
+            {promo.ctaText && <div style={{ marginTop: 16 }}><a href={promo.ctaLink || '#/reservar'} onClick={() => setOpen(false)} style={{ display: 'inline-block', background: '#5ECA00', color: '#fff', fontWeight: 700, fontSize: 14, padding: '10px 18px', borderRadius: 10, textDecoration: 'none' }}>{promo.ctaText} →</a></div>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<React.Fragment><App /><MCChat /><MCPromo /></React.Fragment>);

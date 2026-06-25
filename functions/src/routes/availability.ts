@@ -1,27 +1,31 @@
 import { Router, Request, Response } from 'express';
 import { db } from '../config/firebase';
 
-// Endpoint PÚBLICO de disponibilidad de stock por m².
-// Lo usa la web pública para saber qué medidas tienen unidades libres,
-// deshabilitar las agotadas y sugerir una medida alternativa.
+// Endpoint PUBLICO de disponibilidad por m2 (por sucursal).
 export const availabilityRouter = Router();
 
-let cache: { data: any; expires: number } | null = null;
-const TTL_MS = 30_000; // 30s — evita leer toda la colección en cada visita
+const cacheByBranch = new Map<string, { data: unknown; expires: number }>();
+const TTL_MS = 30_000;
 
-// GET /availability/units — lista las bauleras LIBRES por m2 (codigos), para que
-// el wizard ofrezca una unidad puntual (auto-asignar o elegir).
-availabilityRouter.get('/units', async (_req: Request, res: Response) => {
+function freeRoomsQuery(branchId?: string): FirebaseFirestore.Query {
+  let q: FirebaseFirestore.Query = db.collection('storageRooms').where('status', '==', 'available');
+  if (branchId) q = q.where('branchId', '==', branchId);
+  return q;
+}
+
+// GET /availability/units?branchId= — bauleras LIBRES por m2 (codigos)
+availabilityRouter.get('/units', async (req: Request, res: Response) => {
   try {
-    const snap = await db.collection('storageRooms').where('status', '==', 'available').get();
+    const branchId = req.query['branchId'] as string | undefined;
+    const snap = await freeRoomsQuery(branchId).get();
     const byM2: Record<string, string[]> = {};
     snap.docs.forEach((d) => {
-      const data = d.data() as any;
-      const m2 = parseFloat(data.areaM2 || '0');
+      const data = d.data() as Record<string, unknown>;
+      const m2 = parseFloat(String(data.areaM2 || '0'));
       if (!m2) return;
       const key = String(m2);
       if (!byM2[key]) byM2[key] = [];
-      byM2[key].push(data.space || data.name || d.id);
+      byM2[key].push(String(data.space || data.name || d.id));
     });
     Object.keys(byM2).forEach((k) => byM2[k].sort());
     res.json({ byM2, updatedAt: new Date().toISOString() });
@@ -31,28 +35,25 @@ availabilityRouter.get('/units', async (_req: Request, res: Response) => {
   }
 });
 
-availabilityRouter.get('/', async (_req: Request, res: Response) => {
+// GET /availability?branchId= — conteo de libres por m2
+availabilityRouter.get('/', async (req: Request, res: Response) => {
   try {
+    const branchId = req.query['branchId'] as string | undefined;
+    const key = branchId || 'all';
     const now = Date.now();
-    if (cache && cache.expires > now) {
-      res.json(cache.data);
-      return;
-    }
-    const snap = await db
-      .collection('storageRooms')
-      .where('status', '==', 'available')
-      .get();
+    const cached = cacheByBranch.get(key);
+    if (cached && cached.expires > now) { res.json(cached.data); return; }
 
+    const snap = await freeRoomsQuery(branchId).get();
     const byM2: Record<string, number> = {};
     snap.docs.forEach((d) => {
-      const m2 = parseFloat((d.data() as any).areaM2 || '0');
+      const m2 = parseFloat(String((d.data() as Record<string, unknown>).areaM2 || '0'));
       if (!m2) return;
-      const key = String(m2);
-      byM2[key] = (byM2[key] || 0) + 1;
+      const k = String(m2);
+      byM2[k] = (byM2[k] || 0) + 1;
     });
-
     const data = { total: snap.size, byM2, updatedAt: new Date().toISOString() };
-    cache = { data, expires: now + TTL_MS };
+    cacheByBranch.set(key, { data, expires: now + TTL_MS });
     res.json(data);
   } catch (err) {
     console.error('GET /availability error:', err);

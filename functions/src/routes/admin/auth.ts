@@ -6,6 +6,22 @@ export const authRouter = Router();
 // POST /auth/login — email/password login (checks Firestore users collection)
 // For Google OAuth users this endpoint is not needed (they use Firebase ID tokens directly)
 authRouter.post('/login', async (req: Request, res: Response) => {
+  // En el emulador local: login admin de prueba (cualquier email/clave).
+  if (process.env.FUNCTIONS_EMULATOR === 'true') {
+    res.json({
+      user: {
+        id: 'emulator-admin',
+        email: (req.body?.email as string) || 'admin@local',
+        firstName: 'Emulador', lastName: 'Admin',
+        role: { code: 'role-admin' },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      token: 'emulator',
+    });
+    return;
+  }
+
   const { email, password } = req.body;
 
   if (!email || !password) {

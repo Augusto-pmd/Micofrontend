@@ -2,6 +2,8 @@ import { Router, Response } from 'express';
 import { requireAuth } from '../../middleware/requireAuth';
 import { db } from '../../config/firebase';
 import * as admin from 'firebase-admin';
+import { assignRoomForReservation } from '../../services/assignment.service';
+import { getReservation } from '../../models/reservation.model';
 
 export const adminReservationsRouter = Router();
 
@@ -42,6 +44,7 @@ adminReservationsRouter.get('/', requireAuth, async (req, res: Response) => {
         duration:     data['duration'],
         addons:       data['addons'] || [],
         promosApplied: data['promosApplied'] || [],
+        storageRoomId: data['storageRoomId'] || null,
         // Timestamps
         createdAt: data['createdAt']?.toDate?.()?.toISOString() || null,
         cancelledAt: data['cancelledAt']?.toDate?.()?.toISOString() || null,
@@ -100,6 +103,33 @@ adminReservationsRouter.patch('/:id', requireAuth, async (req, res: Response) =>
     res.json({ message: 'Updated' });
   } catch (err) {
     res.status(500).json({ error: 'Could not update reservation' });
+  }
+});
+
+// POST /admin/reservations/:id/assign-room — asignar/reasignar baulera puntual a una reserva
+adminReservationsRouter.post('/:id/assign-room', requireAuth, async (req, res: Response) => {
+  try {
+    const reservation = await getReservation(req.params.id);
+    if (!reservation) { res.status(404).json({ error: 'Reservation not found' }); return; }
+
+    // si ya tenia baulera asignada, liberarla antes de reasignar
+    if (reservation.storageRoomId) {
+      await db.collection('storageRooms').doc(reservation.storageRoomId).set({
+        status: 'available', customerId: null, currentTenant: null,
+        reservationId: null, updatedAt: new Date().toISOString(),
+      }, { merge: true });
+    }
+
+    const targetRoomId = (req.body?.storageRoomId as string) || undefined;
+    const roomId = await assignRoomForReservation(reservation, targetRoomId);
+    if (!roomId) {
+      res.status(409).json({ error: `Sin baulera libre de ${reservation.m2}m2` });
+      return;
+    }
+    res.json({ message: 'Assigned', storageRoomId: roomId });
+  } catch (err) {
+    console.error('POST /admin/reservations/:id/assign-room error:', err);
+    res.status(500).json({ error: 'Could not assign room' });
   }
 });
 

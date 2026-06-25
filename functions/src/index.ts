@@ -7,6 +7,10 @@ import { availabilityRouter } from './routes/availability';
 import { waitlistRouter } from './routes/waitlist';
 import { chatRouter } from './routes/chat';
 import { syncRouter } from './routes/sync';
+import { pricingPublicRouter } from './routes/pricing';
+import { promoRouter } from './routes/promo';
+import { leadsRouter } from './routes/leads';
+import { mailingRouter } from './routes/mailing';
 
 // Admin routes
 import { authRouter } from './routes/admin/auth';
@@ -73,6 +77,10 @@ app.use('/availability', availabilityRouter); // público
 app.use('/waitlist', waitlistRouter); // POST público, GET admin
 app.use('/chat', chatRouter); // asesor Claude (público)
 app.use('/sync', syncRouter); // import desde Sheet (token)
+app.use('/pricing', pricingPublicRouter); // tabla de precios por medida (publico)
+app.use('/promo', promoRouter); // promocion web por sucursal (GET publico, admin con token)
+app.use('/leads', leadsRouter); // contactos para mailing (admin)
+app.use('/mailing', mailingRouter); // envio de mails via Resend (admin)
 
 // ── Admin routes ──────────────────────────────────────────────────────────────
 app.use('/auth', authRouter);
@@ -93,7 +101,7 @@ export const api = onRequest(
   {
     region: 'us-central1',
     memory: '256MiB',
-    secrets: ['MP_ACCESS_TOKEN', 'MP_WEBHOOK_SECRET', 'ANTHROPIC_API_KEY', 'SYNC_TOKEN'],
+    secrets: ['MP_ACCESS_TOKEN', 'MP_WEBHOOK_SECRET', 'ANTHROPIC_API_KEY', 'SYNC_TOKEN', 'RESEND_API_KEY'],
   },
   app
 );

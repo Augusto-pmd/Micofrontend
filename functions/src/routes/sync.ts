@@ -8,7 +8,7 @@ export const syncRouter = Router();
 
 const FLOOR: Record<string, string> = { A0: 'PB', A1: '1', A2: '2', A3: '3' };
 
-function roomDoc(b: any, now: string) {
+function roomDoc(b: any, now: string, branchId: string, buildingId: string) {
   const m2 = Number(b.m2) || 0;
   return {
     space: b.code,
@@ -24,8 +24,8 @@ function roomDoc(b: any, now: string) {
     images: [],
     status: b.status === 'occupied' ? 'occupied' : 'available',
     description: `Baulera ${b.code} · ${m2}m2` + (b.titular ? ` · ${b.titular}` : ''),
-    buildingId: 'edificio-a',
-    branchId: 'nordelta',
+    buildingId,
+    branchId,
     contractNumber: b.contractNumber || null,
     currentTenant: b.titular || null,
     createdAt: now,
@@ -36,7 +36,7 @@ function roomDoc(b: any, now: string) {
 syncRouter.post('/import', async (req: Request, res: Response) => {
   try {
     const token = req.header('x-sync-token');
-    if (!token || token !== process.env['SYNC_TOKEN']) {
+    if (process.env.FUNCTIONS_EMULATOR !== 'true' && (!token || token !== process.env['SYNC_TOKEN'])) {
       res.status(401).json({ error: 'Token invalido' });
       return;
     }
@@ -47,15 +47,20 @@ syncRouter.post('/import', async (req: Request, res: Response) => {
       return;
     }
     const now = new Date().toISOString();
+    const branchId = String(req.body?.branchId || 'nordelta');
+    const branchName = String(req.body?.branchName || (branchId === 'nordelta' ? 'Nordelta' : branchId));
+    const buildingId = `${branchId}-A`;
 
-    // 1. Branch + Building (idempotente)
-    await db.collection('branches').doc('nordelta').set({
-      name: 'Nordelta', address: 'Av. de los Lagos 7250', city: 'Nordelta - Tigre',
-      province: 'Buenos Aires', country: 'Argentina', zipCode: '1670',
-      phone: '+54 9 11 3620-7989', email: 'info@micontainer.com', isActive: true, updatedAt: now,
+    // 1. Branch + Building (idempotente, por sucursal)
+    const branchExtra = branchId === 'nordelta'
+      ? { address: 'Av. de los Lagos 7250', city: 'Nordelta - Tigre', province: 'Buenos Aires',
+          country: 'Argentina', zipCode: '1670', phone: '+54 9 11 3620-7989', email: 'info@micontainer.com' }
+      : {};
+    await db.collection('branches').doc(branchId).set({
+      name: branchName, isActive: true, createdAt: now, updatedAt: now, ...branchExtra,
     }, { merge: true });
-    await db.collection('buildings').doc('edificio-a').set({
-      name: 'Edificio A', branchId: 'nordelta', floors: 4, isActive: true, updatedAt: now,
+    await db.collection('buildings').doc(buildingId).set({
+      name: `Edificio ${branchName}`, branchId, isActive: true, updatedAt: now,
     }, { merge: true });
 
     // 2. Storage rooms (overwrite: refleja status real)
@@ -63,8 +68,8 @@ syncRouter.post('/import', async (req: Request, res: Response) => {
     for (let i = 0; i < bauleras.length; i += CHUNK) {
       const batch = db.batch();
       bauleras.slice(i, i + CHUNK).forEach((b) => {
-        const id = String(b.code).replace('-', '');
-        batch.set(db.collection('storageRooms').doc(id), roomDoc(b, now));
+        const id = `${branchId}__${b.code}`;
+        batch.set(db.collection('storageRooms').doc(id), roomDoc(b, now, branchId, buildingId));
       });
       await batch.commit();
     }
@@ -83,7 +88,7 @@ syncRouter.post('/import', async (req: Request, res: Response) => {
       const bauleras2 = list.map((x) => x.baulera);
       const contracts = list.map((x) => x.contractNumber);
       const parts = String(first.titular || '').split(' ');
-      const custId = `cust-${first.contractNumber}`;
+      const custId = `cust-${branchId}-${first.contractNumber}`;
       custBatch.set(db.collection('customers').doc(custId), {
         firstName: parts[0] || first.titular || '',
         lastName: parts.slice(1).join(' '),
@@ -99,7 +104,7 @@ syncRouter.post('/import', async (req: Request, res: Response) => {
         isApproved: true,
         bauleraCodigo: bauleras2[0],
         bauleras: bauleras2,
-        storageRoomId: String(bauleras2[0]).replace('-', ''),
+        storageRoomId: `${branchId}__${bauleras2[0]}`,
         contractNumber: contracts[0],
         contractNumbers: contracts,
         startDate: first.fechaIngreso || null,
@@ -115,12 +120,12 @@ syncRouter.post('/import', async (req: Request, res: Response) => {
     const orderBatch = db.batch();
     for (const c of clientes) {
       const dniKey = c.dni || c.contractNumber;
-      const custId = `cust-${(byDni.get(dniKey)![0]).contractNumber}`;
-      orderBatch.set(db.collection('reservationOrders').doc(`order-${c.contractNumber}`), {
+      const custId = `cust-${branchId}-${(byDni.get(dniKey)![0]).contractNumber}`;
+      orderBatch.set(db.collection('reservationOrders').doc(`order-${branchId}-${c.contractNumber}`), {
         contractNumber: c.contractNumber,
         customerId: custId,
         customerName: c.titular,
-        storageRoomId: String(c.baulera).replace('-', ''),
+        storageRoomId: `${branchId}__${c.baulera}`,
         bauleraCodigo: c.baulera,
         branchId: 'nordelta',
         buildingId: 'edificio-a',
@@ -139,7 +144,7 @@ syncRouter.post('/import', async (req: Request, res: Response) => {
     // MODO ADITIVO: el sync NO borra. Las cancelaciones se marcan a mano
     // (una baulera liberada en la planilla queda 'available' al sincronizar).
 
-    res.json({ ok: true, rooms: bauleras.length, customers: custCount, orders: clientes.length, ordersDeleted: 0, mode: 'aditivo' });
+    res.json({ ok: true, branchId, rooms: bauleras.length, customers: custCount, orders: clientes.length, ordersDeleted: 0, mode: 'aditivo' });
   } catch (err) {
     console.error('POST /sync/import error:', err);
     res.status(500).json({ error: 'Internal server error', detail: String(err) });

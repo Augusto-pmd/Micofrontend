@@ -3,6 +3,7 @@ import * as admin from 'firebase-admin';
 import { getReservationByMpPreapprovalId, updateReservation, MpSubscriptionStatus } from '../../models/reservation.model';
 import { createPayment } from '../../models/payment.model';
 import { verifyMpWebhookSignature } from '../../utils/hmac';
+import { assignRoomForReservation } from '../../services/assignment.service';
 
 export const mpWebhookRouter = Router();
 
@@ -47,6 +48,13 @@ async function processWebhook(body: Record<string, unknown>): Promise<void> {
         status: 'active',
         mpSubscriptionStatus: 'authorized',
       });
+      // Asignar baulera puntual + ocuparla + crear la venta
+      const assignedRoom = await assignRoomForReservation({ ...reservation, status: 'active' });
+      if (assignedRoom) {
+        console.log(`[mp-webhook] Reservation ${reservation.id} -> baulera ${assignedRoom}`);
+      } else {
+        console.warn(`[mp-webhook] sin baulera libre de ${reservation.m2}m2 para ${reservation.id}`);
+      }
     }
 
     const eventDate = (body.date_created as string) ?? new Date().toISOString();
