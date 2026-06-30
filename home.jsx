@@ -1761,35 +1761,106 @@ function GoogleDemoPicker({ onPick, onClose }) {
 /* Portal                                                             */
 /* ════════════════════════════════════════════════════════════════ */
 function PortalLogin({ onLogin }) {
+  const [mode, setMode] = useState('login'); // 'login' | 'activate'
   const [email, setEmail] = useState('');
+  const [pass, setPass] = useState('');
   const [err, setErr] = useState('');
-  const handleEmail = (e) => {
-    e.preventDefault();
-    if (!/^\S+@\S+\.\S+$/.test(email)) { setErr('Ingresá un email válido'); return; }
-    const user = { email: email.toLowerCase(), name: email.split('@')[0], provider: 'email' };
-    store.setUser(user);
-    onLogin && onLogin(user);
-  };
+  const [info, setInfo] = useState('');
+  const [busy, setBusy] = useState(false);
+
   const handleGoogle = (user) => { store.setUser(user); onLogin && onLogin(user); };
+
+  const doLogin = async (e) => {
+    e.preventDefault();
+    setErr(''); setInfo('');
+    if (!/^\S+@\S+\.\S+$/.test(email)) { setErr('Ingresá un email válido'); return; }
+    if (!pass) { setErr('Ingresá tu contraseña'); return; }
+    if (!window._fb || !window._fb.signInWithEmail) { setErr('No se pudo iniciar sesión'); return; }
+    setBusy(true);
+    try {
+      const result = await window._fb.signInWithEmail(email.toLowerCase().trim(), pass);
+      const u = result.user;
+      if (!u.emailVerified) {
+        setErr('Tenés que confirmar tu email antes de entrar. Revisá tu casilla o reenviá el mail de activación.');
+        if (window._fb.signOut) await window._fb.signOut();
+        setBusy(false);
+        return;
+      }
+      const user = { uid: u.uid, email: u.email, name: u.displayName || u.email.split('@')[0], provider: 'email' };
+      store.setUser(user);
+      onLogin && onLogin(user);
+    } catch (ex) {
+      const code = (ex && ex.code) || '';
+      if (code.indexOf('wrong-password') >= 0 || code.indexOf('invalid-credential') >= 0) setErr('Email o contraseña incorrectos.');
+      else if (code.indexOf('user-not-found') >= 0) setErr('No encontramos una cuenta con ese email. Si es tu primera vez, activá tu cuenta.');
+      else if (code.indexOf('too-many-requests') >= 0) setErr('Demasiados intentos. Probá más tarde.');
+      else setErr('No se pudo iniciar sesión.');
+      setBusy(false);
+    }
+  };
+
+  const doActivate = async (e) => {
+    e.preventDefault();
+    setErr(''); setInfo('');
+    if (!/^\S+@\S+\.\S+$/.test(email)) { setErr('Ingresá un email válido'); return; }
+    setBusy(true);
+    try {
+      await fetch(`${MC_API}/portal/activate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email.toLowerCase().trim() }) });
+    } catch (e2) { /* respuesta siempre generica */ }
+    setInfo('Si tu email está registrado, te enviamos un link para crear tu contraseña y activar tu cuenta. Revisá tu casilla (y el spam).');
+    setBusy(false);
+  };
+
   return (
     <div className="mc-login">
       <div className="mc-login-card">
         <span className="mc-eyebrow violet">Portal cliente</span>
         <h2>Entrá a <span className="v">tu cuenta</span>.</h2>
-        <p>Iniciá sesión con Google o con tu email. Sin contraseñas.</p>
-        <GoogleButton onSuccess={handleGoogle} />
-        <div className="mc-login-divider"><span>o con tu email</span></div>
-        <form onSubmit={handleEmail}>
-          <div className="mc-wiz-field">
-            <label htmlFor="login-email">Email</label>
-            <input id="login-email" type="email" value={email} onChange={(e) => { setEmail(e.target.value); setErr(''); }} placeholder="vos@email.com" />
-            {err && <span className="err">{err}</span>}
-          </div>
-          <button type="submit" className="mc-btn mc-btn-violet full">
-            <span>Continuar con email</span>
-            <span className="arrow">→</span>
-          </button>
-        </form>
+        {mode === 'login' ? (
+          <>
+            <p>Iniciá sesión con Google, o con tu email y contraseña.</p>
+            <GoogleButton onSuccess={handleGoogle} />
+            <div className="mc-login-divider"><span>o con tu email</span></div>
+            <form onSubmit={doLogin}>
+              <div className="mc-wiz-field">
+                <label htmlFor="login-email">Email</label>
+                <input id="login-email" type="email" value={email} onChange={(e) => { setEmail(e.target.value); setErr(''); }} placeholder="vos@email.com" />
+              </div>
+              <div className="mc-wiz-field">
+                <label htmlFor="login-pass">Contraseña</label>
+                <input id="login-pass" type="password" value={pass} onChange={(e) => { setPass(e.target.value); setErr(''); }} placeholder="Tu contraseña" />
+              </div>
+              {err && <span className="err">{err}</span>}
+              {info && <span style={{ color: '#2e7d00', fontSize: 13 }}>{info}</span>}
+              <button type="submit" className="mc-btn mc-btn-violet full" disabled={busy}>
+                <span>{busy ? 'Entrando…' : 'Ingresar'}</span>
+                <span className="arrow">→</span>
+              </button>
+            </form>
+            <button type="button" onClick={() => { setMode('activate'); setErr(''); setInfo(''); }} style={{ background: 'none', border: 'none', color: '#5b21b6', cursor: 'pointer', marginTop: 12, fontSize: 13, textDecoration: 'underline' }}>
+              ¿Primera vez o olvidaste tu clave? Activá tu cuenta
+            </button>
+          </>
+        ) : (
+          <>
+            <p>Te enviamos un link a tu email para <b>crear tu contraseña</b> y activar tu cuenta.</p>
+            <form onSubmit={doActivate}>
+              <div className="mc-wiz-field">
+                <label htmlFor="act-email">Email</label>
+                <input id="act-email" type="email" value={email} onChange={(e) => { setEmail(e.target.value); setErr(''); }} placeholder="vos@email.com" />
+              </div>
+              {err && <span className="err">{err}</span>}
+              {info && <span style={{ color: '#2e7d00', fontSize: 13 }}>{info}</span>}
+              <button type="submit" className="mc-btn mc-btn-violet full" disabled={busy}>
+                <span>{busy ? 'Enviando…' : 'Enviarme el link'}</span>
+                <span className="arrow">→</span>
+              </button>
+            </form>
+            <button type="button" onClick={() => { setMode('login'); setErr(''); setInfo(''); }} style={{ background: 'none', border: 'none', color: '#5b21b6', cursor: 'pointer', marginTop: 12, fontSize: 13 }}>
+              ← Volver a ingresar
+            </button>
+          </>
+        )}
         <a className="mc-login-back" href="#/">← Volver al inicio</a>
       </div>
     </div>

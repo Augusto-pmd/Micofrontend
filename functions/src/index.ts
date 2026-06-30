@@ -26,6 +26,10 @@ import { inventoryRouter } from './routes/admin/inventory';
 import { seedRouter } from './routes/admin/seed';
 import { adminReservationsRouter } from './routes/admin/reservations';
 import { myAccountRouter } from './routes/myAccount';
+import { portalRouter } from './routes/portal';
+import { adminAuditRouter } from './routes/admin/audit';
+import { adminCancellationsRouter } from './routes/admin/cancellations';
+import { adminMaintenanceRouter } from './routes/admin/maintenance';
 
 const app = express();
 
@@ -95,7 +99,11 @@ app.use('/pricing-engine', pricingRouter);
 app.use('/inventory', inventoryRouter);
 app.use('/seed', seedRouter);
 app.use('/admin/reservations', adminReservationsRouter);
+app.use('/admin/audit', adminAuditRouter);
+app.use('/admin/cancellations', adminCancellationsRouter);
+app.use('/admin/maintenance', adminMaintenanceRouter);
 app.use('/my-account', myAccountRouter);
+app.use('/portal', portalRouter);
 
 export const api = onRequest(
   {

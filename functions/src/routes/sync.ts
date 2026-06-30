@@ -74,6 +74,42 @@ syncRouter.post('/import', async (req: Request, res: Response) => {
       await batch.commit();
     }
 
+    // 2.5 Precios por medida (motor de precios / web). Precio de grupo = el mas
+    // frecuente por m2 (los distintos quedan como override puntual en la baulera).
+    const priceVotes: Record<string, Record<string, number>> = {};
+    for (const b of bauleras) {
+      const m2 = Number(b.m2) || 0;
+      const price = Number(b.price) || 0;
+      if (!m2 || !price) continue;
+      const km = String(m2);
+      priceVotes[km] = priceVotes[km] || {};
+      const kp = String(price);
+      priceVotes[km][kp] = (priceVotes[km][kp] || 0) + 1;
+    }
+    const byM2: Record<string, number> = {};
+    for (const km of Object.keys(priceVotes)) {
+      // mas votado; si empatan, el mas bajo (asumimos que los caros son overrides)
+      const winner = Object.entries(priceVotes[km])
+        .sort((a, b) => b[1] - a[1] || Number(a[0]) - Number(b[0]))[0];
+      if (winner) byM2[km] = Number(winner[0]);
+    }
+    if (Object.keys(byM2).length) {
+      await db.collection('pricing').doc(branchId).set(
+        { branchId, byM2, updatedAt: now, source: 'sheet-sync' },
+        { merge: true },
+      );
+    }
+
+    // 2.7 Candado anti-duplicacion: borra cualquier resto de esquema viejo
+    // (id sin '__'), asi NUNCA se vuelven a duplicar las bauleras al sincronizar.
+    const legacySnap = await db.collection('storageRooms').get();
+    const legacy = legacySnap.docs.filter((d) => !d.id.includes('__'));
+    for (let i = 0; i < legacy.length; i += 400) {
+      const lb = db.batch();
+      legacy.slice(i, i + 400).forEach((d) => lb.delete(d.ref));
+      await lb.commit();
+    }
+
     // 3. Customers (dedupe por DNI) + Orders (uno por contrato)
     const byDni = new Map<string, any[]>();
     for (const c of clientes) {

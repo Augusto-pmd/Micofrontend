@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { requireAuth, optionalAuth, AuthenticatedRequest } from '../middleware/requireAuth';
 import { createReservation, getUserReservations, getReservation, updateReservation } from '../models/reservation.model';
 import { createSubscription, cancelSubscription } from '../services/mercadopago.service';
+import { holdRoomForReservation } from '../services/assignment.service';
 import { getPricingByM2, recurringFor } from '../services/pricing.service';
 import { db } from '../config/firebase';
 import { generateReservationId } from '../utils/generateId';
@@ -78,6 +79,13 @@ reservationsRouter.post('/', optionalAuth, async (req, res: Response) => {
   try {
     const id = generateReservationId();
 
+    // Reservar (hold) la baulera 20 min antes de cobrar
+    const hold = await holdRoomForReservation({ reservationId: id, branchId: sucursalId, m2: Number(m2) });
+    if (!hold.ok) {
+      res.status(409).json({ error: 'Sin stock de esa medida', code: hold.reason, alternativasByM2: hold.alternativasByM2 || {} });
+      return;
+    }
+
     // Create subscription in Mercado Pago (en el emulador local se saltea MP)
     let preapprovalId: string;
     let initPoint: string;
@@ -115,6 +123,8 @@ reservationsRouter.post('/', optionalAuth, async (req, res: Response) => {
       mpSubscriptionStatus: 'pending',
       faceEnrollStatus: 'not_started',
       faceEnrollAttempts: 0,
+      storageRoomId: hold.roomId,
+      heldUntil: hold.heldUntil,
       // Guest contact info (populated from form when not logged in)
       customerName:  name  || undefined,
       customerEmail: email || undefined,

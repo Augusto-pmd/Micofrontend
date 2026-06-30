@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { db } from '../config/firebase';
+import { releaseExpiredHolds } from '../services/assignment.service';
 
 // Endpoint PUBLICO de disponibilidad por m2 (por sucursal).
 export const availabilityRouter = Router();
@@ -44,6 +45,7 @@ availabilityRouter.get('/', async (req: Request, res: Response) => {
     const cached = cacheByBranch.get(key);
     if (cached && cached.expires > now) { res.json(cached.data); return; }
 
+    await releaseExpiredHolds(branchId).catch(() => {});
     const snap = await freeRoomsQuery(branchId).get();
     const byM2: Record<string, number> = {};
     snap.docs.forEach((d) => {

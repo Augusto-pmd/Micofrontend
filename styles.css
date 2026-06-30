@@ -2079,7 +2079,7 @@ section { position: relative; z-index: 2; }
   opacity: 0.6;
 }
 .mc-admin-link:hover { opacity: 1; background: rgba(10,10,10,0.85); color: white; }
-@media (max-width: 600px) { .mc-admin-link { display: none; } }
+@media (max-width: 600px) { .mc-admin-link { bottom: 84px; left: 12px; padding: 7px 12px; font-size: 12px; opacity: 0.85; } }
 
 /* WhatsApp dock */
 .mc-wa {

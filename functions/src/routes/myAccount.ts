@@ -1,46 +1,47 @@
 /**
  * GET /my-account
- * Endpoint para el portal del cliente.
- * Devuelve el perfil del cliente + todos sus contratos/bauleras.
- * Funciona con:
- *  - Firebase token de cualquier cuenta (Google login del cliente)
- *  - Búsqueda por email (sin token, solo email en query param para casos legacy)
+ * Portal del cliente. Devuelve SOLO el perfil + contratos del usuario autenticado.
+ * Seguridad: exige token Firebase verificado (requireAuth) y email confirmado.
+ * Ya NO acepta ?email= sin token (eso exponia datos de cualquier cliente).
  */
 import { Router, Response } from 'express';
-import { optionalAuth, AuthenticatedRequest } from '../middleware/requireAuth';
-import { db } from '../config/firebase';
+import { requireAuth, AuthenticatedRequest } from '../middleware/requireAuth';
+import { db, auth } from '../config/firebase';
 
 export const myAccountRouter = Router();
 
-// GET /my-account — perfil + contratos del cliente logueado
-myAccountRouter.get('/', optionalAuth, async (req, res: Response) => {
+myAccountRouter.get('/', requireAuth, async (req, res: Response) => {
   const authReq = req as AuthenticatedRequest;
-  const tokenEmail = authReq.email?.toLowerCase();
-  const queryEmail = (req.query['email'] as string || '').toLowerCase();
-  const email = tokenEmail || queryEmail;
+  const email = (authReq.email || '').toLowerCase();
+  if (!email) { res.status(401).json({ error: 'No autenticado' }); return; }
 
-  if (!email) {
-    res.status(400).json({ error: 'Se requiere autenticación o email' });
-    return;
+  // Bloquear si el email no esta verificado (debe activar su cuenta primero).
+  // El emulador no maneja emailVerified de forma confiable, asi que lo saltea.
+  if (process.env.FUNCTIONS_EMULATOR !== 'true') {
+    try {
+      const fbUser = await auth.getUser(authReq.uid);
+      if (!fbUser.emailVerified) {
+        res.status(403).json({ error: 'Confirmá tu email para acceder a tu portal', code: 'email_not_verified' });
+        return;
+      }
+    } catch {
+      res.status(403).json({ error: 'Cuenta no activada', code: 'not_activated' });
+      return;
+    }
   }
 
   try {
-    // 1. Buscar cliente por email en colección customers
-    const custSnap = await db.collection('customers')
-      .where('email', '==', email)
-      .limit(5)
-      .get();
-
+    // 1. Cliente por email (solo el propio, del token)
+    const custSnap = await db.collection('customers').where('email', '==', email).limit(5).get();
     let customerData: any = null;
     let customerId: string | null = null;
-
     if (!custSnap.empty) {
       const doc = custSnap.docs[0];
       customerData = { id: doc.id, ...doc.data() };
       customerId = doc.id;
     }
 
-    // 2. Buscar órdenes manuales (reservationOrders) por email o customerId
+    // 2. Ordenes manuales por email o customerId
     const ordersSnap = customerId
       ? await db.collection('reservationOrders').where('customerId', '==', customerId).get()
       : await db.collection('reservationOrders').where('customerEmail', '==', email).get();
@@ -62,7 +63,7 @@ myAccountRouter.get('/', optionalAuth, async (req, res: Response) => {
       };
     });
 
-    // 3. Buscar reservas online (MP) por email o userUid
+    // 3. Reservas online (MP) por email o userUid
     const [mpByEmail, mpByUid] = await Promise.all([
       db.collection('reservations').where('customerEmail', '==', email).get(),
       authReq.uid
@@ -76,7 +77,6 @@ myAccountRouter.get('/', optionalAuth, async (req, res: Response) => {
 
     const mpReservations = mpDocs.map(d => {
       const r = { id: d.id, ...d.data() } as any;
-      // Construir initPoint desde el guardado o desde el preapprovalId como fallback
       const initPoint = r.mpInitPoint ||
         (r.mpPreapprovalId
           ? `https://www.mercadopago.com.ar/subscriptions/checkout?preapproval_id=${r.mpPreapprovalId}`
@@ -100,27 +100,18 @@ myAccountRouter.get('/', optionalAuth, async (req, res: Response) => {
       };
     });
 
-    // 4. Enriquecer órdenes con datos de la baulera
-    const allContractRoomIds = orders
-      .map((o: any) => o.storageRoomId)
-      .filter(Boolean);
-
+    // 4. Enriquecer ordenes con datos de la baulera
+    const allContractRoomIds = orders.map((o: any) => o.storageRoomId).filter(Boolean);
     let roomsMap: Record<string, any> = {};
     if (allContractRoomIds.length > 0) {
       const roomDocs = await db.getAll(
         ...allContractRoomIds.map((id: string) => db.collection('storageRooms').doc(id))
       );
-      roomDocs.forEach((d: any) => {
-        if (d.exists) roomsMap[d.id] = { id: d.id, ...d.data() };
-      });
+      roomDocs.forEach((d: any) => { if (d.exists) roomsMap[d.id] = { id: d.id, ...d.data() }; });
     }
+    const enrichedOrders = orders.map((o: any) => ({ ...o, storageRoom: roomsMap[o.storageRoomId] || null }));
 
-    const enrichedOrders = orders.map((o: any) => ({
-      ...o,
-      storageRoom: roomsMap[o.storageRoomId] || null,
-    }));
-
-    // 5. Armar respuesta completa
+    // 5. Respuesta
     const allContracts = [...enrichedOrders, ...mpReservations];
     const activeContracts = allContracts.filter((c: any) =>
       c.status === 'CONFIRMED' || c.status === 'active' || c.status === 'authorized'
@@ -138,7 +129,6 @@ myAccountRouter.get('/', optionalAuth, async (req, res: Response) => {
       totalMonthly: activeContracts.reduce((s: number, c: any) => s + (c.monthlyPrice || 0), 0),
       hasAccount: !!customerData,
     });
-
   } catch (err) {
     console.error('GET /my-account error:', err);
     res.status(500).json({ error: 'Error al obtener tu cuenta' });

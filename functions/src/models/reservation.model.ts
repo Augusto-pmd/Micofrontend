@@ -32,6 +32,11 @@ export interface Reservation {
   customerPhone?: string;
   customerDni?: string;
   storageRoomId?: string;   // baulera puntual asignada al pagar
+  heldUntil?: string;       // hold de 20 min al generar el link
+  bauleraCodigo?: string;
+  source?: string;
+  cancelledBy?: string;
+  endDate?: string;
 }
 
 export const reservationsCol = () => db.collection('reservations');

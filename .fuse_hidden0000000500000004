@@ -1,0 +1,249 @@
+[debug] [2026-06-30T15:14:29.549Z] ----------------------------------------------------------------------
+[debug] [2026-06-30T15:14:29.551Z] Command:       /usr/bin/node /tmp/fbtools/node_modules/.bin/firebase emulators:exec --only functions,firestore,auth --project mc-nordelta-2026 bash /tmp/mc_test.sh
+[debug] [2026-06-30T15:14:29.551Z] CLI Version:   13.35.1
+[debug] [2026-06-30T15:14:29.551Z] Platform:      linux
+[debug] [2026-06-30T15:14:29.551Z] Node Version:  v22.22.3
+[debug] [2026-06-30T15:14:29.551Z] Time:          Tue Jun 30 2026 15:14:29 GMT+0000 (Coordinated Universal Time)
+[debug] [2026-06-30T15:14:29.552Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-06-30T15:14:29.752Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] Failed to authenticate, have you run firebase login?
+[warn] ⚠  emulators: You are not currently authenticated so some features may not work correctly. Please run firebase login to authenticate the CLI. 
+[debug] [2026-06-30T15:14:29.813Z] openjdk version "11.0.31" 2026-04-21
+
+[debug] [2026-06-30T15:14:29.814Z] OpenJDK Runtime Environment (build 11.0.31+11-post-1ubuntu1-22.04.2-Ubuntu)
+OpenJDK 64-Bit Server VM (build 11.0.31+11-post-1ubuntu1-22.04.2-Ubuntu, mixed mode, sharing)
+
+[debug] [2026-06-30T15:14:29.820Z] Parsed Java major version: 11
+[info] i  emulators: Starting emulators: auth, functions, firestore {"metadata":{"emulator":{"name":"hub"},"message":"Starting emulators: auth, functions, firestore"}}
+[debug] [2026-06-30T15:14:29.824Z] [logging] Logging Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
+[debug] [2026-06-30T15:14:29.824Z] [auth] Authentication Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
+[debug] [2026-06-30T15:14:29.824Z] [firestore] Firestore Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
+[debug] [2026-06-30T15:14:29.825Z] [firestore.websocket] websocket server for firestore only supports listening on one address (127.0.0.1). Not listening on ::1
+[debug] [2026-06-30T15:14:29.825Z] assigned listening specs for emulators {"user":{"hub":[{"address":"127.0.0.1","family":"IPv4","port":4400},{"address":"::1","family":"IPv6","port":4400}],"logging":[{"address":"127.0.0.1","family":"IPv4","port":4500}],"auth":[{"address":"127.0.0.1","family":"IPv4","port":9099}],"firestore":[{"address":"127.0.0.1","family":"IPv4","port":8080}],"firestore.websocket":[{"address":"127.0.0.1","family":"IPv4","port":9150}]},"metadata":{"message":"assigned listening specs for emulators"}}
+[debug] [2026-06-30T15:14:29.828Z] [hub] writing locator at /sessions/admiring-determined-mendel/tmp/hub-mc-nordelta-2026.json
+[debug] [2026-06-30T15:14:29.832Z] [functions] Functions Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
+[debug] [2026-06-30T15:14:29.832Z] [eventarc] Eventarc Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
+[debug] [2026-06-30T15:14:29.832Z] [tasks] Cloud Tasks Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
+[debug] [2026-06-30T15:14:29.832Z] late-assigned ports for functions and eventarc emulators {"user":{"hub":[{"address":"127.0.0.1","family":"IPv4","port":4400},{"address":"::1","family":"IPv6","port":4400}],"logging":[{"address":"127.0.0.1","family":"IPv4","port":4500}],"auth":[{"address":"127.0.0.1","family":"IPv4","port":9099}],"firestore":[{"address":"127.0.0.1","family":"IPv4","port":8080}],"firestore.websocket":[{"address":"127.0.0.1","family":"IPv4","port":9150}],"functions":[{"address":"127.0.0.1","family":"IPv4","port":5001}],"eventarc":[{"address":"127.0.0.1","family":"IPv4","port":9299}],"tasks":[{"address":"127.0.0.1","family":"IPv4","port":9499}]},"metadata":{"message":"late-assigned ports for functions and eventarc emulators"}}
+[warn] ⚠  functions: The following emulators are not running, calls to these services from the Functions emulator will affect production: apphosting, database, hosting, pubsub, storage, dataconnect {"metadata":{"emulator":{"name":"functions"},"message":"The following emulators are not running, calls to these services from the Functions emulator will affect production: apphosting, database, hosting, pubsub, storage, dataconnect"}}
+[debug] [2026-06-30T15:14:29.835Z] No OAuth tokens found
+[debug] [2026-06-30T15:14:29.835Z] No OAuth tokens found
+[debug] [2026-06-30T15:14:29.835Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-06-30T15:14:29.835Z] Failed to get Admin SDK config for mc-nordelta-2026, falling back to cache Failed to get Admin SDK for Firebase project mc-nordelta-2026. Please make sure the project exists and your account has permission to access it. {"name":"FirebaseError","children":[],"exit":2,"message":"Failed to get Admin SDK for Firebase project mc-nordelta-2026. Please make sure the project exists and your account has permission to access it.","original":{"name":"FirebaseError","children":[],"exit":1,"message":"Failed to authenticate, have you run firebase login?","original":{},"status":500},"status":500}
+[warn] ⚠  functions: Unable to fetch project Admin SDK configuration, Admin SDK behavior in Cloud Functions emulator may be incorrect. {"metadata":{"emulator":{"name":"functions"},"message":"Unable to fetch project Admin SDK configuration, Admin SDK behavior in Cloud Functions emulator may be incorrect."}}
+[debug] [2026-06-30T15:14:29.844Z] Ignoring unsupported arg: auto_download {"metadata":{"emulator":{"name":"firestore"},"message":"Ignoring unsupported arg: auto_download"}}
+[debug] [2026-06-30T15:14:29.844Z] Ignoring unsupported arg: single_project_mode_error {"metadata":{"emulator":{"name":"firestore"},"message":"Ignoring unsupported arg: single_project_mode_error"}}
+[debug] [2026-06-30T15:14:29.844Z] Starting Firestore Emulator with command {"binary":"java","args":["-Dgoogle.cloud_firestore.debug_log_level=FINE","-Duser.language=en","-jar","/sessions/admiring-determined-mendel/.cache/firebase/emulators/cloud-firestore-emulator-v1.19.8.jar","--host","127.0.0.1","--port",8080,"--websocket_port",9150,"--project_id","mc-nordelta-2026","--rules","/sessions/admiring-determined-mendel/mnt/micofrontend-v3/firestore.rules","--single_project_mode",true,"--functions_emulator","127.0.0.1:5001"],"optionalArgs":["port","webchannel_port","host","rules","websocket_port","functions_emulator","seed_from_export","project_id","single_project_mode"],"joinArgs":false,"shell":false,"port":8080} {"metadata":{"emulator":{"name":"firestore"},"message":"Starting Firestore Emulator with command {\"binary\":\"java\",\"args\":[\"-Dgoogle.cloud_firestore.debug_log_level=FINE\",\"-Duser.language=en\",\"-jar\",\"/sessions/admiring-determined-mendel/.cache/firebase/emulators/cloud-firestore-emulator-v1.19.8.jar\",\"--host\",\"127.0.0.1\",\"--port\",8080,\"--websocket_port\",9150,\"--project_id\",\"mc-nordelta-2026\",\"--rules\",\"/sessions/admiring-determined-mendel/mnt/micofrontend-v3/firestore.rules\",\"--single_project_mode\",true,\"--functions_emulator\",\"127.0.0.1:5001\"],\"optionalArgs\":[\"port\",\"webchannel_port\",\"host\",\"rules\",\"websocket_port\",\"functions_emulator\",\"seed_from_export\",\"project_id\",\"single_project_mode\"],\"joinArgs\":false,\"shell\":false,\"port\":8080}"}}
+[info] i  firestore: Firestore Emulator logging to firestore-debug.log {"metadata":{"emulator":{"name":"firestore"},"message":"Firestore Emulator logging to firestore-debug.log"}}
+[debug] [2026-06-30T15:14:31.078Z] Jun 30, 2026 3:14:31 PM com.google.cloud.datastore.emulator.firestore.websocket.WebSocketServer start
+INFO: Started WebSocket server on ws://127.0.0.1:9150
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Jun 30, 2026 3:14:31 PM com.google.cloud.datastore.emulator.firestore.websocket.WebSocketServer start\nINFO: Started WebSocket server on ws://127.0.0.1:9150\n"}}
+[debug] [2026-06-30T15:14:31.104Z] API endpoint: http:// {"metadata":{"emulator":{"name":"firestore"},"message":"API endpoint: http://"}}
+[debug] [2026-06-30T15:14:31.104Z] 127.0.0.1:8080 {"metadata":{"emulator":{"name":"firestore"},"message":"127.0.0.1:8080"}}
+[debug] [2026-06-30T15:14:31.105Z] 
+ {"metadata":{"emulator":{"name":"firestore"},"message":"\n"}}
+[debug] [2026-06-30T15:14:31.105Z] If you are using a library that supports the FIRESTORE_EMULATOR_HOST environment variable, run:
+
+   export FIRESTORE_EMULATOR_HOST=127.0.0.1:8080
+
+If you are running a Firestore in Datastore Mode project, run:
+
+   export DATASTORE_EMULATOR_HOST=127.0.0.1:8080
+
+Note: Support for Datastore Mode is in preview. If you encounter any bugs please file at https://github.com/firebase/firebase-tools/issues.
+Dev App Server is now running.
+
+ {"metadata":{"emulator":{"name":"firestore"},"message":"If you are using a library that supports the FIRESTORE_EMULATOR_HOST environment variable, run:\n\n   export FIRESTORE_EMULATOR_HOST=127.0.0.1:8080\n\nIf you are running a Firestore in Datastore Mode project, run:\n\n   export DATASTORE_EMULATOR_HOST=127.0.0.1:8080\n\nNote: Support for Datastore Mode is in preview. If you encounter any bugs please file at https://github.com/firebase/firebase-tools/issues.\nDev App Server is now running.\n\n"}}
+[info] ✔  firestore: Firestore Emulator UI websocket is running on 9150. {"metadata":{"emulator":{"name":"firestore"},"message":"Firestore Emulator UI websocket is running on 9150."}}
+[info] i  functions: Watching "/sessions/admiring-determined-mendel/mnt/micofrontend-v3/functions" for Cloud Functions... {"metadata":{"emulator":{"name":"functions"},"message":"Watching \"/sessions/admiring-determined-mendel/mnt/micofrontend-v3/functions\" for Cloud Functions..."}}
+[debug] [2026-06-30T15:14:37.482Z] Validating nodejs source
+[warn] ⚠  functions: package.json indicates an outdated version of firebase-functions. Please upgrade using npm install --save firebase-functions@latest in your functions directory. 
+[warn] ⚠  functions: Please note that there will be breaking changes when you upgrade. 
+[debug] [2026-06-30T15:14:37.961Z] > [functions] package.json contents: {
+  "name": "micontainer-functions",
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions,firestore,auth",
+    "test": "jest --forceExit --passWithNoTests",
+    "test:watch": "jest --watchAll",
+    "deploy": "firebase deploy --only functions"
+  },
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "dependencies": {
+    "@google-cloud/secret-manager": "^6.1.2",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "firebase-admin": "^12.3.0",
+    "firebase-functions": "^6.0.0",
+    "mercadopago": "^2.0.15"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/jest": "^29.5.12",
+    "@types/node": "^20.14.0",
+    "@types/supertest": "^7.2.0",
+    "firebase-functions-test": "^3.3.0",
+    "jest": "^29.7.0",
+    "supertest": "^7.2.2",
+    "ts-jest": "^29.1.5",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5"
+  }
+}
+[debug] [2026-06-30T15:14:37.962Z] Building nodejs source
+[debug] [2026-06-30T15:14:37.962Z] Failed to find version of module node: reached end of search path /sessions/admiring-determined-mendel/mnt/micofrontend-v3/functions/node_modules
+[warn] ⚠  functions: Your requested "node" version "20" doesn't match your global version "22". Using node@22 from host. 
+[info] i  functions: Loaded environment variables from .env.local. 
+[debug] [2026-06-30T15:14:37.968Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-06-30T15:14:37.970Z] Found firebase-functions binary at '/sessions/admiring-determined-mendel/mnt/micofrontend-v3/functions/node_modules/.bin/firebase-functions'
+[info] Serving at port 8654
+
+[debug] [2026-06-30T15:14:42.483Z] Got response from /__/functions.yaml {"endpoints":{"api":{"availableMemoryMb":256,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"secretEnvironmentVariables":[{"key":"MP_ACCESS_TOKEN"},{"key":"MP_WEBHOOK_SECRET"},{"key":"ANTHROPIC_API_KEY"},{"key":"SYNC_TOKEN"},{"key":"RESEND_API_KEY"}],"labels":{},"httpsTrigger":{},"entryPoint":"api"}},"specVersion":"v1alpha1","requiredAPIs":[],"extensions":{}}
+[info] ✔  functions: Loaded functions definitions from source: api. {"metadata":{"emulator":{"name":"functions"},"message":"Loaded functions definitions from source: api."}}
+[info] ✔  functions[us-central1-api]: http function initialized (http://127.0.0.1:5001/mc-nordelta-2026/us-central1/api). {"metadata":{"emulator":{"name":"functions"},"message":"http function initialized (http://127.0.0.1:5001/mc-nordelta-2026/us-central1/api)."}}
+[debug] [2026-06-30T15:14:46.519Z] Could not find VSCode notification endpoint: FetchError: request to http://localhost:40001/vscode/notify failed, reason: connect ECONNREFUSED 127.0.0.1:40001. If you are not running the Firebase Data Connect VSCode extension, this is expected and not an issue.
+[info] i  Running script: bash /tmp/mc_test.sh 
+[debug] [2026-06-30T15:14:46.523Z] Running bash /tmp/mc_test.sh with environment {"SHELL":"/bin/sh","PWD":"/sessions/admiring-determined-mendel/mnt/micofrontend-v3","LOGNAME":"admiring-determined-mendel","SYSTEMD_EXEC_PID":"617","HOME":"/sessions/admiring-determined-mendel","LANG":"C.UTF-8","TMPDIR":"/sessions/admiring-determined-mendel/tmp","INVOCATION_ID":"6618410cc72b41f8acc3161806478463","CLAUDE_TMPDIR":"/sessions/admiring-determined-mendel/tmp","USER":"admiring-determined-mendel","CLAUDE_CODE_TMPDIR":"/sessions/admiring-determined-mendel/tmp","SHLVL":"1","JOURNAL_STREAM":"8:4978","PATH":"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin","OLDPWD":"/sessions/admiring-determined-mendel","_":"/usr/bin/timeout","IS_FIREBASE_CLI":"true","GCLOUD_PROJECT":"mc-nordelta-2026","FIREBASE_CONFIG":"{\"projectId\":\"mc-nordelta-2026\",\"storageBucket\":\"mc-nordelta-2026.appspot.com\",\"databaseURL\":\"https://mc-nordelta-2026.firebaseio.com\"}","FIREBASE_EMULATOR_HUB":"127.0.0.1:4400","FIREBASE_AUTH_EMULATOR_HOST":"127.0.0.1:9099","FIRESTORE_EMULATOR_HOST":"127.0.0.1:8080","FIREBASE_FIRESTORE_EMULATOR_ADDRESS":"127.0.0.1:8080","CLOUD_EVENTARC_EMULATOR_HOST":"http://127.0.0.1:9299","CLOUD_TASKS_EMULATOR_HOST":"127.0.0.1:9499"}
+[debug] [2026-06-30T15:14:46.536Z] [work-queue] {"queuedWork":["/mc-nordelta-2026/us-central1/api/sync/import-2026-06-30T15:14:46.535Z"],"queueLength":1,"runningWork":[],"workRunningCount":0}
+[debug] [2026-06-30T15:14:46.536Z] [work-queue] {"queuedWork":[],"queueLength":0,"runningWork":["/mc-nordelta-2026/us-central1/api/sync/import-2026-06-30T15:14:46.535Z"],"workRunningCount":1}
+[debug] [2026-06-30T15:14:46.536Z] Accepted request POST /mc-nordelta-2026/us-central1/api/sync/import --> us-central1-api
+[debug] [2026-06-30T15:14:46.537Z] [functions] Runtime ready! Sending request! {"metadata":{"emulator":{"name":"functions"},"message":"[functions] Runtime ready! Sending request!"}}
+[debug] [2026-06-30T15:14:46.537Z] [functions] Got req.url=/mc-nordelta-2026/us-central1/api/sync/import, mapping to path=/sync/import {"metadata":{"emulator":{"name":"functions"},"message":"[functions] Got req.url=/mc-nordelta-2026/us-central1/api/sync/import, mapping to path=/sync/import"}}
+[info] i  functions: Loaded environment variables from .env.local. 
+[info] i  functions: Trying to access secret MP_ACCESS_TOKEN@latest {"metadata":{"emulator":{"name":"functions"},"message":"Trying to access secret MP_ACCESS_TOKEN@latest"}}
+[debug] [2026-06-30T15:14:46.544Z] No OAuth tokens found
+[debug] [2026-06-30T15:14:46.544Z] No OAuth tokens found
+[debug] [2026-06-30T15:14:46.544Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[info] i  functions: Trying to access secret MP_WEBHOOK_SECRET@latest {"metadata":{"emulator":{"name":"functions"},"message":"Trying to access secret MP_WEBHOOK_SECRET@latest"}}
+[debug] [2026-06-30T15:14:46.544Z] No OAuth tokens found
+[debug] [2026-06-30T15:14:46.544Z] No OAuth tokens found
+[debug] [2026-06-30T15:14:46.544Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[info] i  functions: Trying to access secret ANTHROPIC_API_KEY@latest {"metadata":{"emulator":{"name":"functions"},"message":"Trying to access secret ANTHROPIC_API_KEY@latest"}}
+[debug] [2026-06-30T15:14:46.544Z] No OAuth tokens found
+[debug] [2026-06-30T15:14:46.544Z] No OAuth tokens found
+[debug] [2026-06-30T15:14:46.545Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[info] i  functions: Trying to access secret SYNC_TOKEN@latest {"metadata":{"emulator":{"name":"functions"},"message":"Trying to access secret SYNC_TOKEN@latest"}}
+[debug] [2026-06-30T15:14:46.545Z] No OAuth tokens found
+[debug] [2026-06-30T15:14:46.545Z] No OAuth tokens found
+[debug] [2026-06-30T15:14:46.545Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[info] i  functions: Trying to access secret RESEND_API_KEY@latest {"metadata":{"emulator":{"name":"functions"},"message":"Trying to access secret RESEND_API_KEY@latest"}}
+[debug] [2026-06-30T15:14:46.545Z] No OAuth tokens found
+[debug] [2026-06-30T15:14:46.545Z] No OAuth tokens found
+[debug] [2026-06-30T15:14:46.545Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[error] ⬢  functions: Unable to access secret environment variables from Google Cloud Secret Manager. Make sure the credential used for the Functions Emulator have access or provide override values in /sessions/admiring-determined-mendel/mnt/micofrontend-v3/functions/.secret.local:
+	FirebaseError: Failed to authenticate, have you run firebase login?
+	FirebaseError: Failed to authenticate, have you run firebase login?
+	FirebaseError: Failed to authenticate, have you run firebase login?
+	FirebaseError: Failed to authenticate, have you run firebase login?
+	FirebaseError: Failed to authenticate, have you run firebase login? {"metadata":{"emulator":{"name":"functions"},"message":"Unable to access secret environment variables from Google Cloud Secret Manager. Make sure the credential used for the Functions Emulator have access or provide override values in /sessions/admiring-determined-mendel/mnt/micofrontend-v3/functions/.secret.local:\n\tFirebaseError: Failed to authenticate, have you run firebase login?\n\tFirebaseError: Failed to authenticate, have you run firebase login?\n\tFirebaseError: Failed to authenticate, have you run firebase login?\n\tFirebaseError: Failed to authenticate, have you run firebase login?\n\tFirebaseError: Failed to authenticate, have you run firebase login?"}}
+[debug] [2026-06-30T15:14:46.552Z] [worker-pool] addWorker(us-central1-api) {"metadata":{"emulator":{"name":"functions"},"message":"[worker-pool] addWorker(us-central1-api)"}}
+[debug] [2026-06-30T15:14:46.553Z] [worker-pool] Adding worker with key us-central1-api, total=1 {"metadata":{"emulator":{"name":"functions"},"message":"[worker-pool] Adding worker with key us-central1-api, total=1"}}
+[debug] [2026-06-30T15:14:47.213Z] [runtime-status] [86] Resolved module firebase-admin {"declared":true,"installed":true,"version":"12.7.0","resolution":"/sessions/admiring-determined-mendel/mnt/micofrontend-v3/functions/node_modules/firebase-admin/lib/index.js"} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"[runtime-status] [86] Resolved module firebase-admin {\"declared\":true,\"installed\":true,\"version\":\"12.7.0\",\"resolution\":\"/sessions/admiring-determined-mendel/mnt/micofrontend-v3/functions/node_modules/firebase-admin/lib/index.js\"}"}}
+[debug] [2026-06-30T15:14:47.222Z] [runtime-status] [86] Resolved module firebase-functions {"declared":true,"installed":true,"version":"6.6.0","resolution":"/sessions/admiring-determined-mendel/mnt/micofrontend-v3/functions/node_modules/firebase-functions/lib/v2/index.js"} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"[runtime-status] [86] Resolved module firebase-functions {\"declared\":true,\"installed\":true,\"version\":\"6.6.0\",\"resolution\":\"/sessions/admiring-determined-mendel/mnt/micofrontend-v3/functions/node_modules/firebase-functions/lib/v2/index.js\"}"}}
+[debug] [2026-06-30T15:14:47.223Z] [runtime-status] [86] Outgoing network have been stubbed. [{"name":"http","status":"mocked"},{"name":"http","status":"mocked"},{"name":"https","status":"mocked"},{"name":"https","status":"mocked"},{"name":"net","status":"mocked"}] {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"[runtime-status] [86] Outgoing network have been stubbed. [{\"name\":\"http\",\"status\":\"mocked\"},{\"name\":\"http\",\"status\":\"mocked\"},{\"name\":\"https\",\"status\":\"mocked\"},{\"name\":\"https\",\"status\":\"mocked\"},{\"name\":\"net\",\"status\":\"mocked\"}]"}}
+[debug] [2026-06-30T15:14:47.228Z] [runtime-status] [86] Resolved module firebase-functions {"declared":true,"installed":true,"version":"6.6.0","resolution":"/sessions/admiring-determined-mendel/mnt/micofrontend-v3/functions/node_modules/firebase-functions/lib/v2/index.js"} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"[runtime-status] [86] Resolved module firebase-functions {\"declared\":true,\"installed\":true,\"version\":\"6.6.0\",\"resolution\":\"/sessions/admiring-determined-mendel/mnt/micofrontend-v3/functions/node_modules/firebase-functions/lib/v2/index.js\"}"}}
+[debug] [2026-06-30T15:14:49.963Z] [runtime-status] [86] Checked functions.config() {"config":{}} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"[runtime-status] [86] Checked functions.config() {\"config\":{}}"}}
+[debug] [2026-06-30T15:14:49.964Z] [runtime-status] [86] firebase-functions has been stubbed. {"functionsResolution":{"declared":true,"installed":true,"version":"6.6.0","resolution":"/sessions/admiring-determined-mendel/mnt/micofrontend-v3/functions/node_modules/firebase-functions/lib/v2/index.js"}} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"[runtime-status] [86] firebase-functions has been stubbed. {\"functionsResolution\":{\"declared\":true,\"installed\":true,\"version\":\"6.6.0\",\"resolution\":\"/sessions/admiring-determined-mendel/mnt/micofrontend-v3/functions/node_modules/firebase-functions/lib/v2/index.js\"}}"}}
+[debug] [2026-06-30T15:14:49.969Z] [runtime-status] [86] Resolved module firebase-functions {"declared":true,"installed":true,"version":"6.6.0","resolution":"/sessions/admiring-determined-mendel/mnt/micofrontend-v3/functions/node_modules/firebase-functions/lib/v2/index.js"} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"[runtime-status] [86] Resolved module firebase-functions {\"declared\":true,\"installed\":true,\"version\":\"6.6.0\",\"resolution\":\"/sessions/admiring-determined-mendel/mnt/micofrontend-v3/functions/node_modules/firebase-functions/lib/v2/index.js\"}"}}
+[debug] [2026-06-30T15:14:50.010Z] [runtime-status] [86] Resolved module firebase-admin {"declared":true,"installed":true,"version":"12.7.0","resolution":"/sessions/admiring-determined-mendel/mnt/micofrontend-v3/functions/node_modules/firebase-admin/lib/index.js"} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"[runtime-status] [86] Resolved module firebase-admin {\"declared\":true,\"installed\":true,\"version\":\"12.7.0\",\"resolution\":\"/sessions/admiring-determined-mendel/mnt/micofrontend-v3/functions/node_modules/firebase-admin/lib/index.js\"}"}}
+[debug] [2026-06-30T15:14:50.025Z] [runtime-status] [86] Resolved module firebase-functions {"declared":true,"installed":true,"version":"6.6.0","resolution":"/sessions/admiring-determined-mendel/mnt/micofrontend-v3/functions/node_modules/firebase-functions/lib/v2/index.js"} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"[runtime-status] [86] Resolved module firebase-functions {\"declared\":true,\"installed\":true,\"version\":\"6.6.0\",\"resolution\":\"/sessions/admiring-determined-mendel/mnt/micofrontend-v3/functions/node_modules/firebase-functions/lib/v2/index.js\"}"}}
+[debug] [2026-06-30T15:14:50.025Z] [runtime-status] [86] firebase-admin has been stubbed. {"adminResolution":{"declared":true,"installed":true,"version":"12.7.0","resolution":"/sessions/admiring-determined-mendel/mnt/micofrontend-v3/functions/node_modules/firebase-admin/lib/index.js"}} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"[runtime-status] [86] firebase-admin has been stubbed. {\"adminResolution\":{\"declared\":true,\"installed\":true,\"version\":\"12.7.0\",\"resolution\":\"/sessions/admiring-determined-mendel/mnt/micofrontend-v3/functions/node_modules/firebase-admin/lib/index.js\"}}"}}
+[debug] [2026-06-30T15:14:50.800Z] [runtime-status] [86] initializeApp(DEFAULT) {"storageBucket":"mc-nordelta-2026.appspot.com","databaseURL":"https://mc-nordelta-2026.firebaseio.com","projectId":"mc-nordelta-2026"} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"[runtime-status] [86] initializeApp(DEFAULT) {\"storageBucket\":\"mc-nordelta-2026.appspot.com\",\"databaseURL\":\"https://mc-nordelta-2026.firebaseio.com\",\"projectId\":\"mc-nordelta-2026\"}"}}
+[warn] ⚠  functions: The Firebase Storage emulator is not running, so calls to Firebase Storage will affect production. {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"The Firebase Storage emulator is not running, so calls to Firebase Storage will affect production."}}
+[debug] [2026-06-30T15:14:52.164Z] [runtime-status] [86] Functions runtime initialized. {"cwd":"/sessions/admiring-determined-mendel/mnt/micofrontend-v3/functions","node_version":"22.22.3"} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"[runtime-status] [86] Functions runtime initialized. {\"cwd\":\"/sessions/admiring-determined-mendel/mnt/micofrontend-v3/functions\",\"node_version\":\"22.22.3\"}"}}
+[debug] [2026-06-30T15:14:52.164Z] [runtime-status] [86] Listening to port: /sessions/admiring-determined-mendel/tmp/fire_emu_75ab59dfcd8a84d7.sock {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"[runtime-status] [86] Listening to port: /sessions/admiring-determined-mendel/tmp/fire_emu_75ab59dfcd8a84d7.sock"}}
+[debug] [2026-06-30T15:14:52.202Z] [worker-us-central1-api-49833265-62f5-42ae-8602-121b7b7973fb]: IDLE {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"[worker-us-central1-api-49833265-62f5-42ae-8602-121b7b7973fb]: IDLE"}}
+[debug] [2026-06-30T15:14:52.203Z] [worker-pool] submitRequest(triggerId=us-central1-api) {"metadata":{"emulator":{"name":"functions"},"message":"[worker-pool] submitRequest(triggerId=us-central1-api)"}}
+[info] i  functions: Beginning execution of "us-central1-api" {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"Beginning execution of \"us-central1-api\""}}
+[debug] [2026-06-30T15:14:52.203Z] [worker-us-central1-api-49833265-62f5-42ae-8602-121b7b7973fb]: BUSY {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"[worker-us-central1-api-49833265-62f5-42ae-8602-121b7b7973fb]: BUSY"}}
+[debug] [2026-06-30T15:14:53.323Z] Jun 30, 2026 3:14:53 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Jun 30, 2026 3:14:53 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\nINFO: Detected HTTP/2 connection.\n"}}
+[debug] [2026-06-30T15:14:54.656Z] Finishing up request with event=pause {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"Finishing up request with event=pause"}}
+[info] i  functions: Finished "us-central1-api" in 2456.858107ms {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"Finished \"us-central1-api\" in 2456.858107ms"}}
+[debug] [2026-06-30T15:14:54.660Z] [worker-us-central1-api-49833265-62f5-42ae-8602-121b7b7973fb]: IDLE {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"[worker-us-central1-api-49833265-62f5-42ae-8602-121b7b7973fb]: IDLE"}}
+[debug] [2026-06-30T15:14:54.661Z] Finishing up request with event=finish {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"Finishing up request with event=finish"}}
+[debug] [2026-06-30T15:14:54.661Z] Finishing up request with event=close {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"Finishing up request with event=close"}}
+[debug] [2026-06-30T15:14:54.661Z] [work-queue] {"queuedWork":[],"queueLength":0,"runningWork":[],"workRunningCount":0}
+[debug] [2026-06-30T15:14:54.670Z] [work-queue] {"queuedWork":["/mc-nordelta-2026/us-central1/api/availability-2026-06-30T15:14:54.670Z"],"queueLength":1,"runningWork":[],"workRunningCount":0}
+[debug] [2026-06-30T15:14:54.670Z] [work-queue] {"queuedWork":[],"queueLength":0,"runningWork":["/mc-nordelta-2026/us-central1/api/availability-2026-06-30T15:14:54.670Z"],"workRunningCount":1}
+[debug] [2026-06-30T15:14:54.670Z] Accepted request GET /mc-nordelta-2026/us-central1/api/availability?branchId=nordelta --> us-central1-api
+[debug] [2026-06-30T15:14:54.670Z] [functions] Runtime ready! Sending request! {"metadata":{"emulator":{"name":"functions"},"message":"[functions] Runtime ready! Sending request!"}}
+[debug] [2026-06-30T15:14:54.671Z] [functions] Got req.url=/mc-nordelta-2026/us-central1/api/availability?branchId=nordelta, mapping to path=/availability?branchId=nordelta {"metadata":{"emulator":{"name":"functions"},"message":"[functions] Got req.url=/mc-nordelta-2026/us-central1/api/availability?branchId=nordelta, mapping to path=/availability?branchId=nordelta"}}
+[debug] [2026-06-30T15:14:54.671Z] [worker-pool] submitRequest(triggerId=us-central1-api) {"metadata":{"emulator":{"name":"functions"},"message":"[worker-pool] submitRequest(triggerId=us-central1-api)"}}
+[info] i  functions: Beginning execution of "us-central1-api" {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"Beginning execution of \"us-central1-api\""}}
+[debug] [2026-06-30T15:14:54.671Z] [worker-us-central1-api-49833265-62f5-42ae-8602-121b7b7973fb]: BUSY {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"[worker-us-central1-api-49833265-62f5-42ae-8602-121b7b7973fb]: BUSY"}}
+[debug] [2026-06-30T15:14:54.783Z] Finishing up request with event=pause {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"Finishing up request with event=pause"}}
+[info] i  functions: Finished "us-central1-api" in 112.839242ms {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"Finished \"us-central1-api\" in 112.839242ms"}}
+[debug] [2026-06-30T15:14:54.784Z] [worker-us-central1-api-49833265-62f5-42ae-8602-121b7b7973fb]: IDLE {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"[worker-us-central1-api-49833265-62f5-42ae-8602-121b7b7973fb]: IDLE"}}
+[debug] [2026-06-30T15:14:54.784Z] Finishing up request with event=finish {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"Finishing up request with event=finish"}}
+[debug] [2026-06-30T15:14:54.784Z] Finishing up request with event=close {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"Finishing up request with event=close"}}
+[debug] [2026-06-30T15:14:54.784Z] [work-queue] {"queuedWork":[],"queueLength":0,"runningWork":[],"workRunningCount":0}
+[debug] [2026-06-30T15:14:54.812Z] [work-queue] {"queuedWork":["/mc-nordelta-2026/us-central1/api/admin/reservations/sell-2026-06-30T15:14:54.812Z"],"queueLength":1,"runningWork":[],"workRunningCount":0}
+[debug] [2026-06-30T15:14:54.813Z] [work-queue] {"queuedWork":[],"queueLength":0,"runningWork":["/mc-nordelta-2026/us-central1/api/admin/reservations/sell-2026-06-30T15:14:54.812Z"],"workRunningCount":1}
+[debug] [2026-06-30T15:14:54.813Z] Accepted request POST /mc-nordelta-2026/us-central1/api/admin/reservations/sell --> us-central1-api
+[debug] [2026-06-30T15:14:54.813Z] [functions] Runtime ready! Sending request! {"metadata":{"emulator":{"name":"functions"},"message":"[functions] Runtime ready! Sending request!"}}
+[debug] [2026-06-30T15:14:54.813Z] [functions] Got req.url=/mc-nordelta-2026/us-central1/api/admin/reservations/sell, mapping to path=/admin/reservations/sell {"metadata":{"emulator":{"name":"functions"},"message":"[functions] Got req.url=/mc-nordelta-2026/us-central1/api/admin/reservations/sell, mapping to path=/admin/reservations/sell"}}
+[debug] [2026-06-30T15:14:54.813Z] [worker-pool] submitRequest(triggerId=us-central1-api) {"metadata":{"emulator":{"name":"functions"},"message":"[worker-pool] submitRequest(triggerId=us-central1-api)"}}
+[info] i  functions: Beginning execution of "us-central1-api" {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"Beginning execution of \"us-central1-api\""}}
+[debug] [2026-06-30T15:14:54.814Z] [worker-us-central1-api-49833265-62f5-42ae-8602-121b7b7973fb]: BUSY {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"[worker-us-central1-api-49833265-62f5-42ae-8602-121b7b7973fb]: BUSY"}}
+[debug] [2026-06-30T15:14:54.944Z] Finishing up request with event=pause {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"Finishing up request with event=pause"}}
+[info] i  functions: Finished "us-central1-api" in 130.14357ms {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"Finished \"us-central1-api\" in 130.14357ms"}}
+[debug] [2026-06-30T15:14:54.945Z] [worker-us-central1-api-49833265-62f5-42ae-8602-121b7b7973fb]: IDLE {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"[worker-us-central1-api-49833265-62f5-42ae-8602-121b7b7973fb]: IDLE"}}
+[debug] [2026-06-30T15:14:54.945Z] Finishing up request with event=finish {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"Finishing up request with event=finish"}}
+[debug] [2026-06-30T15:14:54.945Z] Finishing up request with event=close {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"Finishing up request with event=close"}}
+[debug] [2026-06-30T15:14:54.946Z] [work-queue] {"queuedWork":[],"queueLength":0,"runningWork":[],"workRunningCount":0}
+[debug] [2026-06-30T15:14:55.023Z] [work-queue] {"queuedWork":["/mc-nordelta-2026/us-central1/api/admin/reservations/sell-2026-06-30T15:14:55.023Z"],"queueLength":1,"runningWork":[],"workRunningCount":0}
+[debug] [2026-06-30T15:14:55.023Z] [work-queue] {"queuedWork":[],"queueLength":0,"runningWork":["/mc-nordelta-2026/us-central1/api/admin/reservations/sell-2026-06-30T15:14:55.023Z"],"workRunningCount":1}
+[debug] [2026-06-30T15:14:55.023Z] Accepted request POST /mc-nordelta-2026/us-central1/api/admin/reservations/sell --> us-central1-api
+[debug] [2026-06-30T15:14:55.024Z] [functions] Runtime ready! Sending request! {"metadata":{"emulator":{"name":"functions"},"message":"[functions] Runtime ready! Sending request!"}}
+[debug] [2026-06-30T15:14:55.024Z] [functions] Got req.url=/mc-nordelta-2026/us-central1/api/admin/reservations/sell, mapping to path=/admin/reservations/sell {"metadata":{"emulator":{"name":"functions"},"message":"[functions] Got req.url=/mc-nordelta-2026/us-central1/api/admin/reservations/sell, mapping to path=/admin/reservations/sell"}}
+[debug] [2026-06-30T15:14:55.024Z] [worker-pool] submitRequest(triggerId=us-central1-api) {"metadata":{"emulator":{"name":"functions"},"message":"[worker-pool] submitRequest(triggerId=us-central1-api)"}}
+[info] i  functions: Beginning execution of "us-central1-api" {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"Beginning execution of \"us-central1-api\""}}
+[debug] [2026-06-30T15:14:55.024Z] [worker-us-central1-api-49833265-62f5-42ae-8602-121b7b7973fb]: BUSY {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"[worker-us-central1-api-49833265-62f5-42ae-8602-121b7b7973fb]: BUSY"}}
+[debug] [2026-06-30T15:14:55.150Z] Finishing up request with event=pause {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"Finishing up request with event=pause"}}
+[info] i  functions: Finished "us-central1-api" in 126.836654ms {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"Finished \"us-central1-api\" in 126.836654ms"}}
+[debug] [2026-06-30T15:14:55.151Z] [worker-us-central1-api-49833265-62f5-42ae-8602-121b7b7973fb]: IDLE {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"[worker-us-central1-api-49833265-62f5-42ae-8602-121b7b7973fb]: IDLE"}}
+[debug] [2026-06-30T15:14:55.151Z] Finishing up request with event=finish {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"Finishing up request with event=finish"}}
+[debug] [2026-06-30T15:14:55.151Z] Finishing up request with event=close {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"Finishing up request with event=close"}}
+[debug] [2026-06-30T15:14:55.151Z] [work-queue] {"queuedWork":[],"queueLength":0,"runningWork":[],"workRunningCount":0}
+[debug] [2026-06-30T15:14:55.208Z] [work-queue] {"queuedWork":["/mc-nordelta-2026/us-central1/api/webhooks/mp-2026-06-30T15:14:55.208Z"],"queueLength":1,"runningWork":[],"workRunningCount":0}
+[debug] [2026-06-30T15:14:55.208Z] [work-queue] {"queuedWork":[],"queueLength":0,"runningWork":["/mc-nordelta-2026/us-central1/api/webhooks/mp-2026-06-30T15:14:55.208Z"],"workRunningCount":1}
+[debug] [2026-06-30T15:14:55.209Z] Accepted request POST /mc-nordelta-2026/us-central1/api/webhooks/mp --> us-central1-api
+[debug] [2026-06-30T15:14:55.209Z] [functions] Runtime ready! Sending request! {"metadata":{"emulator":{"name":"functions"},"message":"[functions] Runtime ready! Sending request!"}}
+[debug] [2026-06-30T15:14:55.209Z] [functions] Got req.url=/mc-nordelta-2026/us-central1/api/webhooks/mp, mapping to path=/webhooks/mp {"metadata":{"emulator":{"name":"functions"},"message":"[functions] Got req.url=/mc-nordelta-2026/us-central1/api/webhooks/mp, mapping to path=/webhooks/mp"}}
+[debug] [2026-06-30T15:14:55.209Z] [worker-pool] submitRequest(triggerId=us-central1-api) {"metadata":{"emulator":{"name":"functions"},"message":"[worker-pool] submitRequest(triggerId=us-central1-api)"}}
+[info] i  functions: Beginning execution of "us-central1-api" {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"Beginning execution of \"us-central1-api\""}}
+[debug] [2026-06-30T15:14:55.209Z] [worker-us-central1-api-49833265-62f5-42ae-8602-121b7b7973fb]: BUSY {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"[worker-us-central1-api-49833265-62f5-42ae-8602-121b7b7973fb]: BUSY"}}
+[debug] [2026-06-30T15:14:55.212Z] Finishing up request with event=pause {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"Finishing up request with event=pause"}}
+[info] i  functions: Finished "us-central1-api" in 2.895485ms {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"Finished \"us-central1-api\" in 2.895485ms"}}
+[debug] [2026-06-30T15:14:55.212Z] [worker-us-central1-api-49833265-62f5-42ae-8602-121b7b7973fb]: IDLE {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"[worker-us-central1-api-49833265-62f5-42ae-8602-121b7b7973fb]: IDLE"}}
+[debug] [2026-06-30T15:14:55.212Z] Finishing up request with event=finish {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"Finishing up request with event=finish"}}
+[debug] [2026-06-30T15:14:55.212Z] Finishing up request with event=close {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"Finishing up request with event=close"}}
+[debug] [2026-06-30T15:14:55.212Z] [work-queue] {"queuedWork":[],"queueLength":0,"runningWork":[],"workRunningCount":0}
+[info] >  [mp-webhook] Reservation MC-IYS3-GCQ4 -> baulera nordelta__A1-036 {"user":"[mp-webhook] Reservation MC-IYS3-GCQ4 -> baulera nordelta__A1-036","metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":">  [mp-webhook] Reservation MC-IYS3-GCQ4 -> baulera nordelta__A1-036"}}
+[debug] [2026-06-30T15:14:55.291Z] >>> [apiv2][query] POST http://127.0.0.1:5001/functions/projects/mc-nordelta-2026/trigger_multicast [none]
+[debug] [2026-06-30T15:14:55.291Z] >>> [apiv2][body] POST http://127.0.0.1:5001/functions/projects/mc-nordelta-2026/trigger_multicast {"eventId":"dbb81714-89e4-4865-ba3f-7f4eed149f42","eventType":"providers/firebase.auth/eventTypes/user.create","resource":{"name":"projects/mc-nordelta-2026","service":"firebaseauth.googleapis.com"},"params":{},"timestamp":"2026-06-30T15:14:55.290Z","data":{"uid":"YxddSOaXvsVGE2f57C2MRSAdTH17","email":"juan@test.com","emailVerified":false,"displayName":"Juan Test","metadata":{"creationTime":"2026-06-30T15:14:55.289Z","lastSignInTime":"2026-06-30T15:14:55.289Z"},"customClaims":{},"providerData":[{"providerId":"password","email":"juan@test.com","federatedId":"juan@test.com","rawId":"juan@test.com","displayName":"Juan Test"}]}}
+[debug] [2026-06-30T15:14:55.300Z] <<< [apiv2][status] POST http://127.0.0.1:5001/functions/projects/mc-nordelta-2026/trigger_multicast 200
+[debug] [2026-06-30T15:14:55.300Z] <<< [apiv2][body] POST http://127.0.0.1:5001/functions/projects/mc-nordelta-2026/trigger_multicast {"status":"multicast_acknowledged"}
+[info] >  [customerAuth] Resend fallo: {"statusCode":403,"name":"validation_error","message":"You can only send testing emails to your own email address (am@micontainer.com). To send emails to other  {"user":"[customerAuth] Resend fallo: {\"statusCode\":403,\"name\":\"validation_error\",\"message\":\"You can only send testing emails to your own email address (am@micontainer.com). To send emails to other ","metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":">  [customerAuth] Resend fallo: {\"statusCode\":403,\"name\":\"validation_error\",\"message\":\"You can only send testing emails to your own email address (am@micontainer.com). To send emails to other "}}
+[debug] [2026-06-30T15:14:59.858Z] Jun 30, 2026 3:14:59 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Jun 30, 2026 3:14:59 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\nINFO: Detected HTTP/2 connection.\n"}}
+[info] ✔  Script exited successfully (code 0) 
+[info] i  emulators: Shutting down emulators. {"metadata":{"emulator":{"name":"hub"},"message":"Shutting down emulators."}}
+[info] i  functions: Stopping Functions Emulator {"metadata":{"emulator":{"name":"functions"},"message":"Stopping Functions Emulator"}}
+[info] i  firestore: Stopping Firestore Emulator {"metadata":{"emulator":{"name":"firestore"},"message":"Stopping Firestore Emulator"}}
+[debug] [2026-06-30T15:15:00.486Z] *** shutting down gRPC server since JVM is shutting down
+ {"metadata":{"emulator":{"name":"firestore"},"message":"*** shutting down gRPC server since JVM is shutting down\n"}}
+[debug] [2026-06-30T15:15:00.493Z] *** server shut down
+ {"metadata":{"emulator":{"name":"firestore"},"message":"*** server shut down\n"}}
+[debug] [2026-06-30T15:15:00.496Z] [worker-us-central1-api-49833265-62f5-42ae-8602-121b7b7973fb]: exited {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"[worker-us-central1-api-49833265-62f5-42ae-8602-121b7b7973fb]: exited"}}
+[debug] [2026-06-30T15:15:00.497Z] [worker-us-central1-api-49833265-62f5-42ae-8602-121b7b7973fb]: FINISHED {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-api"},"extension":{},"message":"[worker-us-central1-api-49833265-62f5-42ae-8602-121b7b7973fb]: FINISHED"}}
+[info] i  auth: Stopping Authentication Emulator {"metadata":{"emulator":{"name":"auth"},"message":"Stopping Authentication Emulator"}}
