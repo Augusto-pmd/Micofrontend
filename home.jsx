@@ -196,7 +196,7 @@ const PROMOS = [
   {
     key: 'first-month-free',
     active: true,
-    placements: ['auto-apply', 'exit-intent'],    // 1° mes gratis para todos + popup al cerrar
+    placements: ['auto-apply'],    // 1° mes gratis para todos (sin popup al cerrar)
     badge: '1° mes gratis',
     name: 'Primer mes gratis',
     description: 'Tu primer mes sin cargo para que te acomodes sin presión.',
