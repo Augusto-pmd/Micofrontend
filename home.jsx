@@ -195,8 +195,8 @@ const ADDONS = [
 const PROMOS = [
   {
     key: 'first-month-free',
-    active: true,
-    placements: ['auto-apply'],    // 1° mes gratis para todos (sin popup al cerrar)
+    active: false,
+    placements: ['auto-apply'],    // DESACTIVADA — sin promo de 1° mes gratis
     badge: '1° mes gratis',
     name: 'Primer mes gratis',
     description: 'Tu primer mes sin cargo para que te acomodes sin presión.',
@@ -625,7 +625,7 @@ function Hero({ onReserve }) {
               <span className="arrow">→</span>
             </a>
           </div>
-          <span className="micro">5 min · sin depósito · 1° mes gratis</span>
+          <span className="micro">5 min · sin depósito · sin permanencia</span>
         </div>
       </div>
 
@@ -669,7 +669,7 @@ function Sucursales({ onReserve }) {
 /* Ticker                                                             */
 /* ════════════════════════════════════════════════════════════════ */
 function Ticker() {
-  const items = ['1° mes gratis', 'Sin depósito', 'Sin permanencia', '20% off anual', 'Acceso 24/7', 'Pagás con Mercado Pago', 'Gestión online'];
+  const items = ['Sin depósito', 'Sin permanencia', '20% off anual', 'Acceso 24/7', 'Pagás con Mercado Pago', 'Gestión online'];
   const run = [...items, ...items, ...items];
   return (
     <div className="mc-ticker" aria-hidden="true">
@@ -876,7 +876,7 @@ function Testimonials() {
           </figure>
           <figure data-reveal="3">
             <div className="stars" aria-label="5 estrellas">★★★★★</div>
-            <blockquote>Aproveché el primer mes gratis y la mudanza bonificada. Pagué todo por Mercado Pago, sin trámites.</blockquote>
+            <blockquote>Reservé en 5 minutos y pagué todo por Mercado Pago, sin trámites ni depósito.</blockquote>
             <figcaption><span className="avatar">CP</span><div><b>Carla P.</b><span>Particular</span></div></figcaption>
           </figure>
         </div>
@@ -892,7 +892,7 @@ function FAQ() {
     { q: '¿Puedo tener más de un box?',          a: 'Sí. Podés tener tantas reservas como necesites, incluso en distintas sucursales. Las manejás todas desde la misma cuenta.' },
     { q: '¿Cómo pago?',                          a: 'Suscripción mensual con tarjeta de crédito a través de Mercado Pago. Te cobramos automáticamente cada mes mientras tu cuenta esté activa. Cancelás cuando quieras desde el portal. Los precios incluyen IVA.' },
     { q: '¿Cómo accedo al box?',                 a: 'Con reconocimiento facial. Subís una selfie desde el portal, el sistema registra tu cara y desde ese momento entrás mirando la cámara de la entrada. Sin turno, sin tarjeta, sin nada. Funciona 24/7.' },
-    { q: '¿Cómo aplican las promos?',            a: 'Se aplican automáticamente al hacer la reserva si cumplís los requisitos. El primer mes gratis aplica siempre; la mudanza gratis desde 10 m² al elegir "retiro a domicilio".' },
+    { q: '¿Cómo aplican las promos?',            a: 'Se aplican automáticamente al hacer la reserva si cumplís los requisitos. Por ejemplo, el 20% off al contratar 12 meses.' },
     { q: '¿Puedo cambiar de tamaño después?',    a: 'Sí. Desde el portal cambiás de tamaño sin penalidad. Si crece tu necesidad o si querés achicar, lo hacés con un click.' },
     { q: '¿Qué no puedo guardar?',               a: 'Materiales inflamables, tóxicos, alimentos perecederos, seres vivos y productos ilegales. El resto, todo.' },
   ];
@@ -2050,7 +2050,7 @@ function PortalEntry({ user, reservations, accountData, accountLoading, onLogout
             </h3>
             <p style={{ fontSize: 14, color: 'var(--mc-ink-2)', marginBottom: 24 }}>
               Reservá tu primer espacio en menos de 5 minutos.<br />
-              Sin depósito · 1° mes gratis.
+              Sin depósito · sin permanencia.
             </p>
             <button className="mc-btn mc-btn-green" onClick={onReserve}>
               <span>Reservar ahora</span><span className="arrow">→</span>
@@ -2901,7 +2901,7 @@ function App() {
               <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
             </svg>
           </a>
-          <div className="lbl">Desde ${fromPrice(CATEGORIES[0]).toLocaleString('es-AR')}/mes<span>5 min · 1° mes gratis</span></div>
+          <div className="lbl">Desde ${fromPrice(CATEGORIES[0]).toLocaleString('es-AR')}/mes<span>5 min · sin permanencia</span></div>
           <button className="mc-btn mc-btn-green" onClick={() => openWizard()}>
             <span>Reservar</span>
             <span className="arrow">→</span>
