@@ -595,7 +595,7 @@ function Hero({ onReserve }) {
   return (
     <section className="mc-hero mc-container" id="top">
       <div className="mc-hero-meta" data-reveal>
-        <span className="pill"><span className="dot" />Nordelta · GBA Norte · Acceso 24/7</span>
+        <span className="pill"><span className="dot" />Nordelta · GBA Norte · Lun a Sáb</span>
         <span>Próximamente Vicente López</span>
       </div>
 
@@ -612,7 +612,7 @@ function Hero({ onReserve }) {
 
       <div className="mc-hero-grid" data-reveal>
         <p className="mc-hero-lead">
-          Alquilá un espacio para guardar tus cosas en Buenos Aires. Reservá en 5 minutos, pagás mensual con tarjeta y accedés 24/7 por reconocimiento facial — todo online, sin llamar a nadie.
+          Alquilá un espacio para guardar tus cosas en Buenos Aires. Reservá en 5 minutos, pagás mensual con tarjeta y accedés con reconocimiento facial — todo online, sin llamar a nadie.
         </p>
         <div className="mc-hero-actions">
           <div className="row">
@@ -640,7 +640,7 @@ function Sucursales({ onReserve }) {
   return (
     <section className="mc-sucs-strip mc-container" id="sucursales" data-reveal>
       <div className="mc-sucs-strip-head">
-        <span className="mc-eyebrow violet" style={{ marginBottom: 0 }}>Nordelta · GBA Norte · Acceso 24/7</span>
+        <span className="mc-eyebrow violet" style={{ marginBottom: 0 }}>Nordelta · GBA Norte · Lun a Sáb</span>
       </div>
       <div className="mc-sucs-strip-list">
         {SUCURSALES.map((s) => (
@@ -669,7 +669,7 @@ function Sucursales({ onReserve }) {
 /* Ticker                                                             */
 /* ════════════════════════════════════════════════════════════════ */
 function Ticker() {
-  const items = ['Sin depósito', 'Sin permanencia', '20% off anual', 'Acceso 24/7', 'Pagás con Mercado Pago', 'Gestión online'];
+  const items = ['Sin depósito', 'Sin permanencia', '20% off anual', 'Acceso Lun a Sáb', 'Pagás con Mercado Pago', 'Gestión online'];
   const run = [...items, ...items, ...items];
   return (
     <div className="mc-ticker" aria-hidden="true">
@@ -777,8 +777,8 @@ function Guarantees({ onReserve }) {
         </article>
         <article className="mc-bento-item mc-bento-2" data-reveal="2">
           <span className="n">02 / Acceso</span>
-          <h3>Acceso 24/7</h3>
-          <p>Entrás cuando quieras, los 365 días del año, con tu credencial digital desde el portal.</p>
+          <h3>Acceso con tu credencial</h3>
+          <p>Entrás con reconocimiento facial en el horario del local: Lun a Vie 8–17 hs · Sáb 9–13 hs.</p>
         </article>
         <article className="mc-bento-item mc-bento-3" data-reveal="3">
           <span className="n">03 / Seguridad</span>
@@ -838,7 +838,7 @@ function SelfService({ onReserve }) {
           <h3>Gestioná todo desde tu cuenta.</h3>
           <ul>
             <li>Múltiples reservas en distintas sucursales</li>
-            <li>Acceso 24/7 por reconocimiento facial</li>
+            <li>Acceso por reconocimiento facial (Lun a Sáb)</li>
             <li>Cambiar de tamaño con un click</li>
             <li>Pausar o cancelar cuando quieras</li>
           </ul>
@@ -891,7 +891,7 @@ function FAQ() {
     { q: '¿Necesito firmar un contrato?', a: 'Sí, pero una sola vez: firmás el contrato físico la primera vez que venís. Después todo es online — pagos, accesos y cancelación cuando quieras, sin permanencia mínima.' },
     { q: '¿Puedo tener más de un box?',          a: 'Sí. Podés tener tantas reservas como necesites, incluso en distintas sucursales. Las manejás todas desde la misma cuenta.' },
     { q: '¿Cómo pago?',                          a: 'Suscripción mensual con tarjeta de crédito a través de Mercado Pago. Te cobramos automáticamente cada mes mientras tu cuenta esté activa. Cancelás cuando quieras desde el portal. Los precios incluyen IVA.' },
-    { q: '¿Cómo accedo al box?',                 a: 'Con reconocimiento facial. Subís una selfie desde el portal, el sistema registra tu cara y desde ese momento entrás mirando la cámara de la entrada. Sin turno, sin tarjeta, sin nada. Funciona 24/7.' },
+    { q: '¿Cómo accedo al box?',                 a: 'Con reconocimiento facial. Subís una selfie desde el portal, el sistema registra tu cara y desde ese momento entrás mirando la cámara de la entrada. Sin turno, sin tarjeta, sin nada. Funciona en el horario del local: Lun a Vie 8–17 hs y Sáb 9–13 hs.' },
     { q: '¿Cómo aplican las promos?',            a: 'Se aplican automáticamente al hacer la reserva si cumplís los requisitos. Por ejemplo, el 20% off al contratar 12 meses.' },
     { q: '¿Puedo cambiar de tamaño después?',    a: 'Sí. Desde el portal cambiás de tamaño sin penalidad. Si crece tu necesidad o si querés achicar, lo hacés con un click.' },
     { q: '¿Qué no puedo guardar?',               a: 'Materiales inflamables, tóxicos, alimentos perecederos, seres vivos y productos ilegales. El resto, todo.' },
@@ -1221,7 +1221,7 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
                 <div className="steps">
                   <div><span className="n">1</span><span>Reservás online y pagás con tarjeta</span></div>
                   <div><span className="n">2</span><span>Subís una <b>selfie</b> desde el portal para registrar tu cara</span></div>
-                  <div><span className="n">3</span><span>Mirás la cámara en el ingreso y entrás — las 24 hs, sin turno</span></div>
+                  <div><span className="n">3</span><span>Mirás la cámara en el ingreso y entrás — sin turno, en el horario del local</span></div>
                   <div><span className="n">4</span><span>Gestionás todo (pagos, accesos, facturas) desde tu cuenta online</span></div>
                 </div>
               </div>
@@ -2511,7 +2511,7 @@ function AccesoFacial({ reservation, onUpdate }) {
         <span className="mc-portal-block-title">Acceso facial</span>
         <div className="mc-acceso-icon check">✅</div>
         <h3>Acceso activo — {reservation.sucursal?.name}</h3>
-        <p>Podés entrar las 24 hs. Tu cara es tu credencial.</p>
+        <p>Podés entrar en el horario del local. Tu cara es tu credencial.</p>
         <div className="sub">{reservation.sucursal?.hours || 'Horarios de atención según sucursal'}</div>
       </div>
     );
@@ -3033,3 +3033,4 @@ function MCPromo() {
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(<React.Fragment><App /><MCChat /><MCPromo /></React.Fragment>);
+                                                                                                      

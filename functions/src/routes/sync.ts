@@ -64,12 +64,23 @@ syncRouter.post('/import', async (req: Request, res: Response) => {
     }, { merge: true });
 
     // 2. Storage rooms (overwrite: refleja status real)
+    // Preservar bauleras BLOQUEADAS manualmente: el sync NO las desbloquea.
+    const blockedMap = new Map<string, Record<string, unknown>>();
+    const existingRooms = await db.collection('storageRooms').where('branchId', '==', branchId).get();
+    existingRooms.forEach((d) => { const r = d.data() as Record<string, unknown>; if (r.status === 'blocked') blockedMap.set(d.id, r); });
     const CHUNK = 450;
     for (let i = 0; i < bauleras.length; i += CHUNK) {
       const batch = db.batch();
       bauleras.slice(i, i + CHUNK).forEach((b) => {
         const id = `${branchId}__${b.code}`;
-        batch.set(db.collection('storageRooms').doc(id), roomDoc(b, now, branchId, buildingId));
+        const roomData: Record<string, unknown> = { ...roomDoc(b, now, branchId, buildingId) };
+        const blk = blockedMap.get(id);
+        if (blk) {
+          roomData.status = 'blocked';
+          roomData.blockedUntil = blk.blockedUntil ?? null;
+          roomData.blockReason = blk.blockReason ?? 'Bloqueo manual';
+        }
+        batch.set(db.collection('storageRooms').doc(id), roomData);
       });
       await batch.commit();
     }
