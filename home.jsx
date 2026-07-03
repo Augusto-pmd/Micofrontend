@@ -3033,4 +3033,3 @@ function MCPromo() {
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(<React.Fragment><App /><MCChat /><MCPromo /></React.Fragment>);
-                                                                                                      
