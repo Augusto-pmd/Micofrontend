@@ -2707,13 +2707,21 @@ async function fetchMyAccount(email) {
     // Intentar con Firebase token si está disponible
     let headers = { 'Content-Type': 'application/json' };
     try {
-      const { getAuth } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
-      const fbUser = getAuth().currentUser;
+      const { getAuth, onAuthStateChanged } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+      const _auth = getAuth();
+      // Esperar a que Firebase restaure la sesion: currentUser puede ser null al cargar.
+      let fbUser = _auth.currentUser;
+      if (!fbUser) {
+        fbUser = await new Promise((resolve) => {
+          const unsub = onAuthStateChanged(_auth, (u) => { unsub(); resolve(u); });
+          setTimeout(() => { try { unsub(); } catch (e) {} resolve(_auth.currentUser); }, 4000);
+        });
+      }
       if (fbUser) {
         const token = await fbUser.getIdToken();
         headers['Authorization'] = `Bearer ${token}`;
       }
-    } catch { /* sin token, usar email como fallback */ }
+    } catch (e) { /* sin token, usar email como fallback */ }
 
     const url = `${MC_API}/my-account${!headers['Authorization'] ? `?email=${encodeURIComponent(email)}` : ''}`;
     const res = await fetch(url, { headers });
