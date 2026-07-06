@@ -163,37 +163,47 @@ async function buildReservationMap(): Promise<Map<string, ResLite>> {
 // storageRoomId. Asi cada baulera usa su medida REAL de inventario y no el m2 mal
 // tipeado del detalle de facturacion (ej: 5.10 vs 5.00). 8 sigue siendo 8 y 8.1 = 8.1.
 async function buildRentedUnits(): Promise<RentedUnit[]> {
-  const roomSnap = await db.collection('storageRooms').get();
-  const m2ByRoom = new Map<string, number>();
-  roomSnap.forEach((d) => {
-    const r = d.data() as Record<string, unknown>;
-    m2ByRoom.set(d.id, Number(r['areaM2']) || 0);
-  });
+  // customers: indices para linkear el email por varias vias.
   const custSnap = await db.collection('customers').get();
-  const emailByCust = new Map<string, string>();
+  const emailById = new Map<string, string>();
+  const emailByContract = new Map<string, string>();
   const emailByName = new Map<string, string>();
   custSnap.forEach((d) => {
     const c = d.data() as Record<string, unknown>;
     const email = String(c['email'] || '').trim().toLowerCase();
     if (!email) return;
-    emailByCust.set(d.id, email);
+    emailById.set(d.id, email);
+    const cn = c['contractNumber'];
+    if (cn) emailByContract.set(String(cn), email);
+    (Array.isArray(c['contractNumbers']) ? c['contractNumbers'] as unknown[] : [])
+      .forEach((x) => emailByContract.set(String(x), email));
     const nm = String(c['fullName'] || '').trim().toLowerCase();
     if (nm) emailByName.set(nm, email);
   });
-  const units: RentedUnit[] = [];
+  // storageRoomId -> customerId (desde ordenes)
+  const custByRoom = new Map<string, string>();
   const ordSnap = await db.collection('reservationOrders').get();
   ordSnap.forEach((d) => {
     const o = d.data() as Record<string, unknown>;
-    const status = String(o['status'] || '').toUpperCase();
-    if (status === 'CANCELLED' || status === 'CANCELED') return;
-    const roomId = String(o['storageRoomId'] || '');
-    const m2 = m2ByRoom.get(roomId) || Number(o['m2']) || 0; // medida real del inventario
+    const rid = String(o['storageRoomId'] || '');
+    const cid = String(o['customerId'] || '');
+    if (rid && cid) custByRoom.set(rid, cid);
+  });
+  // Inventario REAL: bauleras OCUPADAS (fuente de que esta alquilado).
+  const roomSnap = await db.collection('storageRooms').where('status', '==', 'occupied').get();
+  const units: RentedUnit[] = [];
+  roomSnap.forEach((d) => {
+    const r = d.data() as Record<string, unknown>;
+    const m2 = Number(r['areaM2']) || 0;
     if (!m2) return;
-    const custId = String(o['customerId'] || '');
-    const name = String(o['customerName'] || '');
-    let email = emailByCust.get(custId) || '';
+    const name = String(r['currentTenant'] || '');
+    const cn = r['contractNumber'] ? String(r['contractNumber']) : '';
+    let email = '';
+    const cid = custByRoom.get(d.id);
+    if (cid) email = emailById.get(cid) || '';
+    if (!email && cn) email = emailByContract.get(cn) || '';
     if (!email && name) email = emailByName.get(name.trim().toLowerCase()) || '';
-    units.push({ m2, name, email, monthly: Number(o['monthlyPrice']) || 0 });
+    units.push({ m2, name, email, monthly: Number(r['price']) || 0 });
   });
   return units;
 }

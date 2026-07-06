@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { db } from '../../config/firebase';
+import { db, auth } from '../../config/firebase';
 import { verifyToken } from '../../middleware/verifyToken';
 import { paginate } from '../../utils/pagination';
 
@@ -107,16 +107,51 @@ customersRouter.get('/:id', verifyToken, async (req: Request, res: Response) => 
   }
 });
 
-// POST /customer
+// POST /customer — crea el cliente Y su cuenta de login para el portal.
+// Si viene password, crea (o reutiliza) el usuario Firebase con emailVerified=true
+// (creado por admin => confiable), asi el cliente entra al portal directo.
+// El password NO se guarda en Firestore.
 customersRouter.post('/', verifyToken, async (req: Request, res: Response) => {
   try {
     const now = new Date().toISOString();
-    const data = { ...req.body, isActive: req.body.isActive ?? true, createdAt: now, updatedAt: now };
+    const body = { ...req.body } as Record<string, unknown>;
+    const email = String(body['email'] || '').trim().toLowerCase();
+    const password = body['password'] ? String(body['password']) : '';
+    delete body['password'];
+
+    let uid: string | null = null;
+    if (email && password) {
+      const displayName = `${body['firstName'] || ''} ${body['lastName'] || ''}`.trim();
+      try {
+        const rec = await auth.createUser({ email, password, emailVerified: true, displayName });
+        uid = rec.uid;
+      } catch (e: unknown) {
+        const code = (e as { code?: string })?.code;
+        if (code === 'auth/email-already-exists') {
+          const existing = await auth.getUserByEmail(email);
+          uid = existing.uid;
+          await auth.updateUser(uid, { password, emailVerified: true }).catch(() => {});
+        } else {
+          throw e;
+        }
+      }
+    }
+
+    const data = {
+      ...body,
+      email,
+      uid,
+      status: 'approved',
+      isApproved: true,
+      isActive: body['isActive'] ?? true,
+      createdAt: now,
+      updatedAt: now,
+    };
     const ref = await db.collection('customers').add(data);
     res.status(201).json({ id: ref.id, ...data });
-  } catch (err) {
+  } catch (err: unknown) {
     console.error('POST /customer error:', err);
-    res.status(500).json({ message: 'Internal server error' });
+    res.status(500).json({ message: (err as { message?: string })?.message || 'Internal server error' });
   }
 });
 
