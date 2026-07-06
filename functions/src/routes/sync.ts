@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { db } from '../config/firebase';
+import { FieldPath, FieldValue } from 'firebase-admin/firestore';
 
 // Importación / sincronización del inventario desde la planilla (Google Sheet).
 // Recibe { bauleras:[...], clientes:[...] } y hace upsert en Firestore.
@@ -37,6 +38,8 @@ function roomDoc(b: any, now: string, branchId: string, buildingId: string) {
     branchId,
     contractNumber: b.contractNumber || null,
     currentTenant: b.titular || null,
+    tenantEmail: String(b.mail || b.email || '').trim().toLowerCase() || null,
+    tenantDni: String(b.dni || b.dniTitular || '').replace(/[^0-9]/g, '') || null,
     createdAt: now,
     updatedAt: now,
   };
@@ -118,6 +121,12 @@ syncRouter.post('/import', async (req: Request, res: Response) => {
         { branchId, byM2, updatedAt: now, source: 'sheet-sync' },
         { merge: true },
       );
+      // Limpia medidas viejas ya unificadas (5.1 -> 5, 8.1 -> 8) del mapa de precios,
+      // asi no quedan filas fantasma en el admin.
+      await db.collection('pricing').doc(branchId).update(
+        new FieldPath('byM2', '5.1'), FieldValue.delete(),
+        new FieldPath('byM2', '8.1'), FieldValue.delete(),
+      ).catch(() => {});
     }
 
     // 2.7 Candado anti-duplicacion: borra cualquier resto de esquema viejo

@@ -108,7 +108,7 @@ pricingRouter.put('/branch/:branchId', verifyToken, async (req: Request, res: Re
 // ============================================================================
 
 interface ResLite { reservationId: string; m2: number; customerName: string; customerEmail: string; monthly: number; }
-interface RentedUnit { m2: number; name: string; email: string; monthly: number; }
+interface RentedUnit { m2: number; name: string; email: string; dni: string; monthly: number; }
 interface Target {
   id: string;              // preapprovalId (unico)
   cliente: string;
@@ -119,7 +119,7 @@ interface Target {
   reservationId: string | null;
   m2: number;
 }
-interface NoMatch { name: string; email: string; monthly: number; motivo: string; }
+interface NoMatch { name: string; email: string; dni: string; monthly: number; motivo: string; }
 
 async function notifyPriceChange(to: string, name: string, oldAmount: number, newAmount: number): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY;
@@ -163,14 +163,18 @@ async function buildReservationMap(): Promise<Map<string, ResLite>> {
 // storageRoomId. Asi cada baulera usa su medida REAL de inventario y no el m2 mal
 // tipeado del detalle de facturacion (ej: 5.10 vs 5.00). 8 sigue siendo 8 y 8.1 = 8.1.
 async function buildRentedUnits(): Promise<RentedUnit[]> {
-  // customers: indices para linkear el email por varias vias.
+  // customers: indices para linkear el email por varias vias (id, contrato, dni, nombre).
   const custSnap = await db.collection('customers').get();
   const emailById = new Map<string, string>();
   const emailByContract = new Map<string, string>();
   const emailByName = new Map<string, string>();
+  const emailByDni = new Map<string, string>();
+  const dniById = new Map<string, string>();
   custSnap.forEach((d) => {
     const c = d.data() as Record<string, unknown>;
     const email = String(c['email'] || '').trim().toLowerCase();
+    const dni = String(c['dni'] || '').replace(/[^0-9]/g, '');
+    if (dni) dniById.set(d.id, dni);
     if (!email) return;
     emailById.set(d.id, email);
     const cn = c['contractNumber'];
@@ -179,6 +183,7 @@ async function buildRentedUnits(): Promise<RentedUnit[]> {
       .forEach((x) => emailByContract.set(String(x), email));
     const nm = String(c['fullName'] || '').trim().toLowerCase();
     if (nm) emailByName.set(nm, email);
+    if (dni) emailByDni.set(dni, email);
   });
   // storageRoomId -> customerId (desde ordenes)
   const custByRoom = new Map<string, string>();
@@ -198,12 +203,17 @@ async function buildRentedUnits(): Promise<RentedUnit[]> {
     if (!m2) return;
     const name = String(r['currentTenant'] || '');
     const cn = r['contractNumber'] ? String(r['contractNumber']) : '';
-    let email = '';
     const cid = custByRoom.get(d.id);
-    if (cid) email = emailById.get(cid) || '';
+    // Email: primero el que quedo en la baulera; si no, por orden/contrato/dni/nombre.
+    const roomEmail = String(r['tenantEmail'] || '').trim().toLowerCase();
+    const roomDni = String(r['tenantDni'] || '').replace(/[^0-9]/g, '');
+    const dni = roomDni || (cid ? dniById.get(cid) || '' : '');
+    let email = roomEmail;
+    if (!email && cid) email = emailById.get(cid) || '';
     if (!email && cn) email = emailByContract.get(cn) || '';
+    if (!email && dni) email = emailByDni.get(dni) || '';
     if (!email && name) email = emailByName.get(name.trim().toLowerCase()) || '';
-    units.push({ m2, name, email, monthly: Number(r['price']) || 0 });
+    units.push({ m2, name, email, dni, monthly: Number(r['price']) || 0 });
   });
   return units;
 }
@@ -241,9 +251,9 @@ function computeMeasure(
   for (const u of units) {
     if (u.m2 !== m2) continue;
     const e = (u.email || '').trim().toLowerCase();
-    if (!e) { noMatch.push({ name: u.name, email: '', monthly: u.monthly, motivo: 'cliente sin email en la base' }); continue; }
+    if (!e) { noMatch.push({ name: u.name, email: '', dni: u.dni, monthly: u.monthly, motivo: 'cliente sin email en la base' }); continue; }
     const cands = (byEmail.get(e) || []).filter((s) => !usedSub.has(s.id));
-    if (!cands.length) { noMatch.push({ name: u.name, email: e, monthly: u.monthly, motivo: 'sin suscripcion MP con ese email' }); continue; }
+    if (!cands.length) { noMatch.push({ name: u.name, email: e, dni: u.dni, monthly: u.monthly, motivo: 'sin suscripcion MP con ese email' }); continue; }
     const pick = (u.monthly > 0 && cands.find((s) => s.amount === u.monthly)) || cands[0];
     usedSub.add(pick.id);
     targets.push({
