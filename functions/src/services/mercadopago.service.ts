@@ -173,3 +173,48 @@ export async function getPaymentExternalReference(paymentId: string): Promise<st
     return d.external_reference ? String(d.external_reference) : null;
   } catch { return null; }
 }
+
+
+export interface MpSubscription {
+  id: string;
+  payerEmail: string;
+  reason: string;
+  amount: number;
+  status: string;
+}
+
+// Trae TODAS las suscripciones (preapprovals) de la cuenta con el status dado,
+// paginando /preapproval/search. Fuente completa: incluye las creadas por el
+// sistema (preapproval) Y las creadas a mano fuera del sistema.
+export async function searchSubscriptions(status = 'authorized'): Promise<MpSubscription[]> {
+  const accessToken = process.env.MP_ACCESS_TOKEN;
+  if (!accessToken) throw new Error('MP_ACCESS_TOKEN not configured');
+  const out: MpSubscription[] = [];
+  const limit = 100;
+  let offset = 0;
+  for (let page = 0; page < 50; page++) {
+    const url = `${MP_API_BASE}/preapproval/search?status=${encodeURIComponent(status)}&limit=${limit}&offset=${offset}`;
+    const res = await fetch(url, { headers: { 'Authorization': `Bearer ${accessToken}` } });
+    if (!res.ok) {
+      const t = await res.text();
+      throw new Error(`MP search ${res.status}: ${t.slice(0, 200)}`);
+    }
+    const data = await res.json() as { results?: Array<Record<string, unknown>>; paging?: { total?: number } };
+    const results = data.results || [];
+    for (const r of results) {
+      const ar = (r['auto_recurring'] as Record<string, unknown>) || {};
+      const payer = (r['payer'] as Record<string, unknown>) || {};
+      out.push({
+        id: String(r['id'] ?? ''),
+        payerEmail: String(r['payer_email'] ?? payer['email'] ?? ''),
+        reason: String(r['reason'] ?? ''),
+        amount: Number(ar['transaction_amount']) || 0,
+        status: String(r['status'] ?? ''),
+      });
+    }
+    offset += limit;
+    const total = data.paging?.total ?? 0;
+    if (results.length < limit || offset >= total) break;
+  }
+  return out;
+}

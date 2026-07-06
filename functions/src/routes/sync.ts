@@ -8,8 +8,17 @@ export const syncRouter = Router();
 
 const FLOOR: Record<string, string> = { A0: 'PB', A1: '1', A2: '2', A3: '3' };
 
+// Unifica medidas equivalentes (mismo tamano y precio) a una sola: 5.1 -> 5, 8.1 -> 8.
+// NO toca las demas: 22 y 22.1 (PB) quedan como medidas distintas a proposito.
+function canonM2(x: unknown): number {
+  const n = Number(x) || 0;
+  if (n === 5.1) return 5;
+  if (n === 8.1) return 8;
+  return n;
+}
+
 function roomDoc(b: any, now: string, branchId: string, buildingId: string) {
-  const m2 = Number(b.m2) || 0;
+  const m2 = canonM2(b.m2);
   return {
     space: b.code,
     name: b.code,
@@ -89,7 +98,7 @@ syncRouter.post('/import', async (req: Request, res: Response) => {
     // frecuente por m2 (los distintos quedan como override puntual en la baulera).
     const priceVotes: Record<string, Record<string, number>> = {};
     for (const b of bauleras) {
-      const m2 = Number(b.m2) || 0;
+      const m2 = canonM2(b.m2);
       const price = Number(b.price) || 0;
       if (!m2 || !price) continue;
       const km = String(m2);
@@ -156,7 +165,7 @@ syncRouter.post('/import', async (req: Request, res: Response) => {
         contractNumbers: contracts,
         startDate: first.fechaIngreso || null,
         monthlyPrice: first.price || 0,
-        m2: first.m2 || 0,
+        m2: canonM2(first.m2),
         updatedAt: now,
       }, { merge: true });
       custCount++;
@@ -177,7 +186,7 @@ syncRouter.post('/import', async (req: Request, res: Response) => {
         branchId: 'nordelta',
         buildingId: 'edificio-a',
         entryDate: c.fechaIngreso || null,
-        m2: c.m2 || 0,
+        m2: canonM2(c.m2),
         monthlyPrice: c.price || 0,
         totalAmount: String(c.price || ''),
         status: 'CONFIRMED',

@@ -1,9 +1,10 @@
 import { Router, Request, Response } from 'express';
 import { db } from '../../config/firebase';
 import { verifyToken } from '../../middleware/verifyToken';
+import { requireStaff } from '../../middleware/requireStaff';
 import { getPricingByM2 } from '../../services/pricing.service';
 import { FieldValue } from 'firebase-admin/firestore';
-import { updateSubscriptionAmount } from '../../services/mercadopago.service';
+import { updateSubscriptionAmount, searchSubscriptions, MpSubscription } from '../../services/mercadopago.service';
 import { logAudit } from '../../services/audit.service';
 
 export const pricingRouter = Router();
@@ -16,13 +17,7 @@ pricingRouter.get('/', verifyToken, async (_req: Request, res: Response) => {
   try {
     const doc = await db.collection(PRICING_COLLECTION).doc(PRICING_DOC).get();
     if (!doc.exists) {
-      // Return defaults if not yet configured
-      res.json({
-        basePrice: 0,
-        pricePerM2: 0,
-        discounts: [],
-        updatedAt: null,
-      });
+      res.json({ basePrice: 0, pricePerM2: 0, discounts: [], updatedAt: null });
       return;
     }
     res.json({ id: doc.id, ...doc.data() });
@@ -85,11 +80,9 @@ pricingRouter.put('/branch/:branchId', verifyToken, async (req: Request, res: Re
     const { byM2, effectiveDate } = req.body as { byM2?: Record<string, number>; effectiveDate?: string };
     const today = new Date().toISOString().slice(0, 10);
     if (effectiveDate && String(effectiveDate) > today) {
-      // Programar a futuro: se guarda como cambio pendiente, no pisa el precio actual
       await db.collection('pricing').doc(req.params.branchId).set(
         { scheduled: FieldValue.arrayUnion({ effectiveDate, byM2: byM2 || {} }), updatedAt: today }, { merge: true });
     } else {
-      // Aplica ya
       await db.collection('pricing').doc(req.params.branchId).set(
         { byM2: byM2 || {}, updatedAt: today }, { merge: true });
     }
@@ -102,10 +95,32 @@ pricingRouter.put('/branch/:branchId', verifyToken, async (req: Request, res: Re
 });
 
 
-// -- Cambio de valor a suscripciones EXISTENTES (clientes ya alquilados) --
-// POST /pricing-engine/reprice/:branchId  body: { m2, newAmount, dryRun (default true), notify }
-// dryRun=true  -> devuelve la lista de afectados, NO ejecuta nada (vista previa).
-// dryRun=false -> aplica: PUT /preapproval por cada suscripcion + actualiza contrato + audita (+ notifica).
+// ============================================================================
+// Cambio de valor a suscripciones EXISTENTES (clientes ya alquilados) - HIBRIDO
+// Fuente de suscripciones: Mercado Pago (/preapproval/search) => TODAS las activas.
+// Fuente de MEDIDA (quien alquila que medida): la ASIGNACION real en la base
+// (reservations para online/Vender; reservationOrders + customers para los
+// cargados a mano/sync). Se linkea la suscripcion MP con el cliente por EMAIL.
+// NO se matchea por monto: dos medidas pueden tener el mismo precio, y un
+// cliente puede estar a un precio viejo. Dedup por preapprovalId (1 sub = 1 cambio).
+// Solo cambia montos de suscripciones que YA existen; nunca crea cobros ni reasigna.
+// Protegido con requireStaff.
+// ============================================================================
+
+interface ResLite { reservationId: string; m2: number; customerName: string; customerEmail: string; monthly: number; }
+interface RentedUnit { m2: number; name: string; email: string; monthly: number; }
+interface Target {
+  id: string;              // preapprovalId (unico)
+  cliente: string;
+  email: string;
+  actual: number;          // monto actual real en MP
+  nuevo: number;
+  origen: 'sistema' | 'mp';
+  reservationId: string | null;
+  m2: number;
+}
+interface NoMatch { name: string; email: string; monthly: number; motivo: string; }
+
 async function notifyPriceChange(to: string, name: string, oldAmount: number, newAmount: number): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey || !to) return;
@@ -123,59 +138,199 @@ async function notifyPriceChange(to: string, name: string, oldAmount: number, ne
   } catch { /* no romper el flujo por un mail */ }
 }
 
-pricingRouter.post('/reprice/:branchId', verifyToken, async (req: Request, res: Response) => {
+// Mapa preapprovalId -> reserva activa del sistema (online/Vender).
+async function buildReservationMap(): Promise<Map<string, ResLite>> {
+  const snap = await db.collection('reservations').where('status', '==', 'active').get();
+  const map = new Map<string, ResLite>();
+  snap.forEach((d) => {
+    const r = d.data() as Record<string, unknown>;
+    const pid = r['mpPreapprovalId'];
+    if (pid && r['mpSubscriptionStatus'] !== 'cancelled') {
+      map.set(String(pid), {
+        reservationId: d.id,
+        m2: Number(r['m2']) || 0,
+        customerName: String(r['customerName'] || ''),
+        customerEmail: String(r['customerEmail'] || ''),
+        monthly: Number(r['monthly']) || 0,
+      });
+    }
+  });
+  return map;
+}
+
+// Unidades alquiladas segun la asignacion real (reservationOrders + customers por email).
+// La MEDIDA sale de storageRooms (misma fuente que la tabla de Tarifas), unida por
+// storageRoomId. Asi cada baulera usa su medida REAL de inventario y no el m2 mal
+// tipeado del detalle de facturacion (ej: 5.10 vs 5.00). 8 sigue siendo 8 y 8.1 = 8.1.
+async function buildRentedUnits(): Promise<RentedUnit[]> {
+  const roomSnap = await db.collection('storageRooms').get();
+  const m2ByRoom = new Map<string, number>();
+  roomSnap.forEach((d) => {
+    const r = d.data() as Record<string, unknown>;
+    m2ByRoom.set(d.id, Number(r['areaM2']) || 0);
+  });
+  const custSnap = await db.collection('customers').get();
+  const emailByCust = new Map<string, string>();
+  const emailByName = new Map<string, string>();
+  custSnap.forEach((d) => {
+    const c = d.data() as Record<string, unknown>;
+    const email = String(c['email'] || '').trim().toLowerCase();
+    if (!email) return;
+    emailByCust.set(d.id, email);
+    const nm = String(c['fullName'] || '').trim().toLowerCase();
+    if (nm) emailByName.set(nm, email);
+  });
+  const units: RentedUnit[] = [];
+  const ordSnap = await db.collection('reservationOrders').get();
+  ordSnap.forEach((d) => {
+    const o = d.data() as Record<string, unknown>;
+    const status = String(o['status'] || '').toUpperCase();
+    if (status === 'CANCELLED' || status === 'CANCELED') return;
+    const roomId = String(o['storageRoomId'] || '');
+    const m2 = m2ByRoom.get(roomId) || Number(o['m2']) || 0; // medida real del inventario
+    if (!m2) return;
+    const custId = String(o['customerId'] || '');
+    const name = String(o['customerName'] || '');
+    let email = emailByCust.get(custId) || '';
+    if (!email && name) email = emailByName.get(name.trim().toLowerCase()) || '';
+    units.push({ m2, name, email, monthly: Number(o['monthlyPrice']) || 0 });
+  });
+  return units;
+}
+
+// Arma targets de UNA medida. usedSub se comparte entre medidas (dedup global).
+function computeMeasure(
+  subs: MpSubscription[], resMap: Map<string, ResLite>, units: RentedUnit[],
+  m2: number, newAmount: number, usedSub: Set<string>,
+): { targets: Target[]; noMatch: NoMatch[] } {
+  const targets: Target[] = [];
+  const noMatch: NoMatch[] = [];
+
+  // 1) Suscripciones del sistema (reservations) con m2 === medida => confiable.
+  for (const s of subs) {
+    if (!s.id || usedSub.has(s.id)) continue;
+    const res = resMap.get(s.id);
+    if (res && res.m2 === m2) {
+      usedSub.add(s.id);
+      targets.push({
+        id: s.id, cliente: res.customerName, email: res.customerEmail || s.payerEmail,
+        actual: s.amount, nuevo: newAmount, origen: 'sistema', reservationId: res.reservationId, m2,
+      });
+    }
+  }
+
+  // 2) Manuales: unidades de esta medida linkeadas a MP por email.
+  const byEmail = new Map<string, MpSubscription[]>();
+  for (const s of subs) {
+    if (usedSub.has(s.id) || resMap.has(s.id)) continue; // solo subs manuales libres
+    const e = s.payerEmail.trim().toLowerCase();
+    if (!e) continue;
+    if (!byEmail.has(e)) byEmail.set(e, []);
+    byEmail.get(e)!.push(s);
+  }
+  for (const u of units) {
+    if (u.m2 !== m2) continue;
+    const e = (u.email || '').trim().toLowerCase();
+    if (!e) { noMatch.push({ name: u.name, email: '', monthly: u.monthly, motivo: 'cliente sin email en la base' }); continue; }
+    const cands = (byEmail.get(e) || []).filter((s) => !usedSub.has(s.id));
+    if (!cands.length) { noMatch.push({ name: u.name, email: e, monthly: u.monthly, motivo: 'sin suscripcion MP con ese email' }); continue; }
+    const pick = (u.monthly > 0 && cands.find((s) => s.amount === u.monthly)) || cands[0];
+    usedSub.add(pick.id);
+    targets.push({
+      id: pick.id, cliente: u.name, email: e,
+      actual: pick.amount, nuevo: newAmount, origen: 'mp', reservationId: null, m2,
+    });
+  }
+  return { targets, noMatch };
+}
+
+async function applyTarget(t: Target, notify: boolean): Promise<void> {
+  await updateSubscriptionAmount(t.id, t.nuevo);
+  if (t.reservationId) {
+    await db.collection('reservations').doc(t.reservationId).update({ monthly: t.nuevo });
+    const orderRef = db.collection('reservationOrders').doc(`order-online-${t.reservationId}`);
+    const orderSnap = await orderRef.get();
+    if (orderSnap.exists) await orderRef.set({ monthlyPrice: t.nuevo, updatedAt: new Date().toISOString() }, { merge: true });
+  }
+  if (notify) await notifyPriceChange(t.email, t.cliente, t.actual, t.nuevo);
+}
+
+async function runTargets(targets: Target[], notify: boolean): Promise<{ actualizados: string[]; errores: Array<{ id: string; error: string }> }> {
+  const actualizados: string[] = [];
+  const errores: Array<{ id: string; error: string }> = [];
+  for (const t of targets) {
+    try { await applyTarget(t, notify); actualizados.push(t.id); }
+    catch (e) { errores.push({ id: t.id, error: String(e).slice(0, 200) }); }
+  }
+  return { actualizados, errores };
+}
+
+// POST /pricing-engine/reprice/:branchId  (una medida)
+// body: { m2, newAmount, dryRun (default true), notify }
+pricingRouter.post('/reprice/:branchId', verifyToken, requireStaff, async (req: Request, res: Response) => {
   try {
     const branchId = req.params['branchId'];
     const body = req.body as { m2?: number; newAmount?: number; dryRun?: boolean; notify?: boolean };
     const m2n = Number(body.m2);
-    const amount = Number(body.newAmount);
+    const newAmount = Number(body.newAmount);
     const dryRun = body.dryRun !== false;
     const notify = body.notify === true;
-    if (!m2n || !(amount > 0)) { res.status(400).json({ error: 'm2 y newAmount (>0) requeridos' }); return; }
-    const snap = await db.collection('reservations').where('status', '==', 'active').get();
-    const targets: Array<{ id: string; preapprovalId: string; cliente: string; email: string; actual: number; nuevo: number }> = [];
-    snap.forEach((d) => {
-      const r = d.data() as Record<string, unknown>;
-      if (Number(r['m2']) === m2n && r['sucursalId'] === branchId && r['mpPreapprovalId'] && r['mpSubscriptionStatus'] !== 'cancelled') {
-        targets.push({
-          id: d.id,
-          preapprovalId: String(r['mpPreapprovalId']),
-          cliente: String(r['customerName'] || ''),
-          email: String(r['customerEmail'] || ''),
-          actual: Number(r['monthly']) || 0,
-          nuevo: amount,
-        });
-      }
-    });
+    if (!m2n || !(newAmount > 0)) { res.status(400).json({ error: 'm2 y newAmount (>0) requeridos' }); return; }
+
+    const [subs, resMap, units] = await Promise.all([searchSubscriptions('authorized'), buildReservationMap(), buildRentedUnits()]);
+    const { targets, noMatch } = computeMeasure(subs, resMap, units, m2n, newAmount, new Set<string>());
+
     if (dryRun) {
-      res.json({ dryRun: true, m2: m2n, newAmount: amount, total: targets.length, afectados: targets });
+      res.json({ dryRun: true, m2: m2n, newAmount, total: targets.length, afectados: targets, sinMatch: noMatch.length, noMatch });
       return;
     }
-    const actualizados: string[] = [];
-    const errores: Array<{ id: string; error: string }> = [];
-    for (const t of targets) {
-      try {
-        await updateSubscriptionAmount(t.preapprovalId, amount);
-        await db.collection('reservations').doc(t.id).update({ monthly: amount });
-        const orderRef = db.collection('reservationOrders').doc(`order-online-${t.id}`);
-        const orderSnap = await orderRef.get();
-        if (orderSnap.exists) await orderRef.set({ monthlyPrice: amount, updatedAt: new Date().toISOString() }, { merge: true });
-        if (notify) await notifyPriceChange(t.email, t.cliente, t.actual, amount);
-        actualizados.push(t.id);
-      } catch (e) {
-        errores.push({ id: t.id, error: String(e).slice(0, 200) });
-      }
-    }
+    const { actualizados, errores } = await runTargets(targets, notify);
     await logAudit({
       actor: (req as unknown as { email?: string }).email || 'admin',
-      action: 'cambio_valor_suscripciones',
-      entity: 'pricing',
-      entityId: branchId,
-      detail: { m2: m2n, newAmount: amount, actualizados: actualizados.length, errores: errores.length, notify },
+      action: 'cambio_valor_suscripciones', entity: 'pricing', entityId: branchId,
+      detail: { m2: m2n, newAmount, actualizados: actualizados.length, errores: errores.length, notify },
     });
-    res.json({ dryRun: false, m2: m2n, newAmount: amount, actualizados: actualizados.length, errores });
+    res.json({ dryRun: false, m2: m2n, newAmount, actualizados: actualizados.length, errores });
   } catch (err) {
     console.error('POST /pricing-engine/reprice error:', err);
+    res.status(500).json({ error: 'No se pudo actualizar las suscripciones' });
+  }
+});
+
+// POST /pricing-engine/reprice-all/:branchId  (general, todas las medidas)
+// body: { items: [{ m2, newAmount }], dryRun (default true), notify }
+pricingRouter.post('/reprice-all/:branchId', verifyToken, requireStaff, async (req: Request, res: Response) => {
+  try {
+    const branchId = req.params['branchId'];
+    const body = req.body as { items?: Array<{ m2?: number; newAmount?: number }>; dryRun?: boolean; notify?: boolean };
+    const items = Array.isArray(body.items) ? body.items : [];
+    const dryRun = body.dryRun !== false;
+    const notify = body.notify === true;
+    if (!items.length) { res.status(400).json({ error: 'items requeridos' }); return; }
+
+    const [subs, resMap, units] = await Promise.all([searchSubscriptions('authorized'), buildReservationMap(), buildRentedUnits()]);
+    const usedSub = new Set<string>();
+    const targets: Target[] = [];
+    const noMatch: NoMatch[] = [];
+    for (const it of items) {
+      const m2n = Number(it.m2);
+      const nn = Number(it.newAmount);
+      if (!m2n || !(nn > 0)) continue;
+      const r = computeMeasure(subs, resMap, units, m2n, nn, usedSub);
+      for (const t of r.targets) { if (t.actual !== t.nuevo) targets.push(t); }
+      noMatch.push(...r.noMatch);
+    }
+
+    if (dryRun) { res.json({ dryRun: true, total: targets.length, afectados: targets, sinMatch: noMatch.length, noMatch }); return; }
+    const { actualizados, errores } = await runTargets(targets, notify);
+    await logAudit({
+      actor: (req as unknown as { email?: string }).email || 'admin',
+      action: 'cambio_valor_suscripciones_masivo', entity: 'pricing', entityId: branchId,
+      detail: { medidas: items.length, actualizados: actualizados.length, errores: errores.length, notify },
+    });
+    res.json({ dryRun: false, total: targets.length, actualizados: actualizados.length, errores });
+  } catch (err) {
+    console.error('POST /pricing-engine/reprice-all error:', err);
     res.status(500).json({ error: 'No se pudo actualizar las suscripciones' });
   }
 });

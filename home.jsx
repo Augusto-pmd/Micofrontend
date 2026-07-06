@@ -109,7 +109,7 @@ const CATEGORIES = [
     blurb: 'Para el contenido completo de un monoambiente.',
     fits: ['Muebles de 1 habitación', '~60 cajas', 'Electros y línea blanca'],
     options: [
-      { m2: 5.10, monthly: 139230 },
+      { m2: 5.00, monthly: 139230 },
       { m2: 6.00, monthly: 151200 },
       { m2: 8.00, monthly: 204120 },
       { m2: 9.00, monthly: 207900 },
@@ -134,6 +134,8 @@ const CATEGORIES = [
     fits: ['Casa familiar completa', 'Mercadería por pallet', 'A medida'],
     options: [
       { m2: 15.00, monthly: 441000 },
+      { m2: 16.00, monthly: 336000 },
+      { m2: 22.00, monthly: 462000 },
     ],
   },
 ];
