@@ -3,6 +3,8 @@ import { db } from '../../config/firebase';
 import { verifyToken } from '../../middleware/verifyToken';
 import { getPricingByM2 } from '../../services/pricing.service';
 import { FieldValue } from 'firebase-admin/firestore';
+import { updateSubscriptionAmount } from '../../services/mercadopago.service';
+import { logAudit } from '../../services/audit.service';
 
 export const pricingRouter = Router();
 
@@ -96,5 +98,84 @@ pricingRouter.put('/branch/:branchId', verifyToken, async (req: Request, res: Re
   } catch (err) {
     console.error('PUT /pricing-engine/branch error:', err);
     res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+
+// -- Cambio de valor a suscripciones EXISTENTES (clientes ya alquilados) --
+// POST /pricing-engine/reprice/:branchId  body: { m2, newAmount, dryRun (default true), notify }
+// dryRun=true  -> devuelve la lista de afectados, NO ejecuta nada (vista previa).
+// dryRun=false -> aplica: PUT /preapproval por cada suscripcion + actualiza contrato + audita (+ notifica).
+async function notifyPriceChange(to: string, name: string, oldAmount: number, newAmount: number): Promise<void> {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey || !to) return;
+  const from = process.env.RESEND_FROM || 'Mi Container <comercial@micontainer.com>';
+  const fmt = (n: number) => '$' + Number(n).toLocaleString('es-AR');
+  const html = `<p>Hola ${name || ''},</p>`
+    + `<p>Te informamos que el valor de tu alquiler en Mi Container se actualizara de <b>${fmt(oldAmount)}</b> a <b>${fmt(newAmount)}</b> por mes, a partir de tu proximo cobro.</p>`
+    + `<p>Ante cualquier duda, escribinos. Gracias por elegirnos.</p>`;
+  try {
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      body: JSON.stringify({ from, to: [to], subject: 'Actualizacion de tu suscripcion - Mi Container', html }),
+    });
+  } catch { /* no romper el flujo por un mail */ }
+}
+
+pricingRouter.post('/reprice/:branchId', verifyToken, async (req: Request, res: Response) => {
+  try {
+    const branchId = req.params['branchId'];
+    const body = req.body as { m2?: number; newAmount?: number; dryRun?: boolean; notify?: boolean };
+    const m2n = Number(body.m2);
+    const amount = Number(body.newAmount);
+    const dryRun = body.dryRun !== false;
+    const notify = body.notify === true;
+    if (!m2n || !(amount > 0)) { res.status(400).json({ error: 'm2 y newAmount (>0) requeridos' }); return; }
+    const snap = await db.collection('reservations').where('status', '==', 'active').get();
+    const targets: Array<{ id: string; preapprovalId: string; cliente: string; email: string; actual: number; nuevo: number }> = [];
+    snap.forEach((d) => {
+      const r = d.data() as Record<string, unknown>;
+      if (Number(r['m2']) === m2n && r['sucursalId'] === branchId && r['mpPreapprovalId'] && r['mpSubscriptionStatus'] !== 'cancelled') {
+        targets.push({
+          id: d.id,
+          preapprovalId: String(r['mpPreapprovalId']),
+          cliente: String(r['customerName'] || ''),
+          email: String(r['customerEmail'] || ''),
+          actual: Number(r['monthly']) || 0,
+          nuevo: amount,
+        });
+      }
+    });
+    if (dryRun) {
+      res.json({ dryRun: true, m2: m2n, newAmount: amount, total: targets.length, afectados: targets });
+      return;
+    }
+    const actualizados: string[] = [];
+    const errores: Array<{ id: string; error: string }> = [];
+    for (const t of targets) {
+      try {
+        await updateSubscriptionAmount(t.preapprovalId, amount);
+        await db.collection('reservations').doc(t.id).update({ monthly: amount });
+        const orderRef = db.collection('reservationOrders').doc(`order-online-${t.id}`);
+        const orderSnap = await orderRef.get();
+        if (orderSnap.exists) await orderRef.set({ monthlyPrice: amount, updatedAt: new Date().toISOString() }, { merge: true });
+        if (notify) await notifyPriceChange(t.email, t.cliente, t.actual, amount);
+        actualizados.push(t.id);
+      } catch (e) {
+        errores.push({ id: t.id, error: String(e).slice(0, 200) });
+      }
+    }
+    await logAudit({
+      actor: (req as unknown as { email?: string }).email || 'admin',
+      action: 'cambio_valor_suscripciones',
+      entity: 'pricing',
+      entityId: branchId,
+      detail: { m2: m2n, newAmount: amount, actualizados: actualizados.length, errores: errores.length, notify },
+    });
+    res.json({ dryRun: false, m2: m2n, newAmount: amount, actualizados: actualizados.length, errores });
+  } catch (err) {
+    console.error('POST /pricing-engine/reprice error:', err);
+    res.status(500).json({ error: 'No se pudo actualizar las suscripciones' });
   }
 });
