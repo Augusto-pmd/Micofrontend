@@ -4,7 +4,7 @@ import { verifyToken } from '../../middleware/verifyToken';
 import { requireStaff } from '../../middleware/requireStaff';
 import { getPricingByM2 } from '../../services/pricing.service';
 import { FieldValue } from 'firebase-admin/firestore';
-import { updateSubscriptionAmount, searchSubscriptions, MpSubscription } from '../../services/mercadopago.service';
+import { updateSubscriptionAmount, searchSubscriptions, searchPlans, MpSubscription } from '../../services/mercadopago.service';
 import { logAudit } from '../../services/audit.service';
 
 export const pricingRouter = Router();
@@ -297,11 +297,14 @@ pricingRouter.post('/reprice/:branchId', verifyToken, requireStaff, async (req: 
     const notify = body.notify === true;
     if (!m2n || !(newAmount > 0)) { res.status(400).json({ error: 'm2 y newAmount (>0) requeridos' }); return; }
 
-    const [subs, resMap, units] = await Promise.all([searchSubscriptions('authorized'), buildReservationMap(), buildRentedUnits()]);
+    const [allSubs, resMap, units, plans] = await Promise.all([searchSubscriptions(), buildReservationMap(), buildRentedUnits(), searchPlans()]);
+    const subs = allSubs.filter((s) => s.status === 'authorized');
     const { targets, noMatch } = computeMeasure(subs, resMap, units, m2n, newAmount, new Set<string>());
 
     if (dryRun) {
       const uMed = units.filter((u) => u.m2 === m2n);
+      const byStatus: Record<string, number> = {};
+      allSubs.forEach((s) => { byStatus[s.status] = (byStatus[s.status] || 0) + 1; });
       res.json({
         dryRun: true, m2: m2n, newAmount, total: targets.length, afectados: targets, sinMatch: noMatch.length, noMatch,
         debug: {
@@ -309,8 +312,12 @@ pricingRouter.post('/reprice/:branchId', verifyToken, requireStaff, async (req: 
           unidadesMedida: uMed.length,
           conEmail: uMed.filter((u) => u.email).length,
           emailsMedida: uMed.map((u) => u.email).filter(Boolean).slice(0, 12),
-          subsMp: subs.length,
-          subsMpEmails: subs.map((s) => s.payerEmail).filter(Boolean).slice(0, 12),
+          subsMp: allSubs.length,
+          subsActivas: subs.length,
+          subsPorEstado: byStatus,
+          subsMpEmails: allSubs.map((s) => s.payerEmail).filter(Boolean).slice(0, 12),
+          planes: plans.length,
+          planesInfo: plans.map((pl) => `${pl.reason || pl.id} (${pl.status})`).slice(0, 6),
         },
       });
       return;
@@ -339,7 +346,8 @@ pricingRouter.post('/reprice-all/:branchId', verifyToken, requireStaff, async (r
     const notify = body.notify === true;
     if (!items.length) { res.status(400).json({ error: 'items requeridos' }); return; }
 
-    const [subs, resMap, units] = await Promise.all([searchSubscriptions('authorized'), buildReservationMap(), buildRentedUnits()]);
+    const [allSubs, resMap, units] = await Promise.all([searchSubscriptions(), buildReservationMap(), buildRentedUnits()]);
+    const subs = allSubs.filter((s) => s.status === 'authorized');
     const usedSub = new Set<string>();
     const targets: Target[] = [];
     const noMatch: NoMatch[] = [];

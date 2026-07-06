@@ -186,14 +186,15 @@ export interface MpSubscription {
 // Trae TODAS las suscripciones (preapprovals) de la cuenta con el status dado,
 // paginando /preapproval/search. Fuente completa: incluye las creadas por el
 // sistema (preapproval) Y las creadas a mano fuera del sistema.
-export async function searchSubscriptions(status = 'authorized'): Promise<MpSubscription[]> {
+export async function searchSubscriptions(status?: string): Promise<MpSubscription[]> {
   const accessToken = process.env.MP_ACCESS_TOKEN;
   if (!accessToken) throw new Error('MP_ACCESS_TOKEN not configured');
   const out: MpSubscription[] = [];
   const limit = 100;
   let offset = 0;
   for (let page = 0; page < 50; page++) {
-    const url = `${MP_API_BASE}/preapproval/search?status=${encodeURIComponent(status)}&limit=${limit}&offset=${offset}`;
+    const sq = status ? `status=${encodeURIComponent(status)}&` : '';
+    const url = `${MP_API_BASE}/preapproval/search?${sq}limit=${limit}&offset=${offset}`;
     const res = await fetch(url, { headers: { 'Authorization': `Bearer ${accessToken}` } });
     if (!res.ok) {
       const t = await res.text();
@@ -217,4 +218,25 @@ export async function searchSubscriptions(status = 'authorized'): Promise<MpSubs
     if (results.length < limit || offset >= total) break;
   }
   return out;
+}
+
+
+export interface MpPlan { id: string; reason: string; status: string; }
+
+// Lista los planes de suscripcion (preapproval_plan) de la cuenta.
+export async function searchPlans(): Promise<MpPlan[]> {
+  const accessToken = process.env.MP_ACCESS_TOKEN;
+  if (!accessToken) throw new Error('MP_ACCESS_TOKEN not configured');
+  try {
+    const res = await fetch(`${MP_API_BASE}/preapproval_plan/search?limit=100`, {
+      headers: { 'Authorization': `Bearer ${accessToken}` },
+    });
+    if (!res.ok) return [];
+    const data = await res.json() as { results?: Array<Record<string, unknown>> };
+    return (data.results || []).map((r) => ({
+      id: String(r['id'] ?? ''),
+      reason: String(r['reason'] ?? ''),
+      status: String(r['status'] ?? ''),
+    }));
+  } catch { return []; }
 }
