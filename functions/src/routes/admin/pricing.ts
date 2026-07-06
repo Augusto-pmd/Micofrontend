@@ -301,7 +301,18 @@ pricingRouter.post('/reprice/:branchId', verifyToken, requireStaff, async (req: 
     const { targets, noMatch } = computeMeasure(subs, resMap, units, m2n, newAmount, new Set<string>());
 
     if (dryRun) {
-      res.json({ dryRun: true, m2: m2n, newAmount, total: targets.length, afectados: targets, sinMatch: noMatch.length, noMatch });
+      const uMed = units.filter((u) => u.m2 === m2n);
+      res.json({
+        dryRun: true, m2: m2n, newAmount, total: targets.length, afectados: targets, sinMatch: noMatch.length, noMatch,
+        debug: {
+          ocupadasTotal: units.length,
+          unidadesMedida: uMed.length,
+          conEmail: uMed.filter((u) => u.email).length,
+          emailsMedida: uMed.map((u) => u.email).filter(Boolean).slice(0, 12),
+          subsMp: subs.length,
+          subsMpEmails: subs.map((s) => s.payerEmail).filter(Boolean).slice(0, 12),
+        },
+      });
       return;
     }
     const { actualizados, errores } = await runTargets(targets, notify);
