@@ -178,6 +178,7 @@ export async function getPaymentExternalReference(paymentId: string): Promise<st
 export interface MpSubscription {
   id: string;
   payerEmail: string;
+  externalReference: string;
   reason: string;
   amount: number;
   status: string;
@@ -208,6 +209,7 @@ export async function searchSubscriptions(status?: string): Promise<MpSubscripti
       out.push({
         id: String(r['id'] ?? ''),
         payerEmail: String(r['payer_email'] ?? payer['email'] ?? ''),
+        externalReference: String(r['external_reference'] ?? ''),
         reason: String(r['reason'] ?? ''),
         amount: Number(ar['transaction_amount']) || 0,
         status: String(r['status'] ?? ''),
@@ -218,30 +220,6 @@ export async function searchSubscriptions(status?: string): Promise<MpSubscripti
     if (results.length < limit || offset >= total) break;
   }
   return out;
-}
-
-// El /preapproval/search de MP no siempre devuelve payer_email en la lista.
-// Para las suscripciones que quedaron sin email, trae el detalle GET /preapproval/{id}
-// (que si incluye payer_email) y lo completa in-place. Concurrencia acotada.
-export async function enrichSubscriptionEmails(subs: MpSubscription[]): Promise<void> {
-  const accessToken = process.env.MP_ACCESS_TOKEN;
-  if (!accessToken) return;
-  const pending = subs.filter((s) => s.id && !s.payerEmail);
-  const CONC = 8;
-  for (let i = 0; i < pending.length; i += CONC) {
-    const batch = pending.slice(i, i + CONC);
-    await Promise.all(batch.map(async (s) => {
-      try {
-        const r = await fetch(`${MP_API_BASE}/preapproval/${encodeURIComponent(s.id)}`, {
-          headers: { 'Authorization': `Bearer ${accessToken}` },
-        });
-        if (!r.ok) return;
-        const d = await r.json() as Record<string, unknown>;
-        const payer = (d['payer'] as Record<string, unknown>) || {};
-        s.payerEmail = String(d['payer_email'] ?? payer['email'] ?? s.payerEmail ?? '');
-      } catch { /* si falla, queda sin email y cae a noMatch como antes */ }
-    }));
-  }
 }
 
 

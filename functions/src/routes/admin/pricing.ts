@@ -4,7 +4,7 @@ import { verifyToken } from '../../middleware/verifyToken';
 import { requireStaff } from '../../middleware/requireStaff';
 import { getPricingByM2 } from '../../services/pricing.service';
 import { FieldValue } from 'firebase-admin/firestore';
-import { updateSubscriptionAmount, searchSubscriptions, enrichSubscriptionEmails, searchPlans, MpSubscription } from '../../services/mercadopago.service';
+import { updateSubscriptionAmount, searchSubscriptions, searchPlans, MpSubscription } from '../../services/mercadopago.service';
 import { logAudit } from '../../services/audit.service';
 
 export const pricingRouter = Router();
@@ -108,7 +108,7 @@ pricingRouter.put('/branch/:branchId', verifyToken, async (req: Request, res: Re
 // ============================================================================
 
 interface ResLite { reservationId: string; m2: number; customerName: string; customerEmail: string; monthly: number; }
-interface RentedUnit { m2: number; name: string; email: string; dni: string; monthly: number; }
+interface RentedUnit { m2: number; name: string; email: string; dni: string; monthly: number; code: string; }
 interface Target {
   id: string;              // preapprovalId (unico)
   cliente: string;
@@ -213,7 +213,7 @@ async function buildRentedUnits(): Promise<RentedUnit[]> {
     if (!email && cn) email = emailByContract.get(cn) || '';
     if (!email && dni) email = emailByDni.get(dni) || '';
     if (!email && name) email = emailByName.get(name.trim().toLowerCase()) || '';
-    units.push({ m2, name, email, dni, monthly: Number(r['price']) || 0 });
+    units.push({ m2, name, email, dni, monthly: Number(r['price']) || 0, code: String(r['space'] || r['name'] || '') });
   });
   return units;
 }
@@ -239,27 +239,38 @@ function computeMeasure(
     }
   }
 
-  // 2) Manuales: unidades de esta medida linkeadas a MP por email.
+  // 2) Unidades de esta medida linkeadas a MP. Primero por external_reference (codigo de
+  //    baulera; confiable porque MP NO expone el email), y si no, fallback por email.
+  const norm = (c: string) => (c || '').trim().toUpperCase();
+  const codeOf = (ext: string): string => { const m = String(ext || '').match(/[A-Za-z]?\d+-\d+/); return m ? norm(m[0]) : ''; };
+  const byCode = new Map<string, MpSubscription[]>();
   const byEmail = new Map<string, MpSubscription[]>();
   for (const s of subs) {
-    if (usedSub.has(s.id) || resMap.has(s.id)) continue; // solo subs manuales libres
+    if (usedSub.has(s.id) || resMap.has(s.id)) continue; // solo subs libres (no tomadas por el sistema)
+    const c = codeOf(s.externalReference);
+    if (c) { if (!byCode.has(c)) byCode.set(c, []); byCode.get(c)!.push(s); }
     const e = s.payerEmail.trim().toLowerCase();
-    if (!e) continue;
-    if (!byEmail.has(e)) byEmail.set(e, []);
-    byEmail.get(e)!.push(s);
+    if (e) { if (!byEmail.has(e)) byEmail.set(e, []); byEmail.get(e)!.push(s); }
   }
   for (const u of units) {
     if (u.m2 !== m2) continue;
+    // a) por codigo de baulera (external_reference -> space)
+    const c = norm(u.code);
+    const codeCands = c ? (byCode.get(c) || []).filter((s) => !usedSub.has(s.id)) : [];
+    if (codeCands.length) {
+      const pick = codeCands[0];
+      usedSub.add(pick.id);
+      targets.push({ id: pick.id, cliente: u.name || u.code, email: u.email || pick.payerEmail, actual: pick.amount, nuevo: newAmount, origen: 'mp', reservationId: null, m2 });
+      continue;
+    }
+    // b) fallback por email
     const e = (u.email || '').trim().toLowerCase();
-    if (!e) { noMatch.push({ name: u.name, email: '', dni: u.dni, monthly: u.monthly, motivo: 'cliente sin email en la base' }); continue; }
+    if (!e) { noMatch.push({ name: u.name || u.code, email: '', dni: u.dni, monthly: u.monthly, motivo: `sin suscripcion MP para baulera ${u.code || '?'} y cliente sin email` }); continue; }
     const cands = (byEmail.get(e) || []).filter((s) => !usedSub.has(s.id));
-    if (!cands.length) { noMatch.push({ name: u.name, email: e, dni: u.dni, monthly: u.monthly, motivo: 'sin suscripcion MP con ese email' }); continue; }
+    if (!cands.length) { noMatch.push({ name: u.name || u.code, email: e, dni: u.dni, monthly: u.monthly, motivo: `sin suscripcion MP (baulera ${u.code || '?'})` }); continue; }
     const pick = (u.monthly > 0 && cands.find((s) => s.amount === u.monthly)) || cands[0];
     usedSub.add(pick.id);
-    targets.push({
-      id: pick.id, cliente: u.name, email: e,
-      actual: pick.amount, nuevo: newAmount, origen: 'mp', reservationId: null, m2,
-    });
+    targets.push({ id: pick.id, cliente: u.name, email: e, actual: pick.amount, nuevo: newAmount, origen: 'mp', reservationId: null, m2 });
   }
   return { targets, noMatch };
 }
@@ -299,7 +310,6 @@ pricingRouter.post('/reprice/:branchId', verifyToken, requireStaff, async (req: 
 
     const [allSubs, resMap, units, plans] = await Promise.all([searchSubscriptions(), buildReservationMap(), buildRentedUnits(), searchPlans()]);
     const subs = allSubs.filter((s) => s.status === 'authorized');
-    await enrichSubscriptionEmails(subs); // completa payer_email via detalle (el search no lo trae)
     const { targets, noMatch } = computeMeasure(subs, resMap, units, m2n, newAmount, new Set<string>());
 
     if (dryRun) {
@@ -319,6 +329,7 @@ pricingRouter.post('/reprice/:branchId', verifyToken, requireStaff, async (req: 
           subsMpEmails: allSubs.map((s) => s.payerEmail).filter(Boolean).slice(0, 12),
           planes: plans.length,
           planesInfo: plans.map((pl) => `${pl.reason || pl.id} (${pl.status})`).slice(0, 6),
+          subsMpCodes: allSubs.map((s) => s.externalReference).filter(Boolean).slice(0, 12),
         },
       });
       return;
@@ -349,7 +360,6 @@ pricingRouter.post('/reprice-all/:branchId', verifyToken, requireStaff, async (r
 
     const [allSubs, resMap, units] = await Promise.all([searchSubscriptions(), buildReservationMap(), buildRentedUnits()]);
     const subs = allSubs.filter((s) => s.status === 'authorized');
-    await enrichSubscriptionEmails(subs); // completa payer_email via detalle (el search no lo trae)
     const usedSub = new Set<string>();
     const targets: Target[] = [];
     const noMatch: NoMatch[] = [];
