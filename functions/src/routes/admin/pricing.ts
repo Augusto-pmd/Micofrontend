@@ -4,7 +4,7 @@ import { verifyToken } from '../../middleware/verifyToken';
 import { requireStaff } from '../../middleware/requireStaff';
 import { getPricingByM2 } from '../../services/pricing.service';
 import { FieldValue } from 'firebase-admin/firestore';
-import { updateSubscriptionAmount, searchSubscriptions, searchPlans, MpSubscription } from '../../services/mercadopago.service';
+import { updateSubscriptionAmount, searchSubscriptions, enrichSubscriptionEmails, searchPlans, MpSubscription } from '../../services/mercadopago.service';
 import { logAudit } from '../../services/audit.service';
 
 export const pricingRouter = Router();
@@ -299,6 +299,7 @@ pricingRouter.post('/reprice/:branchId', verifyToken, requireStaff, async (req: 
 
     const [allSubs, resMap, units, plans] = await Promise.all([searchSubscriptions(), buildReservationMap(), buildRentedUnits(), searchPlans()]);
     const subs = allSubs.filter((s) => s.status === 'authorized');
+    await enrichSubscriptionEmails(subs); // completa payer_email via detalle (el search no lo trae)
     const { targets, noMatch } = computeMeasure(subs, resMap, units, m2n, newAmount, new Set<string>());
 
     if (dryRun) {
@@ -348,6 +349,7 @@ pricingRouter.post('/reprice-all/:branchId', verifyToken, requireStaff, async (r
 
     const [allSubs, resMap, units] = await Promise.all([searchSubscriptions(), buildReservationMap(), buildRentedUnits()]);
     const subs = allSubs.filter((s) => s.status === 'authorized');
+    await enrichSubscriptionEmails(subs); // completa payer_email via detalle (el search no lo trae)
     const usedSub = new Set<string>();
     const targets: Target[] = [];
     const noMatch: NoMatch[] = [];
