@@ -309,7 +309,7 @@ pricingRouter.post('/reprice/:branchId', verifyToken, requireStaff, async (req: 
     if (!m2n || !(newAmount > 0)) { res.status(400).json({ error: 'm2 y newAmount (>0) requeridos' }); return; }
 
     const [allSubs, resMap, units, plans] = await Promise.all([searchSubscriptions(), buildReservationMap(), buildRentedUnits(), searchPlans()]);
-    const subs = allSubs.filter((s) => s.status === 'authorized');
+    const subs = allSubs.filter((s) => s.status === 'authorized' || s.status === 'pending');
     const { targets, noMatch } = computeMeasure(subs, resMap, units, m2n, newAmount, new Set<string>());
 
     if (dryRun) {
@@ -358,7 +358,7 @@ pricingRouter.post('/reprice-all/:branchId', verifyToken, requireStaff, async (r
     if (!items.length) { res.status(400).json({ error: 'items requeridos' }); return; }
 
     const [allSubs, resMap, units] = await Promise.all([searchSubscriptions(), buildReservationMap(), buildRentedUnits()]);
-    const subs = allSubs.filter((s) => s.status === 'authorized');
+    const subs = allSubs.filter((s) => s.status === 'authorized' || s.status === 'pending');
     const usedSub = new Set<string>();
     const targets: Target[] = [];
     const noMatch: NoMatch[] = [];
