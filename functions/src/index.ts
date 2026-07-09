@@ -31,6 +31,10 @@ import { adminAuditRouter } from './routes/admin/audit';
 import { adminCancellationsRouter } from './routes/admin/cancellations';
 import { adminMaintenanceRouter } from './routes/admin/maintenance';
 
+// Middleware
+import { requireAuth } from './middleware/requireAuth';
+import { requireStaff } from './middleware/requireStaff';
+
 const app = express();
 
 const allowedOrigins = [
@@ -88,20 +92,20 @@ app.use('/mailing', mailingRouter); // envio de mails via Resend (admin)
 
 // ── Admin routes ──────────────────────────────────────────────────────────────
 app.use('/auth', authRouter);
-app.use('/branch', branchesRouter);
-app.use('/building', buildingsRouter);
-app.use('/storage-room', storageRoomsRouter);
-app.use('/reservation-order', ordersRouter);
-app.use('/customer', customersRouter);
-app.use('/operator', operatorsRouter);
-app.use('/user', usersRouter);
-app.use('/pricing-engine', pricingRouter);
-app.use('/inventory', inventoryRouter);
-app.use('/seed', seedRouter);
-app.use('/admin/reservations', adminReservationsRouter);
-app.use('/admin/audit', adminAuditRouter);
-app.use('/admin/cancellations', adminCancellationsRouter);
-app.use('/admin/maintenance', adminMaintenanceRouter);
+app.use('/branch', requireAuth, requireStaff, branchesRouter);
+app.use('/building', requireAuth, requireStaff, buildingsRouter);
+app.use('/storage-room', requireAuth, requireStaff, storageRoomsRouter);
+app.use('/reservation-order', requireAuth, requireStaff, ordersRouter);
+app.use('/customer', requireAuth, requireStaff, customersRouter);
+app.use('/operator', requireAuth, requireStaff, operatorsRouter);
+app.use('/user', requireAuth, requireStaff, usersRouter);
+app.use('/pricing-engine', requireAuth, requireStaff, pricingRouter);
+app.use('/inventory', requireAuth, requireStaff, inventoryRouter);
+app.use('/seed', requireAuth, requireStaff, seedRouter);
+app.use('/admin/reservations', requireAuth, requireStaff, adminReservationsRouter);
+app.use('/admin/audit', requireAuth, requireStaff, adminAuditRouter);
+app.use('/admin/cancellations', requireAuth, requireStaff, adminCancellationsRouter);
+app.use('/admin/maintenance', requireAuth, requireStaff, adminMaintenanceRouter);
 app.use('/my-account', myAccountRouter);
 app.use('/portal', portalRouter);
 

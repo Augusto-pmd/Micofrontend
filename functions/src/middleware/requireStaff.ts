@@ -8,7 +8,13 @@ import { AuthenticatedRequest } from './requireAuth';
 const DEFAULT_STAFF = [
   'augustomn29@gmail.com',
   'am@micontainer.com',
+  'amorporloshierros@gmail.com',
   'comercial@micontainer.com',
+  'gf@micontainer.com',
+  'info@micontainer.com',
+  'micontainer.storage@gmail.com',
+  'info@pmdarquitectura.com',
+  'l.lanzalot@pmdarquitectura.com',
   'admin@local',
 ];
 

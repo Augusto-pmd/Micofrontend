@@ -2066,8 +2066,9 @@ function PortalEntry({ user, reservations, accountData, accountLoading, onLogout
     );
   }
 
-  // 1 reservation — redirect is happening, show loading
-  if (active.length === 1) {
+  // 1 reserva CONFIRMADA — el redirect va a disparar, mostrar loading.
+  // Las no confirmadas (pending_payment, etc.) caen al selector, no al loader (evita cuelgue).
+  if (confirmedActive.length === 1 && active.length === 1) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: '80px 20px' }}>
         <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--mc-ink-4)' }}>

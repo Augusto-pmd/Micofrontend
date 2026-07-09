@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { db } from '../config/firebase';
 import { verifyToken } from '../middleware/verifyToken';
+import { requireStaff } from '../middleware/requireStaff';
 
 export const promoRouter = Router();
 
@@ -52,7 +53,7 @@ promoRouter.get('/', async (req: Request, res: Response) => {
 });
 
 // GET /promo/branch/:branchId — config completa (admin)
-promoRouter.get('/branch/:branchId', verifyToken, async (req: Request, res: Response) => {
+promoRouter.get('/branch/:branchId', verifyToken, requireStaff, async (req: Request, res: Response) => {
   try {
     res.json(await readPromo(req.params.branchId));
   } catch (err) {
@@ -62,7 +63,7 @@ promoRouter.get('/branch/:branchId', verifyToken, async (req: Request, res: Resp
 });
 
 // PUT /promo/branch/:branchId — guardar config (admin)
-promoRouter.put('/branch/:branchId', verifyToken, async (req: Request, res: Response) => {
+promoRouter.put('/branch/:branchId', verifyToken, requireStaff, async (req: Request, res: Response) => {
   try {
     const allowed = Object.keys(DEFAULTS);
     const patch: Record<string, unknown> = { updatedAt: new Date().toISOString() };
