@@ -329,7 +329,6 @@ pricingRouter.post('/reprice/:branchId', verifyToken, requireStaff, async (req: 
           subsMpEmails: allSubs.map((s) => s.payerEmail).filter(Boolean).slice(0, 12),
           planes: plans.length,
           planesInfo: plans.map((pl) => `${pl.reason || pl.id} (${pl.status})`).slice(0, 6),
-          subsMpCodes: allSubs.map((s) => s.externalReference).filter(Boolean).slice(0, 12),
         },
       });
       return;
