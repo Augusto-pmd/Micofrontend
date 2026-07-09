@@ -159,6 +159,7 @@ adminReservationsRouter.post('/sell', requireAuth, async (req, res: Response) =>
         email: String(email),
         backUrl: 'https://micontainer.com/#/portal',
         freeTrialMonths: Number(promoMonths) || 0,
+        bauleraCodigo: hold.bauleraCodigo || bauleraCodigo,
       }));
     }
 

@@ -101,6 +101,7 @@ reservationsRouter.post('/', optionalAuth, async (req, res: Response) => {
         email,
         backUrl: BACK_URL,
         freeTrialMonths: Number(freeTrialMonths) || 0,
+        bauleraCodigo: hold.bauleraCodigo || undefined,
       }));
     }
 

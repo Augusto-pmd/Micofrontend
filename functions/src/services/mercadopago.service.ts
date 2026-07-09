@@ -8,6 +8,7 @@ interface CreateSubscriptionParams {
   email: string;
   backUrl: string;
   freeTrialMonths?: number;
+  bauleraCodigo?: string;
 }
 
 interface CreateSubscriptionResult {
@@ -41,6 +42,10 @@ export async function createSubscription(
     payer_email: params.email,
     back_url: params.backUrl,
     status: 'pending',
+    // external_reference con el CODIGO de baulera (ej "MiContainer Baulera A2-010") para
+    // poder matchear la suscripcion <-> baulera despues (MP no expone el email). Si no hay
+    // baulera puntual todavia, usa el reservationId (no rompe el matcheo por codigo).
+    external_reference: params.bauleraCodigo ? `MiContainer Baulera ${params.bauleraCodigo}` : params.reservationId,
   };
 
   console.log('[MP] Creating preapproval:', JSON.stringify({ ...body, payer_email: '***' }));
