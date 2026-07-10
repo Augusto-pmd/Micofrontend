@@ -264,9 +264,12 @@ export function invalidateSubsCache(): void { _subsCache = null; }
 export async function searchSubscriptionsCached(ttlMs = 120000): Promise<MpSubscription[]> {
   const now = Date.now();
   if (_subsCache && (now - _subsCache.at) < ttlMs) return _subsCache.data;
-  const raw = await searchSubscriptions();
+  // Traer por estado: authorized (~81) y pending (~25) entran en UNA página c/u (limit 100),
+  // así no hay paginación que se corte por throttling de MP -> snapshot completo y estable.
+  // (Antes se traía TODO —incl. ~60 cancelled— y paginaba, lo que devolvía sets incompletos.)
+  const [auth, pend] = await Promise.all([searchSubscriptions('authorized'), searchSubscriptions('pending')]);
   const seen = new Set<string>();
-  const unique = raw.filter((s) => !!s.id && !seen.has(s.id) && !!seen.add(s.id)); // dedup por id
+  const unique = [...auth, ...pend].filter((s) => !!s.id && !seen.has(s.id) && !!seen.add(s.id)); // dedup por id
   _subsCache = { at: now, data: unique };
   return unique;
 }
