@@ -247,9 +247,14 @@ function computeMeasure(
 
   // 2) Unidades de esta medida linkeadas a MP. Primero por external_reference (codigo de
   //    baulera; confiable porque MP NO expone el email), y si no, fallback por email.
-  // Canonicaliza el codigo de baulera: matchea "A1-013" y "A1013" y "A0013" por igual
-  // (quita guiones/espacios y pasa a MAYUS). Evita errores por formatos distintos en la base.
-  const canon = (c: string) => String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  // Canonicaliza el codigo de baulera para matchear todos los formatos por igual:
+  // "A2-025" = "A2-25" = "A2025" = "A0013" -> normaliza fila + unidad SIN ceros a la izquierda.
+  // (MP guarda "A2-25" pero el inventario "A2-025"; sin esto no matcheaban.)
+  const canon = (c: string): string => {
+    const s = String(c || '').toUpperCase();
+    const m = s.match(/([A-Z]\d)\D*0*(\d+)/); // fila (A2) + unidad sin ceros izq
+    return m ? m[1] + m[2] : s.replace(/[^A-Z0-9]/g, '');
+  };
   // Extrae el codigo del external_reference ("MiContainer Baulera A2-010" -> "A2-010"; o "...A0013" -> "A0013").
   // Requiere guion, o 3+ digitos si no hay guion (evita falsos como "m2").
   const codeOf = (ext: string): string => { const m = String(ext || '').match(/[A-Za-z]\d+-\d+|[A-Za-z]\d{3,}/); return m ? canon(m[0]) : ''; };
