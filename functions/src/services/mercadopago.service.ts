@@ -233,8 +233,8 @@ export async function searchSubscriptions(status?: string): Promise<MpSubscripti
 // Trae el ULTIMO COBRO REAL (summarized.last_charged_amount) + fecha del ultimo cambio
 // (last_modified) SOLO de los ids dados (las que matchean, pocas) — NO de todas las suscripciones,
 // para no saturar MP (eso desestabilizaba el matcheo). Devuelve un mapa id -> {lastCharged, lastModified}.
-export async function getLastChargedMap(ids: string[]): Promise<Map<string, { lastCharged: number; lastModified: string }>> {
-  const map = new Map<string, { lastCharged: number; lastModified: string }>();
+export async function getLastChargedMap(ids: string[]): Promise<Map<string, { lastCharged: number; lastModified: string; lastChargedDate: string }>> {
+  const map = new Map<string, { lastCharged: number; lastModified: string; lastChargedDate: string }>();
   const accessToken = process.env.MP_ACCESS_TOKEN;
   if (!accessToken) return map;
   const CONC = 3; // grupos chicos (3 por vez) para no saturar MP — tarda unos seg más pero es confiable
@@ -248,7 +248,7 @@ export async function getLastChargedMap(ids: string[]): Promise<Map<string, { la
         if (!r.ok) return;
         const d = await r.json() as Record<string, unknown>;
         const sum = (d['summarized'] as Record<string, unknown>) || {};
-        map.set(id, { lastCharged: Number(sum['last_charged_amount']) || 0, lastModified: String(d['last_modified'] || '') });
+        map.set(id, { lastCharged: Number(sum['last_charged_amount']) || 0, lastModified: String(d['last_modified'] || ''), lastChargedDate: String(sum['last_charged_date'] || '') });
       } catch { /* si falla, queda el configurado */ }
     }));
   }

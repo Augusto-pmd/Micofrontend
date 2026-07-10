@@ -114,9 +114,10 @@ interface Target {
   cliente: string;
   email: string;
   actual: number;          // ULTIMO COBRO REAL de MP (summarized.last_charged_amount), NO el precio web
+  actualFecha?: string;    // fecha del ULTIMO COBRO real (summarized.last_charged_date)
   sinCobro?: boolean;      // true = nunca se cobro; "actual" es el configurado, no un cobro real
   configurado: number;     // monto configurado hoy en MP. Si === nuevo => NO se toca ni se notifica
-  desde?: string;          // fecha del ultimo cambio de la suscripcion en MP (last_modified)
+  desde?: string;          // fecha del ultimo CAMBIO de la suscripcion en MP (last_modified)
   nuevo: number;
   origen: 'sistema' | 'mp';
   reservationId: string | null;
@@ -344,7 +345,7 @@ pricingRouter.post('/reprice/:branchId', verifyToken, requireStaff, async (req: 
     const { targets, noMatch } = computeMeasure(subs, resMap, units, m2n, newAmount, new Set<string>(), resIdToCode);
     // Último cobro real + fecha SOLO de las matcheadas (pocas), sin saturar MP.
     const lc = await getLastChargedMap(targets.map((t) => t.id));
-    for (const t of targets) { const x = lc.get(t.id); if (x) { if (x.lastCharged > 0) { t.actual = x.lastCharged; t.sinCobro = false; } if (x.lastModified) t.desde = x.lastModified; } }
+    for (const t of targets) { const x = lc.get(t.id); if (x) { if (x.lastCharged > 0) { t.actual = x.lastCharged; t.sinCobro = false; } if (x.lastModified) t.desde = x.lastModified; if (x.lastChargedDate) t.actualFecha = x.lastChargedDate; } }
 
     if (dryRun) {
       const uMed = units.filter((u) => u.m2 === m2n);
@@ -410,7 +411,7 @@ pricingRouter.post('/reprice-all/:branchId', verifyToken, requireStaff, async (r
     }
     // Último cobro real + fecha SOLO de las que cambian (pocas), sin saturar MP.
     const lc = await getLastChargedMap(targets.map((t) => t.id));
-    for (const t of targets) { const x = lc.get(t.id); if (x) { if (x.lastCharged > 0) { t.actual = x.lastCharged; t.sinCobro = false; } if (x.lastModified) t.desde = x.lastModified; } }
+    for (const t of targets) { const x = lc.get(t.id); if (x) { if (x.lastCharged > 0) { t.actual = x.lastCharged; t.sinCobro = false; } if (x.lastModified) t.desde = x.lastModified; if (x.lastChargedDate) t.actualFecha = x.lastChargedDate; } }
 
     if (dryRun) { res.json({ dryRun: true, total: targets.length, afectados: targets, sinMatch: noMatch.length, noMatch }); return; }
     const { actualizados, errores } = await runTargets(targets.filter((t) => t.configurado !== t.nuevo), notify);
