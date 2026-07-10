@@ -116,6 +116,7 @@ interface Target {
   actual: number;          // ULTIMO COBRO REAL de MP (summarized.last_charged_amount), NO el precio web
   sinCobro?: boolean;      // true = nunca se cobro; "actual" es el configurado, no un cobro real
   configurado: number;     // monto configurado hoy en MP. Si === nuevo => NO se toca ni se notifica
+  desde?: string;          // fecha del ultimo cambio de la suscripcion en MP (last_modified)
   nuevo: number;
   origen: 'sistema' | 'mp';
   reservationId: string | null;
@@ -239,15 +240,19 @@ function computeMeasure(
       usedSub.add(s.id);
       targets.push({
         id: s.id, cliente: res.customerName, email: res.customerEmail || s.payerEmail,
-        actual: realAmount(s), sinCobro: noCharge(s), configurado: s.amount, nuevo: newAmount, origen: 'sistema', reservationId: res.reservationId, m2,
+        actual: realAmount(s), sinCobro: noCharge(s), configurado: s.amount, desde: s.lastModified || '', nuevo: newAmount, origen: 'sistema', reservationId: res.reservationId, m2,
       });
     }
   }
 
   // 2) Unidades de esta medida linkeadas a MP. Primero por external_reference (codigo de
   //    baulera; confiable porque MP NO expone el email), y si no, fallback por email.
-  const norm = (c: string) => (c || '').trim().toUpperCase();
-  const codeOf = (ext: string): string => { const m = String(ext || '').match(/[A-Za-z]?\d+-\d+/); return m ? norm(m[0]) : ''; };
+  // Canonicaliza el codigo de baulera: matchea "A1-013" y "A1013" y "A0013" por igual
+  // (quita guiones/espacios y pasa a MAYUS). Evita errores por formatos distintos en la base.
+  const canon = (c: string) => String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  // Extrae el codigo del external_reference ("MiContainer Baulera A2-010" -> "A2-010"; o "...A0013" -> "A0013").
+  // Requiere guion, o 3+ digitos si no hay guion (evita falsos como "m2").
+  const codeOf = (ext: string): string => { const m = String(ext || '').match(/[A-Za-z]\d+-\d+|[A-Za-z]\d{3,}/); return m ? canon(m[0]) : ''; };
   const byCode = new Map<string, MpSubscription[]>();
   const byEmail = new Map<string, MpSubscription[]>();
   for (const s of subs) {
@@ -259,13 +264,13 @@ function computeMeasure(
   }
   for (const u of units) {
     if (u.m2 !== m2) continue;
-    // a) por codigo de baulera (external_reference -> space)
-    const c = norm(u.code);
+    // a) por codigo de baulera (external_reference -> space), robusto a formato con/sin guion
+    const c = canon(u.code);
     const codeCands = c ? (byCode.get(c) || []).filter((s) => !usedSub.has(s.id)) : [];
     if (codeCands.length) {
       const pick = codeCands[0];
       usedSub.add(pick.id);
-      targets.push({ id: pick.id, cliente: u.name || u.code, email: u.email || pick.payerEmail, actual: realAmount(pick), sinCobro: noCharge(pick), configurado: pick.amount, nuevo: newAmount, origen: 'mp', reservationId: null, m2 });
+      targets.push({ id: pick.id, cliente: u.name || u.code, email: u.email || pick.payerEmail, actual: realAmount(pick), sinCobro: noCharge(pick), configurado: pick.amount, desde: pick.lastModified || '', nuevo: newAmount, origen: 'mp', reservationId: null, m2 });
       continue;
     }
     // b) fallback por email
@@ -275,7 +280,7 @@ function computeMeasure(
     if (!cands.length) { noMatch.push({ name: u.name || u.code, email: e, dni: u.dni, monthly: u.monthly, motivo: `sin suscripcion MP (baulera ${u.code || '?'})` }); continue; }
     const pick = (u.monthly > 0 && cands.find((s) => s.amount === u.monthly)) || cands[0];
     usedSub.add(pick.id);
-    targets.push({ id: pick.id, cliente: u.name, email: e, actual: realAmount(pick), sinCobro: noCharge(pick), configurado: pick.amount, nuevo: newAmount, origen: 'mp', reservationId: null, m2 });
+    targets.push({ id: pick.id, cliente: u.name, email: e, actual: realAmount(pick), sinCobro: noCharge(pick), configurado: pick.amount, desde: pick.lastModified || '', nuevo: newAmount, origen: 'mp', reservationId: null, m2 });
   }
   return { targets, noMatch };
 }

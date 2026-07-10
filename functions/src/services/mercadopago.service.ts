@@ -189,6 +189,7 @@ export interface MpSubscription {
   status: string;
   lastCharged?: number;      // ULTIMO COBRO REAL (summarized.last_charged_amount)
   lastChargedDate?: string;
+  lastModified?: string;     // fecha del ultimo cambio de la suscripcion (last_modified) — incluye cambios de monto
 }
 
 // Trae TODAS las suscripciones (preapprovals) de la cuenta con el status dado,
@@ -247,6 +248,7 @@ export async function enrichLastCharged(subs: MpSubscription[]): Promise<void> {
         const sum = (d['summarized'] as Record<string, unknown>) || {};
         s.lastCharged = Number(sum['last_charged_amount']) || 0;
         s.lastChargedDate = String(sum['last_charged_date'] || '');
+        s.lastModified = String(d['last_modified'] || '');
       } catch { /* si falla, queda sin ultimo cobro y cae al monto configurado */ }
     }));
   }
