@@ -230,28 +230,29 @@ export async function searchSubscriptions(status?: string): Promise<MpSubscripti
   return out;
 }
 
-// Completa el ULTIMO COBRO REAL de cada suscripcion (summarized.last_charged_amount del
-// detalle GET /preapproval/{id}). El /search solo trae el monto configurado. Concurrencia acotada.
-export async function enrichLastCharged(subs: MpSubscription[]): Promise<void> {
+// Trae el ULTIMO COBRO REAL (summarized.last_charged_amount) + fecha del ultimo cambio
+// (last_modified) SOLO de los ids dados (las que matchean, pocas) — NO de todas las suscripciones,
+// para no saturar MP (eso desestabilizaba el matcheo). Devuelve un mapa id -> {lastCharged, lastModified}.
+export async function getLastChargedMap(ids: string[]): Promise<Map<string, { lastCharged: number; lastModified: string }>> {
+  const map = new Map<string, { lastCharged: number; lastModified: string }>();
   const accessToken = process.env.MP_ACCESS_TOKEN;
-  if (!accessToken) return;
-  const CONC = 8;
-  for (let i = 0; i < subs.length; i += CONC) {
-    const batch = subs.slice(i, i + CONC);
-    await Promise.all(batch.map(async (s) => {
+  if (!accessToken) return map;
+  const CONC = 6;
+  for (let i = 0; i < ids.length; i += CONC) {
+    const batch = ids.slice(i, i + CONC);
+    await Promise.all(batch.map(async (id) => {
       try {
-        const r = await fetch(`${MP_API_BASE}/preapproval/${encodeURIComponent(s.id)}`, {
+        const r = await fetch(`${MP_API_BASE}/preapproval/${encodeURIComponent(id)}`, {
           headers: { 'Authorization': `Bearer ${accessToken}` },
         });
         if (!r.ok) return;
         const d = await r.json() as Record<string, unknown>;
         const sum = (d['summarized'] as Record<string, unknown>) || {};
-        s.lastCharged = Number(sum['last_charged_amount']) || 0;
-        s.lastChargedDate = String(sum['last_charged_date'] || '');
-        s.lastModified = String(d['last_modified'] || '');
-      } catch { /* si falla, queda sin ultimo cobro y cae al monto configurado */ }
+        map.set(id, { lastCharged: Number(sum['last_charged_amount']) || 0, lastModified: String(d['last_modified'] || '') });
+      } catch { /* si falla, queda el configurado */ }
     }));
   }
+  return map;
 }
 
 

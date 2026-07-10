@@ -4,7 +4,7 @@ import { verifyToken } from '../../middleware/verifyToken';
 import { requireStaff } from '../../middleware/requireStaff';
 import { getPricingByM2 } from '../../services/pricing.service';
 import { FieldValue } from 'firebase-admin/firestore';
-import { updateSubscriptionAmount, searchSubscriptions, enrichLastCharged, searchPlans, MpSubscription } from '../../services/mercadopago.service';
+import { updateSubscriptionAmount, searchSubscriptions, getLastChargedMap, searchPlans, MpSubscription } from '../../services/mercadopago.service';
 import { logAudit } from '../../services/audit.service';
 
 export const pricingRouter = Router();
@@ -320,8 +320,10 @@ pricingRouter.post('/reprice/:branchId', verifyToken, requireStaff, async (req: 
 
     const [allSubs, resMap, units, plans] = await Promise.all([searchSubscriptions(), buildReservationMap(), buildRentedUnits(), searchPlans()]);
     const subs = allSubs.filter((s) => s.status === 'authorized' || s.status === 'pending');
-    await enrichLastCharged(subs); // trae el ULTIMO COBRO REAL de cada sub (no el precio web/tarifa)
     const { targets, noMatch } = computeMeasure(subs, resMap, units, m2n, newAmount, new Set<string>());
+    // Último cobro real + fecha SOLO de las matcheadas (pocas), sin saturar MP.
+    const lc = await getLastChargedMap(targets.map((t) => t.id));
+    for (const t of targets) { const x = lc.get(t.id); if (x) { if (x.lastCharged > 0) { t.actual = x.lastCharged; t.sinCobro = false; } if (x.lastModified) t.desde = x.lastModified; } }
 
     if (dryRun) {
       const uMed = units.filter((u) => u.m2 === m2n);
@@ -373,7 +375,6 @@ pricingRouter.post('/reprice-all/:branchId', verifyToken, requireStaff, async (r
 
     const [allSubs, resMap, units] = await Promise.all([searchSubscriptions(), buildReservationMap(), buildRentedUnits()]);
     const subs = allSubs.filter((s) => s.status === 'authorized' || s.status === 'pending');
-    await enrichLastCharged(subs); // trae el ULTIMO COBRO REAL de cada sub (no el precio web/tarifa)
     const usedSub = new Set<string>();
     const targets: Target[] = [];
     const noMatch: NoMatch[] = [];
@@ -385,6 +386,9 @@ pricingRouter.post('/reprice-all/:branchId', verifyToken, requireStaff, async (r
       for (const t of r.targets) { if (t.configurado !== t.nuevo) targets.push(t); }
       noMatch.push(...r.noMatch);
     }
+    // Último cobro real + fecha SOLO de las que cambian (pocas), sin saturar MP.
+    const lc = await getLastChargedMap(targets.map((t) => t.id));
+    for (const t of targets) { const x = lc.get(t.id); if (x) { if (x.lastCharged > 0) { t.actual = x.lastCharged; t.sinCobro = false; } if (x.lastModified) t.desde = x.lastModified; } }
 
     if (dryRun) { res.json({ dryRun: true, total: targets.length, afectados: targets, sinMatch: noMatch.length, noMatch }); return; }
     const { actualizados, errores } = await runTargets(targets.filter((t) => t.configurado !== t.nuevo), notify);
