@@ -405,3 +405,22 @@ pricingRouter.post('/reprice-all/:branchId', verifyToken, requireStaff, async (r
     res.status(500).json({ error: 'No se pudo actualizar las suscripciones' });
   }
 });
+
+// GET /pricing-engine/find-sub?amount=233000&q=A2-032 — busca suscripciones MP activas por
+// monto (±5%) o por texto en el external_reference. Para reconciliar altas manuales
+// (encontrar el preapprovalId de un cliente que pagó pero quedó sin link).
+pricingRouter.get('/find-sub', verifyToken, requireStaff, async (req: Request, res: Response) => {
+  try {
+    const amount = Number(req.query['amount']) || 0;
+    const q = String(req.query['q'] || '').toLowerCase();
+    const subs = await searchSubscriptionsCached();
+    const hits = subs
+      .filter((s) => (amount ? Math.abs(s.amount - amount) <= amount * 0.05 : true)
+                  && (q ? (s.externalReference || '').toLowerCase().includes(q) : true))
+      .map((s) => ({ id: s.id, ref: s.externalReference, amount: s.amount, status: s.status }));
+    res.json({ count: hits.length, hits });
+  } catch (err) {
+    console.error('GET /pricing-engine/find-sub error:', err);
+    res.status(500).json({ error: 'No se pudo buscar' });
+  }
+});
