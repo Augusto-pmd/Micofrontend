@@ -4,7 +4,7 @@ import { verifyToken } from '../../middleware/verifyToken';
 import { requireStaff } from '../../middleware/requireStaff';
 import { getPricingByM2 } from '../../services/pricing.service';
 import { FieldValue } from 'firebase-admin/firestore';
-import { updateSubscriptionAmount, searchSubscriptions, searchPlans, MpSubscription } from '../../services/mercadopago.service';
+import { updateSubscriptionAmount, searchSubscriptions, enrichLastCharged, searchPlans, MpSubscription } from '../../services/mercadopago.service';
 import { logAudit } from '../../services/audit.service';
 
 export const pricingRouter = Router();
@@ -113,7 +113,8 @@ interface Target {
   id: string;              // preapprovalId (unico)
   cliente: string;
   email: string;
-  actual: number;          // monto actual real en MP
+  actual: number;          // ULTIMO COBRO REAL de MP (summarized.last_charged_amount), NO el precio web
+  sinCobro?: boolean;      // true = nunca se cobro; "actual" es el configurado, no un cobro real
   nuevo: number;
   origen: 'sistema' | 'mp';
   reservationId: string | null;
@@ -225,6 +226,9 @@ function computeMeasure(
 ): { targets: Target[]; noMatch: NoMatch[] } {
   const targets: Target[] = [];
   const noMatch: NoMatch[] = [];
+  // "actual" = ULTIMO COBRO REAL (lastCharged). Si nunca se cobro, cae al configurado y marca sinCobro.
+  const realAmount = (s: MpSubscription) => (s.lastCharged && s.lastCharged > 0) ? s.lastCharged : s.amount;
+  const noCharge = (s: MpSubscription) => !(s.lastCharged && s.lastCharged > 0);
 
   // 1) Suscripciones del sistema (reservations) con m2 === medida => confiable.
   for (const s of subs) {
@@ -234,7 +238,7 @@ function computeMeasure(
       usedSub.add(s.id);
       targets.push({
         id: s.id, cliente: res.customerName, email: res.customerEmail || s.payerEmail,
-        actual: s.amount, nuevo: newAmount, origen: 'sistema', reservationId: res.reservationId, m2,
+        actual: realAmount(s), sinCobro: noCharge(s), nuevo: newAmount, origen: 'sistema', reservationId: res.reservationId, m2,
       });
     }
   }
@@ -260,7 +264,7 @@ function computeMeasure(
     if (codeCands.length) {
       const pick = codeCands[0];
       usedSub.add(pick.id);
-      targets.push({ id: pick.id, cliente: u.name || u.code, email: u.email || pick.payerEmail, actual: pick.amount, nuevo: newAmount, origen: 'mp', reservationId: null, m2 });
+      targets.push({ id: pick.id, cliente: u.name || u.code, email: u.email || pick.payerEmail, actual: realAmount(pick), sinCobro: noCharge(pick), nuevo: newAmount, origen: 'mp', reservationId: null, m2 });
       continue;
     }
     // b) fallback por email
@@ -270,7 +274,7 @@ function computeMeasure(
     if (!cands.length) { noMatch.push({ name: u.name || u.code, email: e, dni: u.dni, monthly: u.monthly, motivo: `sin suscripcion MP (baulera ${u.code || '?'})` }); continue; }
     const pick = (u.monthly > 0 && cands.find((s) => s.amount === u.monthly)) || cands[0];
     usedSub.add(pick.id);
-    targets.push({ id: pick.id, cliente: u.name, email: e, actual: pick.amount, nuevo: newAmount, origen: 'mp', reservationId: null, m2 });
+    targets.push({ id: pick.id, cliente: u.name, email: e, actual: realAmount(pick), sinCobro: noCharge(pick), nuevo: newAmount, origen: 'mp', reservationId: null, m2 });
   }
   return { targets, noMatch };
 }
@@ -310,6 +314,7 @@ pricingRouter.post('/reprice/:branchId', verifyToken, requireStaff, async (req: 
 
     const [allSubs, resMap, units, plans] = await Promise.all([searchSubscriptions(), buildReservationMap(), buildRentedUnits(), searchPlans()]);
     const subs = allSubs.filter((s) => s.status === 'authorized' || s.status === 'pending');
+    await enrichLastCharged(subs); // trae el ULTIMO COBRO REAL de cada sub (no el precio web/tarifa)
     const { targets, noMatch } = computeMeasure(subs, resMap, units, m2n, newAmount, new Set<string>());
 
     if (dryRun) {
@@ -359,6 +364,7 @@ pricingRouter.post('/reprice-all/:branchId', verifyToken, requireStaff, async (r
 
     const [allSubs, resMap, units] = await Promise.all([searchSubscriptions(), buildReservationMap(), buildRentedUnits()]);
     const subs = allSubs.filter((s) => s.status === 'authorized' || s.status === 'pending');
+    await enrichLastCharged(subs); // trae el ULTIMO COBRO REAL de cada sub (no el precio web/tarifa)
     const usedSub = new Set<string>();
     const targets: Target[] = [];
     const noMatch: NoMatch[] = [];

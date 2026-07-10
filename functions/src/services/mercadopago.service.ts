@@ -185,8 +185,10 @@ export interface MpSubscription {
   payerEmail: string;
   externalReference: string;
   reason: string;
-  amount: number;
+  amount: number;            // monto CONFIGURADO (auto_recurring.transaction_amount) — puede no haberse cobrado
   status: string;
+  lastCharged?: number;      // ULTIMO COBRO REAL (summarized.last_charged_amount)
+  lastChargedDate?: string;
 }
 
 // Trae TODAS las suscripciones (preapprovals) de la cuenta con el status dado,
@@ -225,6 +227,29 @@ export async function searchSubscriptions(status?: string): Promise<MpSubscripti
     if (results.length < limit || offset >= total) break;
   }
   return out;
+}
+
+// Completa el ULTIMO COBRO REAL de cada suscripcion (summarized.last_charged_amount del
+// detalle GET /preapproval/{id}). El /search solo trae el monto configurado. Concurrencia acotada.
+export async function enrichLastCharged(subs: MpSubscription[]): Promise<void> {
+  const accessToken = process.env.MP_ACCESS_TOKEN;
+  if (!accessToken) return;
+  const CONC = 8;
+  for (let i = 0; i < subs.length; i += CONC) {
+    const batch = subs.slice(i, i + CONC);
+    await Promise.all(batch.map(async (s) => {
+      try {
+        const r = await fetch(`${MP_API_BASE}/preapproval/${encodeURIComponent(s.id)}`, {
+          headers: { 'Authorization': `Bearer ${accessToken}` },
+        });
+        if (!r.ok) return;
+        const d = await r.json() as Record<string, unknown>;
+        const sum = (d['summarized'] as Record<string, unknown>) || {};
+        s.lastCharged = Number(sum['last_charged_amount']) || 0;
+        s.lastChargedDate = String(sum['last_charged_date'] || '');
+      } catch { /* si falla, queda sin ultimo cobro y cae al monto configurado */ }
+    }));
+  }
 }
 
 
