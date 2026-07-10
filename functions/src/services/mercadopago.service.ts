@@ -237,7 +237,7 @@ export async function getLastChargedMap(ids: string[]): Promise<Map<string, { la
   const map = new Map<string, { lastCharged: number; lastModified: string }>();
   const accessToken = process.env.MP_ACCESS_TOKEN;
   if (!accessToken) return map;
-  const CONC = 6;
+  const CONC = 3; // grupos chicos (3 por vez) para no saturar MP — tarda unos seg más pero es confiable
   for (let i = 0; i < ids.length; i += CONC) {
     const batch = ids.slice(i, i + CONC);
     await Promise.all(batch.map(async (id) => {
