@@ -37,7 +37,7 @@ export async function createSubscription(
   }
 
   const body = {
-    reason: `Mi Container Baulera ${params.m2}m2`,
+    reason: params.bauleraCodigo ? `Mi Container Baulera ${params.bauleraCodigo}` : `Mi Container Baulera ${params.m2}m2`,
     auto_recurring: autoRecurring,
     payer_email: params.email,
     back_url: params.backUrl,
