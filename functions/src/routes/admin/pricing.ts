@@ -4,7 +4,7 @@ import { verifyToken } from '../../middleware/verifyToken';
 import { requireStaff } from '../../middleware/requireStaff';
 import { getPricingByM2 } from '../../services/pricing.service';
 import { FieldValue } from 'firebase-admin/firestore';
-import { updateSubscriptionAmount, searchSubscriptionsCached, invalidateSubsCache, getLastChargedMap, searchPlans, MpSubscription } from '../../services/mercadopago.service';
+import { updateSubscriptionAmount, searchSubscriptions, searchSubscriptionsCached, invalidateSubsCache, getLastChargedMap, searchPlans, MpSubscription } from '../../services/mercadopago.service';
 import { logAudit } from '../../services/audit.service';
 
 export const pricingRouter = Router();
@@ -434,7 +434,9 @@ pricingRouter.get('/find-sub', verifyToken, requireStaff, async (req: Request, r
   try {
     const amount = Number(req.query['amount']) || 0;
     const q = String(req.query['q'] || '').toLowerCase();
-    const subs = await searchSubscriptionsCached();
+    // TODOS los estados (incl. cancelled/paused) para reconciliacion — cada estado en 1 pagina.
+    const byStatus = await Promise.all(['authorized', 'pending', 'paused', 'cancelled'].map((st) => searchSubscriptions(st)));
+    const subs = byStatus.flat();
     const hits = subs
       .filter((s) => (amount ? Math.abs(s.amount - amount) <= amount * 0.05 : true)
                   && (q ? (s.externalReference || '').toLowerCase().includes(q) : true))
