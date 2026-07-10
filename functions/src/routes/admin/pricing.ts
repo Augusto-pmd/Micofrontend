@@ -115,6 +115,7 @@ interface Target {
   email: string;
   actual: number;          // ULTIMO COBRO REAL de MP (summarized.last_charged_amount), NO el precio web
   sinCobro?: boolean;      // true = nunca se cobro; "actual" es el configurado, no un cobro real
+  configurado: number;     // monto configurado hoy en MP. Si === nuevo => NO se toca ni se notifica
   nuevo: number;
   origen: 'sistema' | 'mp';
   reservationId: string | null;
@@ -238,7 +239,7 @@ function computeMeasure(
       usedSub.add(s.id);
       targets.push({
         id: s.id, cliente: res.customerName, email: res.customerEmail || s.payerEmail,
-        actual: realAmount(s), sinCobro: noCharge(s), nuevo: newAmount, origen: 'sistema', reservationId: res.reservationId, m2,
+        actual: realAmount(s), sinCobro: noCharge(s), configurado: s.amount, nuevo: newAmount, origen: 'sistema', reservationId: res.reservationId, m2,
       });
     }
   }
@@ -264,7 +265,7 @@ function computeMeasure(
     if (codeCands.length) {
       const pick = codeCands[0];
       usedSub.add(pick.id);
-      targets.push({ id: pick.id, cliente: u.name || u.code, email: u.email || pick.payerEmail, actual: realAmount(pick), sinCobro: noCharge(pick), nuevo: newAmount, origen: 'mp', reservationId: null, m2 });
+      targets.push({ id: pick.id, cliente: u.name || u.code, email: u.email || pick.payerEmail, actual: realAmount(pick), sinCobro: noCharge(pick), configurado: pick.amount, nuevo: newAmount, origen: 'mp', reservationId: null, m2 });
       continue;
     }
     // b) fallback por email
@@ -274,7 +275,7 @@ function computeMeasure(
     if (!cands.length) { noMatch.push({ name: u.name || u.code, email: e, dni: u.dni, monthly: u.monthly, motivo: `sin suscripcion MP (baulera ${u.code || '?'})` }); continue; }
     const pick = (u.monthly > 0 && cands.find((s) => s.amount === u.monthly)) || cands[0];
     usedSub.add(pick.id);
-    targets.push({ id: pick.id, cliente: u.name, email: e, actual: realAmount(pick), sinCobro: noCharge(pick), nuevo: newAmount, origen: 'mp', reservationId: null, m2 });
+    targets.push({ id: pick.id, cliente: u.name, email: e, actual: realAmount(pick), sinCobro: noCharge(pick), configurado: pick.amount, nuevo: newAmount, origen: 'mp', reservationId: null, m2 });
   }
   return { targets, noMatch };
 }
@@ -322,7 +323,10 @@ pricingRouter.post('/reprice/:branchId', verifyToken, requireStaff, async (req: 
       const byStatus: Record<string, number> = {};
       allSubs.forEach((s) => { byStatus[s.status] = (byStatus[s.status] || 0) + 1; });
       res.json({
-        dryRun: true, m2: m2n, newAmount, total: targets.length, afectados: targets, sinMatch: noMatch.length, noMatch,
+        dryRun: true, m2: m2n, newAmount, total: targets.length,
+        cambian: targets.filter((t) => t.configurado !== t.nuevo).length,
+        yaEnPrecio: targets.filter((t) => t.configurado === t.nuevo).length,
+        afectados: targets.map((t) => ({ ...t, cambia: t.configurado !== t.nuevo })), sinMatch: noMatch.length, noMatch,
         debug: {
           ocupadasTotal: units.length,
           unidadesMedida: uMed.length,
@@ -338,7 +342,7 @@ pricingRouter.post('/reprice/:branchId', verifyToken, requireStaff, async (req: 
       });
       return;
     }
-    const { actualizados, errores } = await runTargets(targets, notify);
+    const { actualizados, errores } = await runTargets(targets.filter((t) => t.configurado !== t.nuevo), notify);
     await logAudit({
       actor: (req as unknown as { email?: string }).email || 'admin',
       action: 'cambio_valor_suscripciones', entity: 'pricing', entityId: branchId,
@@ -373,12 +377,12 @@ pricingRouter.post('/reprice-all/:branchId', verifyToken, requireStaff, async (r
       const nn = Number(it.newAmount);
       if (!m2n || !(nn > 0)) continue;
       const r = computeMeasure(subs, resMap, units, m2n, nn, usedSub);
-      for (const t of r.targets) { if (t.actual !== t.nuevo) targets.push(t); }
+      for (const t of r.targets) { if (t.configurado !== t.nuevo) targets.push(t); }
       noMatch.push(...r.noMatch);
     }
 
     if (dryRun) { res.json({ dryRun: true, total: targets.length, afectados: targets, sinMatch: noMatch.length, noMatch }); return; }
-    const { actualizados, errores } = await runTargets(targets, notify);
+    const { actualizados, errores } = await runTargets(targets.filter((t) => t.configurado !== t.nuevo), notify);
     await logAudit({
       actor: (req as unknown as { email?: string }).email || 'admin',
       action: 'cambio_valor_suscripciones_masivo', entity: 'pricing', entityId: branchId,
