@@ -4,7 +4,7 @@ import { verifyToken } from '../../middleware/verifyToken';
 import { requireStaff } from '../../middleware/requireStaff';
 import { getPricingByM2 } from '../../services/pricing.service';
 import { FieldValue } from 'firebase-admin/firestore';
-import { updateSubscriptionAmount, searchSubscriptions, getLastChargedMap, searchPlans, MpSubscription } from '../../services/mercadopago.service';
+import { updateSubscriptionAmount, searchSubscriptionsCached, invalidateSubsCache, getLastChargedMap, searchPlans, MpSubscription } from '../../services/mercadopago.service';
 import { logAudit } from '../../services/audit.service';
 
 export const pricingRouter = Router();
@@ -318,7 +318,7 @@ pricingRouter.post('/reprice/:branchId', verifyToken, requireStaff, async (req: 
     const notify = body.notify === true;
     if (!m2n || !(newAmount > 0)) { res.status(400).json({ error: 'm2 y newAmount (>0) requeridos' }); return; }
 
-    const [allSubs, resMap, units, plans] = await Promise.all([searchSubscriptions(), buildReservationMap(), buildRentedUnits(), searchPlans()]);
+    const [allSubs, resMap, units, plans] = await Promise.all([searchSubscriptionsCached(), buildReservationMap(), buildRentedUnits(), searchPlans()]);
     const subs = allSubs.filter((s) => s.status === 'authorized' || s.status === 'pending');
     const { targets, noMatch } = computeMeasure(subs, resMap, units, m2n, newAmount, new Set<string>());
     // Último cobro real + fecha SOLO de las matcheadas (pocas), sin saturar MP.
@@ -350,6 +350,7 @@ pricingRouter.post('/reprice/:branchId', verifyToken, requireStaff, async (req: 
       return;
     }
     const { actualizados, errores } = await runTargets(targets.filter((t) => t.configurado !== t.nuevo), notify);
+    invalidateSubsCache(); // el apply cambió montos → refrescar snapshot en el próximo preview
     await logAudit({
       actor: (req as unknown as { email?: string }).email || 'admin',
       action: 'cambio_valor_suscripciones', entity: 'pricing', entityId: branchId,
@@ -373,7 +374,7 @@ pricingRouter.post('/reprice-all/:branchId', verifyToken, requireStaff, async (r
     const notify = body.notify === true;
     if (!items.length) { res.status(400).json({ error: 'items requeridos' }); return; }
 
-    const [allSubs, resMap, units] = await Promise.all([searchSubscriptions(), buildReservationMap(), buildRentedUnits()]);
+    const [allSubs, resMap, units] = await Promise.all([searchSubscriptionsCached(), buildReservationMap(), buildRentedUnits()]);
     const subs = allSubs.filter((s) => s.status === 'authorized' || s.status === 'pending');
     const usedSub = new Set<string>();
     const targets: Target[] = [];
@@ -392,6 +393,7 @@ pricingRouter.post('/reprice-all/:branchId', verifyToken, requireStaff, async (r
 
     if (dryRun) { res.json({ dryRun: true, total: targets.length, afectados: targets, sinMatch: noMatch.length, noMatch }); return; }
     const { actualizados, errores } = await runTargets(targets.filter((t) => t.configurado !== t.nuevo), notify);
+    invalidateSubsCache(); // el apply cambió montos → refrescar snapshot en el próximo preview
     await logAudit({
       actor: (req as unknown as { email?: string }).email || 'admin',
       action: 'cambio_valor_suscripciones_masivo', entity: 'pricing', entityId: branchId,

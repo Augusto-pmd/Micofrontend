@@ -256,6 +256,21 @@ export async function getLastChargedMap(ids: string[]): Promise<Map<string, { la
 }
 
 
+// Cache del snapshot de suscripciones. MP /preapproval/search devuelve el set de forma
+// inconsistente entre llamadas seguidas -> sin cache el matcheo varía (riesgo de error de
+// asignación entre el preview y el apply). Cache corto + dedup por id lo estabiliza.
+let _subsCache: { at: number; data: MpSubscription[] } | null = null;
+export function invalidateSubsCache(): void { _subsCache = null; }
+export async function searchSubscriptionsCached(ttlMs = 120000): Promise<MpSubscription[]> {
+  const now = Date.now();
+  if (_subsCache && (now - _subsCache.at) < ttlMs) return _subsCache.data;
+  const raw = await searchSubscriptions();
+  const seen = new Set<string>();
+  const unique = raw.filter((s) => !!s.id && !seen.has(s.id) && !!seen.add(s.id)); // dedup por id
+  _subsCache = { at: now, data: unique };
+  return unique;
+}
+
 export interface MpPlan { id: string; reason: string; status: string; }
 
 // Lista los planes de suscripcion (preapproval_plan) de la cuenta.
