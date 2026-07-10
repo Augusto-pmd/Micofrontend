@@ -161,6 +161,19 @@ async function buildReservationMap(): Promise<Map<string, ResLite>> {
   return map;
 }
 
+// Mapa reservationId -> código de baulera. Resuelve suscripciones cuyo external_reference es el
+// reservationId ("MC-XXXX") en vez del código, para matchear igual por código de baulera.
+async function buildResIdToCodeMap(): Promise<Map<string, string>> {
+  const snap = await db.collection('reservations').get();
+  const map = new Map<string, string>();
+  snap.forEach((d) => {
+    const r = d.data() as Record<string, unknown>;
+    const code = String(r['bauleraCodigo'] || String(r['storageRoomId'] || '').split('__').pop() || '').trim();
+    if (code) map.set(d.id, code);
+  });
+  return map;
+}
+
 // Unidades alquiladas segun la asignacion real (reservationOrders + customers por email).
 // La MEDIDA sale de storageRooms (misma fuente que la tabla de Tarifas), unida por
 // storageRoomId. Asi cada baulera usa su medida REAL de inventario y no el m2 mal
@@ -224,7 +237,7 @@ async function buildRentedUnits(): Promise<RentedUnit[]> {
 // Arma targets de UNA medida. usedSub se comparte entre medidas (dedup global).
 function computeMeasure(
   subs: MpSubscription[], resMap: Map<string, ResLite>, units: RentedUnit[],
-  m2: number, newAmount: number, usedSub: Set<string>,
+  m2: number, newAmount: number, usedSub: Set<string>, resIdToCode: Map<string, string>,
 ): { targets: Target[]; noMatch: NoMatch[] } {
   const targets: Target[] = [];
   const noMatch: NoMatch[] = [];
@@ -262,7 +275,10 @@ function computeMeasure(
   const byEmail = new Map<string, MpSubscription[]>();
   for (const s of subs) {
     if (usedSub.has(s.id) || resMap.has(s.id)) continue; // solo subs libres (no tomadas por el sistema)
-    const c = codeOf(s.externalReference);
+    // Código por external_reference; si no lo tiene (ej. guarda el reservationId "MC-XXXX"),
+    // se resuelve por la base: reservationId -> baulera. Así matchea igual por CÓDIGO DE BAULERA.
+    let c = codeOf(s.externalReference);
+    if (!c) { const raw = resIdToCode.get((s.externalReference || '').trim()); if (raw) c = canon(raw); }
     if (c) { if (!byCode.has(c)) byCode.set(c, []); byCode.get(c)!.push(s); }
     const e = s.payerEmail.trim().toLowerCase();
     if (e) { if (!byEmail.has(e)) byEmail.set(e, []); byEmail.get(e)!.push(s); }
@@ -323,9 +339,9 @@ pricingRouter.post('/reprice/:branchId', verifyToken, requireStaff, async (req: 
     const notify = body.notify === true;
     if (!m2n || !(newAmount > 0)) { res.status(400).json({ error: 'm2 y newAmount (>0) requeridos' }); return; }
 
-    const [allSubs, resMap, units, plans] = await Promise.all([searchSubscriptionsCached(), buildReservationMap(), buildRentedUnits(), searchPlans()]);
+    const [allSubs, resMap, units, plans, resIdToCode] = await Promise.all([searchSubscriptionsCached(), buildReservationMap(), buildRentedUnits(), searchPlans(), buildResIdToCodeMap()]);
     const subs = allSubs.filter((s) => s.status === 'authorized' || s.status === 'pending');
-    const { targets, noMatch } = computeMeasure(subs, resMap, units, m2n, newAmount, new Set<string>());
+    const { targets, noMatch } = computeMeasure(subs, resMap, units, m2n, newAmount, new Set<string>(), resIdToCode);
     // Último cobro real + fecha SOLO de las matcheadas (pocas), sin saturar MP.
     const lc = await getLastChargedMap(targets.map((t) => t.id));
     for (const t of targets) { const x = lc.get(t.id); if (x) { if (x.lastCharged > 0) { t.actual = x.lastCharged; t.sinCobro = false; } if (x.lastModified) t.desde = x.lastModified; } }
@@ -379,7 +395,7 @@ pricingRouter.post('/reprice-all/:branchId', verifyToken, requireStaff, async (r
     const notify = body.notify === true;
     if (!items.length) { res.status(400).json({ error: 'items requeridos' }); return; }
 
-    const [allSubs, resMap, units] = await Promise.all([searchSubscriptionsCached(), buildReservationMap(), buildRentedUnits()]);
+    const [allSubs, resMap, units, resIdToCode] = await Promise.all([searchSubscriptionsCached(), buildReservationMap(), buildRentedUnits(), buildResIdToCodeMap()]);
     const subs = allSubs.filter((s) => s.status === 'authorized' || s.status === 'pending');
     const usedSub = new Set<string>();
     const targets: Target[] = [];
@@ -388,7 +404,7 @@ pricingRouter.post('/reprice-all/:branchId', verifyToken, requireStaff, async (r
       const m2n = Number(it.m2);
       const nn = Number(it.newAmount);
       if (!m2n || !(nn > 0)) continue;
-      const r = computeMeasure(subs, resMap, units, m2n, nn, usedSub);
+      const r = computeMeasure(subs, resMap, units, m2n, nn, usedSub, resIdToCode);
       for (const t of r.targets) { if (t.configurado !== t.nuevo) targets.push(t); }
       noMatch.push(...r.noMatch);
     }
