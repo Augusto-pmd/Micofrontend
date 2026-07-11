@@ -129,10 +129,12 @@ interface PreferenceParams {
   amount: number;
   email: string;
   backUrl: string;
+  bauleraCodigo?: string;
 }
 
 // Pago UNICO (Checkout Pro) por el total de N meses. El cliente puede pagar por
-// transferencia o tarjeta. Liga el pago a la reserva con external_reference.
+// transferencia o tarjeta. Liga el pago a la reserva con external_reference con el
+// marcador ONETIME (ruta SEPARADA de la suscripcion — no se cruzan ni en MP ni en el webhook).
 export async function createCheckoutPreference(
   p: PreferenceParams
 ): Promise<{ preferenceId: string; initPoint: string }> {
@@ -142,7 +144,7 @@ export async function createCheckoutPreference(
   const body = {
     items: [{ title: p.title, quantity: 1, unit_price: p.amount, currency_id: 'ARS' }],
     payer: { email: p.email },
-    external_reference: p.reservationId,
+    external_reference: p.bauleraCodigo ? `ONETIME MiContainer Baulera ${p.bauleraCodigo}` : `ONETIME ${p.reservationId}`,
     back_urls: { success: p.backUrl, pending: p.backUrl, failure: p.backUrl },
     auto_return: 'approved',
   };
@@ -235,6 +237,84 @@ export async function getLastChargeAttempt(preapprovalId: string): Promise<MpCha
       retries: Number(r['retry_attempt']) || undefined,
     };
   } catch { return null; }
+}
+
+// PLAN de suscripcion (preapproval_plan) con MES GRATIS (free_trial). Se crea 1 vez por medida
+// y su init_point es el LINK DEL PLAN que se comparte al cliente (paga en la pagina de MP,
+// sin tokenizacion). Ver docs/referencia/mercadopago-planes.md §1.5.
+export interface MpPlanCreated { planId: string; initPoint: string; }
+export async function createPlan(params: { m2: number; amount: number; freeTrialMonths: number }): Promise<MpPlanCreated> {
+  const accessToken = process.env.MP_ACCESS_TOKEN;
+  if (!accessToken) throw new Error('MP_ACCESS_TOKEN not configured');
+  const body = {
+    reason: `Mi Container Baulera ${params.m2}m2 (${params.freeTrialMonths} mes${params.freeTrialMonths > 1 ? 'es' : ''} gratis)`,
+    auto_recurring: {
+      frequency: 1,
+      frequency_type: 'months',
+      transaction_amount: params.amount,
+      currency_id: 'ARS',
+      free_trial: { frequency: params.freeTrialMonths, frequency_type: 'months' },
+    },
+    back_url: 'https://micontainer.com/#/portal',
+  };
+  const res = await fetch(`${MP_API_BASE}/preapproval_plan`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
+    body: JSON.stringify(body),
+  });
+  const text = await res.text();
+  if (!res.ok) throw new Error(`MP plan ${res.status}: ${text.slice(0, 200)}`);
+  let d: { id?: string; init_point?: string };
+  try { d = JSON.parse(text); } catch { throw new Error(`MP plan invalid JSON: ${text.slice(0, 200)}`); }
+  if (!d.id || !d.init_point) throw new Error(`MP plan sin id/init_point: ${text.slice(0, 200)}`);
+  return { planId: d.id, initPoint: d.init_point };
+}
+
+// Actualiza el monto de un plan (cuando cambia la tarifa de la medida).
+export async function updatePlanAmount(planId: string, amount: number): Promise<void> {
+  const accessToken = process.env.MP_ACCESS_TOKEN;
+  if (!accessToken) throw new Error('MP_ACCESS_TOKEN not configured');
+  const res = await fetch(`${MP_API_BASE}/preapproval_plan/${encodeURIComponent(planId)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
+    body: JSON.stringify({ auto_recurring: { transaction_amount: amount, currency_id: 'ARS' } }),
+  });
+  if (!res.ok) { const t = await res.text(); throw new Error(`MP plan update ${res.status}: ${t.slice(0, 200)}`); }
+}
+
+// Detalle de un preapproval — para CASAR una sub creada via LINK de plan con su venta pendiente.
+export interface MpPreapprovalDetail { status: string; planId: string; externalReference: string; payerEmail: string; }
+export async function getPreapprovalDetail(preapprovalId: string): Promise<MpPreapprovalDetail | null> {
+  const accessToken = process.env.MP_ACCESS_TOKEN;
+  if (!accessToken) return null;
+  try {
+    const res = await fetch(`${MP_API_BASE}/preapproval/${encodeURIComponent(preapprovalId)}`, {
+      headers: { 'Authorization': `Bearer ${accessToken}` },
+    });
+    if (!res.ok) return null;
+    const d = await res.json() as Record<string, unknown>;
+    return {
+      status: String(d['status'] || ''),
+      planId: String(d['preapproval_plan_id'] || ''),
+      externalReference: String(d['external_reference'] || ''),
+      payerEmail: String(d['payer_email'] || ''),
+    };
+  } catch { return null; }
+}
+
+// Estampa el external_reference (codigo de baulera) en una sub YA creada (las de link de plan
+// nacen sin el). Si MP no lo permite, devuelve false y el matcheo queda por mpPreapprovalId.
+export async function setPreapprovalExternalReference(preapprovalId: string, ref: string): Promise<boolean> {
+  const accessToken = process.env.MP_ACCESS_TOKEN;
+  if (!accessToken) return false;
+  try {
+    const res = await fetch(`${MP_API_BASE}/preapproval/${encodeURIComponent(preapprovalId)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
+      body: JSON.stringify({ external_reference: ref }),
+    });
+    return res.ok;
+  } catch { return false; }
 }
 
 // HISTORIAL REAL de cobros de una suscripcion (para el portal del cliente). Trae todos los

@@ -7,7 +7,8 @@ import { verifyMpWebhookSignature } from '../../utils/hmac';
 import { assignRoomForReservation } from '../../services/assignment.service';
 import { logAudit } from '../../services/audit.service';
 import { sendActivationEmail } from '../../services/customerAuth.service';
-import { getPaymentDetail, getSubscriptionStatus, MpPaymentDetail } from '../../services/mercadopago.service';
+import { getPaymentDetail, getSubscriptionStatus, getPreapprovalDetail, setPreapprovalExternalReference, MpPaymentDetail } from '../../services/mercadopago.service';
+import { Reservation } from '../../models/reservation.model';
 
 export const mpWebhookRouter = Router();
 
@@ -57,7 +58,8 @@ async function processWebhook(body: Record<string, unknown>): Promise<void> {
     let paid: MpPaymentDetail | null = null;
     if (!reservation) {
       paid = await getPaymentDetail(eventId);
-      const ext = (paid?.externalReference || '').trim();
+      // El marcador "ONETIME " es de la ruta de pago único — se quita para resolver la reserva.
+      const ext = (paid?.externalReference || '').trim().replace(/^ONETIME\s+/i, '');
       if (ext) {
         if (/^MC-/i.test(ext)) reservation = await getReservation(ext);
         else { const m = ext.match(/[A-Za-z]\d+-?\d+/); if (m) reservation = await getReservationByBauleraCodigo(m[0]); }
@@ -122,7 +124,45 @@ async function processWebhook(body: Record<string, unknown>): Promise<void> {
     if (!preapprovalId) return;
 
     const reservation = await getReservationByMpPreapprovalId(preapprovalId);
-    if (!reservation) return;
+    if (!reservation) {
+      // ¿Sub nueva creada via LINK DE PLAN (mes gratis)? Nace sin external_reference y sin
+      // preapprovalId en nuestra base → se casa con la venta pendiente de ese plan (si hay
+      // EXACTAMENTE una, para no cruzar clientes) y se le estampa el código de baulera.
+      const det = await getPreapprovalDetail(preapprovalId);
+      if (det && det.planId) {
+        const pend = await db.collection('reservations')
+          .where('paymentMode', '==', 'plan')
+          .where('mpPlanId', '==', det.planId)
+          .where('status', '==', 'pending_payment')
+          .get();
+        if (pend.size === 1) {
+          const r = pend.docs[0].data() as Reservation;
+          await updateReservation(r.id, { mpPreapprovalId: preapprovalId } as any);
+          if (r.bauleraCodigo) {
+            const stamped = await setPreapprovalExternalReference(preapprovalId, `MiContainer Baulera ${r.bauleraCodigo}`);
+            console.log(`[mp-webhook] sub de PLAN ${preapprovalId} -> venta ${r.id} (baulera ${r.bauleraCodigo}); external_reference ${stamped ? 'estampado' : 'NO estampado (matchea por preapprovalId igual)'}`);
+          }
+          if (det.status === 'authorized' || det.status === 'pending') {
+            await updateReservation(r.id, { status: 'active', mpSubscriptionStatus: (det.status === 'authorized' ? 'authorized' : 'pending') } as any);
+            const assignedRoom = await assignRoomForReservation({ ...r, status: 'active' } as any, r.storageRoomId);
+            await logAudit({
+              actor: r.customerEmail || r.userUid || 'cliente',
+              via: 'mercadopago',
+              action: 'alta_suscripcion_plan',
+              entity: 'reservation', entityId: r.id, branchId: r.sucursalId,
+              detail: { cliente: r.customerName || '', baulera: assignedRoom || r.storageRoomId || null, planId: det.planId, monthly: r.monthly, mesesGratis: (r as any).promoMonths || 1 },
+            });
+            if (r.customerEmail) {
+              try { await sendActivationEmail(r.customerEmail, r.customerName || ''); }
+              catch (e) { console.warn('[mp-webhook] activation email fail (plan)', e); }
+            }
+          }
+        } else {
+          console.warn(`[mp-webhook] sub ${preapprovalId} del plan ${det.planId}: ${pend.size} ventas pendientes de ese plan → reconciliar a mano (find-sub)`);
+        }
+      }
+      return;
+    }
 
     // El body NO trae el status (MP manda solo {id}); se lo pedimos a MP. Sin esto, rawStatus
     // quedaba undefined y TODO caia a 'payment_failed' por error. Solo 'cancelled' da de baja;

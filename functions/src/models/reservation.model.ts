@@ -37,6 +37,11 @@ export interface Reservation {
   source?: string;
   cancelledBy?: string;
   endDate?: string;
+  // Rutas de pago SEPARADAS (Fase 1): 'subscription' (default) | 'onetime' | 'plan'
+  paymentMode?: string;
+  paidMonths?: number;      // pago unico: meses pagados de una (vence en endDate)
+  mpPreferenceId?: string;  // pago unico: id de la preferencia Checkout Pro
+  mpPlanId?: string;        // plan (mes gratis): preapproval_plan_id
 }
 
 export const reservationsCol = () => db.collection('reservations');

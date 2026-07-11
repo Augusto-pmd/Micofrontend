@@ -5,7 +5,7 @@ import * as admin from 'firebase-admin';
 import * as crypto from 'crypto';
 import { assignRoomForReservation, holdRoomForReservation } from '../../services/assignment.service';
 import { getReservation, createReservation } from '../../models/reservation.model';
-import { createSubscription } from '../../services/mercadopago.service';
+import { createSubscription, createCheckoutPreference, createPlan, updatePlanAmount } from '../../services/mercadopago.service';
 import { getPricingByM2, recurringFor } from '../../services/pricing.service';
 import { generateReservationId } from '../../utils/generateId';
 import { logAudit } from '../../services/audit.service';
@@ -208,6 +208,172 @@ adminReservationsRouter.post('/sell', requireAuth, async (req, res: Response) =>
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('POST /admin/reservations/sell error:', err);
     res.status(500).json({ error: 'No se pudo generar la venta', detail: message });
+  }
+});
+
+// POST /admin/reservations/sell-onetime — VENTA PAGO ÚNICO: el cliente paga N meses DE UNA
+// (Checkout Pro, 1 solo cobro, sin recurrencia). RUTA SEPARADA de /sell (suscripción) y
+// /sell-plan (mes gratis) para que las vías NO se crucen. Vence en endDate (aviso manual).
+adminReservationsRouter.post('/sell-onetime', requireAuth, async (req, res: Response) => {
+  try {
+    const {
+      sucursalId = 'nordelta', category = 'Baulera', m2, storageRoomId, bauleraCodigo,
+      name = '', email = '', phone = '', dni = '', startDate, durationMonths, discountPct = 0, priceOverride,
+    } = req.body || {};
+    if (!email) { res.status(400).json({ error: 'Falta el email del cliente' }); return; }
+    if (!m2)    { res.status(400).json({ error: 'Falta la medida (m2)' }); return; }
+    const months = Math.max(1, Number(durationMonths) || 6);
+
+    // Mismo cálculo de mensualidad que /sell (12+ meses aplica el descuento anual de la tarifa)
+    const byM2 = await getPricingByM2(sucursalId);
+    let monthlyNum = Number(priceOverride) > 0 ? Number(priceOverride) : (recurringFor(byM2, Number(m2), months) ?? 0);
+    if (!(monthlyNum > 0)) { res.status(400).json({ error: `No hay precio cargado para ${m2}m². Cargalo en Tarifas o poné un precio manual.` }); return; }
+    const disc = Number(discountPct) || 0;
+    if (disc > 0) monthlyNum = Math.round(monthlyNum * (1 - disc / 100));
+    const total = monthlyNum * months;
+
+    const id = generateReservationId();
+    const uid = `manual_${crypto.createHash('sha1').update(String(email).toLowerCase()).digest('hex').slice(0, 16)}`;
+
+    const hold = await holdRoomForReservation({ reservationId: id, branchId: sucursalId, m2: Number(m2), targetRoomId: storageRoomId || undefined });
+    if (!hold.ok) {
+      res.status(409).json({ error: hold.reason === 'sin_stock' ? `Sin stock de ${m2}m2. Ofrece otra medida.` : 'No se pudo reservar la baulera', code: hold.reason, alternativasByM2: hold.alternativasByM2 || {} });
+      return;
+    }
+    const codigo = hold.bauleraCodigo || bauleraCodigo || '';
+
+    let preferenceId: string; let initPoint: string;
+    if (process.env.FUNCTIONS_EMULATOR === 'true') {
+      preferenceId = `emu-pref-${id}`;
+      initPoint = `https://www.mercadopago.com.ar/checkout/emulator-demo?ref=${id}`;
+    } else {
+      ({ preferenceId, initPoint } = await createCheckoutPreference({
+        reservationId: id,
+        title: `Mi Container Baulera ${codigo || `${m2}m2`} — ${months} meses`,
+        amount: total,
+        email: String(email),
+        backUrl: 'https://micontainer.com/#/portal',
+        bauleraCodigo: codigo || undefined,
+      }));
+    }
+
+    const start = startDate || new Date().toISOString().slice(0, 10);
+    const end = (() => { const d = new Date(`${start}T12:00:00`); d.setMonth(d.getMonth() + months); return d.toISOString().slice(0, 10); })();
+
+    await createReservation({
+      id, userUid: uid, sucursalId, category, m2: Number(m2),
+      monthly: monthlyNum, firstMonth: total,
+      startDate: start, duration: months,
+      addons: [], promosApplied: [],
+      status: 'pending_payment',
+      mpInitPoint: initPoint, mpSubscriptionStatus: 'pending',
+      faceEnrollStatus: 'not_started', faceEnrollAttempts: 0,
+      customerName: name || undefined, customerEmail: email || undefined,
+      customerPhone: phone || undefined, customerDni: dni || undefined,
+      storageRoomId: hold.roomId,
+      bauleraCodigo: codigo || undefined,
+      endDate: end,
+      paymentMode: 'onetime', paidMonths: months, mpPreferenceId: preferenceId,
+      discountPct: disc,
+      source: 'manual_admin',
+    } as any);
+
+    await logAudit({
+      actor: (req as any).email || (req as any).uid || 'admin',
+      via: (req.body?.via as string) || 'admin',
+      action: 'link_generado_pago_unico',
+      entity: 'reservation', entityId: id, branchId: sucursalId,
+      detail: { cliente: name, email, baulera: codigo || null, m2: Number(m2), meses: months, mensual: monthlyNum, total, vence: end },
+    });
+    res.status(201).json({ reservationId: id, initPoint, monthly: monthlyNum, total, duration: months, paymentMode: 'onetime', endDate: end });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('POST /admin/reservations/sell-onetime error:', err);
+    res.status(500).json({ error: 'No se pudo generar el link de pago único', detail: message });
+  }
+});
+
+// POST /admin/reservations/sell-plan — VENTA CON MES GRATIS: usa un PLAN de MP (free_trial)
+// y devuelve el LINK DEL PLAN (el cliente carga la tarjeta en MP; $0 hoy, 1er débito al mes).
+// El plan se crea 1 vez por medida y se reusa. Cuando el cliente se suscribe, el webhook casa
+// la sub con esta venta pendiente (por planId) y le estampa el código de baulera.
+adminReservationsRouter.post('/sell-plan', requireAuth, async (req, res: Response) => {
+  try {
+    const {
+      sucursalId = 'nordelta', category = 'Baulera', m2, storageRoomId, bauleraCodigo,
+      name = '', email = '', phone = '', dni = '', startDate, durationMonths, promoMonths, discountPct = 0, priceOverride,
+    } = req.body || {};
+    if (!email) { res.status(400).json({ error: 'Falta el email del cliente' }); return; }
+    if (!m2)    { res.status(400).json({ error: 'Falta la medida (m2)' }); return; }
+    const freeMonths = Math.max(1, Number(promoMonths) || 1);
+
+    const byM2 = await getPricingByM2(sucursalId);
+    let monthlyNum = Number(priceOverride) > 0 ? Number(priceOverride) : (recurringFor(byM2, Number(m2), Number(durationMonths) || 1) ?? 0);
+    if (!(monthlyNum > 0)) { res.status(400).json({ error: `No hay precio cargado para ${m2}m². Cargalo en Tarifas o poné un precio manual.` }); return; }
+    const disc = Number(discountPct) || 0;
+    if (disc > 0) monthlyNum = Math.round(monthlyNum * (1 - disc / 100));
+
+    // Plan por medida (+ meses de trial): se crea 1 vez y se reusa; si cambió el precio se actualiza.
+    let planId: string; let planLink: string;
+    if (process.env.FUNCTIONS_EMULATOR === 'true') {
+      planId = `emu-plan-${m2}`; planLink = `https://www.mercadopago.com.ar/subscriptions/emulator-plan?m2=${m2}`;
+    } else {
+      const planRef = db.collection('mpPlans').doc(`m2-${String(m2)}-trial${freeMonths}`);
+      const planSnap = await planRef.get();
+      if (planSnap.exists) {
+        const p = planSnap.data() as Record<string, unknown>;
+        planId = String(p['planId']); planLink = String(p['initPoint']);
+        if (Number(p['amount']) !== monthlyNum) {
+          await updatePlanAmount(planId, monthlyNum);
+          await planRef.set({ amount: monthlyNum, updatedAt: new Date().toISOString() }, { merge: true });
+        }
+      } else {
+        const created = await createPlan({ m2: Number(m2), amount: monthlyNum, freeTrialMonths: freeMonths });
+        planId = created.planId; planLink = created.initPoint;
+        await planRef.set({ m2: Number(m2), amount: monthlyNum, freeTrialMonths: freeMonths, planId, initPoint: planLink, createdAt: new Date().toISOString() });
+      }
+    }
+
+    const id = generateReservationId();
+    const uid = `manual_${crypto.createHash('sha1').update(String(email).toLowerCase()).digest('hex').slice(0, 16)}`;
+
+    const hold = await holdRoomForReservation({ reservationId: id, branchId: sucursalId, m2: Number(m2), targetRoomId: storageRoomId || undefined });
+    if (!hold.ok) {
+      res.status(409).json({ error: hold.reason === 'sin_stock' ? `Sin stock de ${m2}m2. Ofrece otra medida.` : 'No se pudo reservar la baulera', code: hold.reason, alternativasByM2: hold.alternativasByM2 || {} });
+      return;
+    }
+
+    await createReservation({
+      id, userUid: uid, sucursalId, category, m2: Number(m2),
+      monthly: monthlyNum, firstMonth: 0,
+      startDate: startDate || new Date().toISOString().slice(0, 10),
+      duration: Number(durationMonths) || 1,
+      addons: [], promosApplied: [],
+      status: 'pending_payment',
+      mpInitPoint: planLink, mpSubscriptionStatus: 'pending',
+      faceEnrollStatus: 'not_started', faceEnrollAttempts: 0,
+      customerName: name || undefined, customerEmail: email || undefined,
+      customerPhone: phone || undefined, customerDni: dni || undefined,
+      storageRoomId: hold.roomId,
+      bauleraCodigo: hold.bauleraCodigo || bauleraCodigo || undefined,
+      promoMonths: freeMonths,
+      paymentMode: 'plan', mpPlanId: planId,
+      discountPct: disc,
+      source: 'manual_admin',
+    } as any);
+
+    await logAudit({
+      actor: (req as any).email || (req as any).uid || 'admin',
+      via: (req.body?.via as string) || 'admin',
+      action: 'link_generado_plan_mes_gratis',
+      entity: 'reservation', entityId: id, branchId: sucursalId,
+      detail: { cliente: name, email, baulera: hold.bauleraCodigo || null, m2: Number(m2), mensual: monthlyNum, mesesGratis: freeMonths, planId },
+    });
+    res.status(201).json({ reservationId: id, initPoint: planLink, monthly: monthlyNum, duration: Number(durationMonths) || 1, paymentMode: 'plan', planId });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('POST /admin/reservations/sell-plan error:', err);
+    res.status(500).json({ error: 'No se pudo generar la venta con mes gratis', detail: message });
   }
 });
 
