@@ -36,18 +36,29 @@ async function tenantsByContract(contractNums: string[]): Promise<Record<string,
 }
 
 // Enriquece rooms con building (cache) + tenant. Acotado a la página.
+// El tenant se resuelve por contractNumber (bauleras legacy del seed) O por customerId
+// (ventas online/webhook, que NO tienen numero de contrato) — antes solo por contrato,
+// y las ventas online quedaban sin datos de cliente en el inventario.
 async function enrichRooms(rawRooms: any[], buildings: Record<string, any>) {
   const contractNums = rawRooms
     .filter((r: any) => r.contractNumber)
     .map((r: any) => r.contractNumber as string);
   const tenantMap = await tenantsByContract(contractNums);
 
+  const idRooms = rawRooms.filter((r: any) => !r.contractNumber && r.customerId);
+  const custById: Record<string, any> = {};
+  if (idRooms.length) {
+    const refs = idRooms.map((r: any) => db.collection('customers').doc(String(r.customerId)));
+    const docs = await db.getAll(...refs);
+    docs.forEach((d: any) => { if (d.exists) custById[d.id] = { id: d.id, ...d.data() }; });
+  }
+
   return rawRooms.map((raw: any) => ({
     ...raw,
     building: buildings[raw.buildingId] || null,
     tenant: raw.contractNumber
       ? (tenantMap[raw.contractNumber] || { fullName: raw.currentTenant, contractNumber: raw.contractNumber })
-      : null,
+      : (raw.customerId ? (custById[String(raw.customerId)] || { fullName: raw.currentTenant }) : null),
   }));
 }
 
@@ -125,12 +136,16 @@ storageRoomsRouter.get('/:id', verifyToken, async (req: Request, res: Response) 
       return;
     }
     const raw = { id: doc.id, ...doc.data() } as any;
-    // Get tenant if occupied
-    let tenant = null;
+    // Get tenant if occupied — por contrato (legacy) o por customerId (ventas online)
+    let tenant: any = null;
     if (raw.contractNumber) {
       const custSnap = await db.collection('customers')
         .where('contractNumber', '==', raw.contractNumber).limit(1).get();
       if (!custSnap.empty) tenant = { id: custSnap.docs[0].id, ...custSnap.docs[0].data() };
+    }
+    if (!tenant && raw.customerId) {
+      const custDoc = await db.collection('customers').doc(String(raw.customerId)).get();
+      if (custDoc.exists) tenant = { id: custDoc.id, ...custDoc.data() };
     }
     const result = { ...raw, building: buildings[raw.buildingId] || null, tenant };
     res.json(result);

@@ -30,7 +30,9 @@ mpWebhookRouter.post('/', async (req: Request, res: Response) => {
     const ok = verifyMpWebhookSignature({ xSignature, xRequestId, dataId, secret });
     const kind = String(req.body?.type || req.query?.['type'] || '?');
     console.log(`[mp-webhook] firma ${ok ? 'OK' : 'MISMATCH'} (type=${kind}, data.id=${dataId})`);
-    // if (!ok) { res.status(401).json({ error: 'Invalid signature' }); return; }  // <- enforce (PASO 2)
+    // ENFORCE activo desde 11/07 (PASO 2): la verificacion quedo confirmada con eventos REALES
+    // de MP (firma OK en subscription_preapproval y payment). Solo MP puede disparar el webhook.
+    if (!ok) { res.status(401).json({ error: 'Invalid signature' }); return; }
   }
 
   // Responder 200 rapido (MP espera < 5s)
