@@ -201,6 +201,42 @@ export async function getPaymentDetail(paymentId: string): Promise<MpPaymentDeta
   } catch { return null; }
 }
 
+// ULTIMO intento de cobro recurrente de una suscripcion (authorized_payments de MP). Sirve para
+// detectar PAGOS RECHAZADOS: MP reintenta el debito durante el plazo de regularizacion y el intento
+// queda en 'recycling' (o el payment interno en 'rejected'). Devuelve el intento mas reciente.
+export interface MpChargeAttempt {
+  status: string;      // estado del authorized_payment: scheduled | processed | recycling | ...
+  payStatus: string;   // estado del payment interno: approved | rejected | ...
+  payDetail: string;   // status_detail del payment (ej. cc_rejected_insufficient_amount)
+  amount: number;
+  date: string;        // date_created del intento
+  retries?: number;    // reintentos (retry_attempt) si MP lo informa
+}
+export async function getLastChargeAttempt(preapprovalId: string): Promise<MpChargeAttempt | null> {
+  const accessToken = process.env.MP_ACCESS_TOKEN;
+  if (!accessToken) return null;
+  try {
+    const res = await fetch(`${MP_API_BASE}/authorized_payments/search?preapproval_id=${encodeURIComponent(preapprovalId)}`, {
+      headers: { 'Authorization': `Bearer ${accessToken}` },
+    });
+    if (!res.ok) return null;
+    const d = await res.json() as { results?: Array<Record<string, unknown>> };
+    const rows = Array.isArray(d.results) ? d.results : [];
+    if (!rows.length) return null;
+    rows.sort((a, b) => String(b['date_created'] || '').localeCompare(String(a['date_created'] || '')));
+    const r = rows[0];
+    const pay = (r['payment'] as Record<string, unknown>) || {};
+    return {
+      status: String(r['status'] || ''),
+      payStatus: String(pay['status'] || ''),
+      payDetail: String(pay['status_detail'] || ''),
+      amount: Number(r['transaction_amount']) || 0,
+      date: String(r['date_created'] || r['last_modified'] || ''),
+      retries: Number(r['retry_attempt']) || undefined,
+    };
+  } catch { return null; }
+}
+
 // Estado REAL de una suscripcion (preapproval). El webhook de subscription_preapproval NO trae el
 // status en el body (MP manda solo {id}); hay que pedirselo a MP. Devuelve 'authorized' | 'paused'
 // | 'pending' | 'cancelled' o null si no se pudo.

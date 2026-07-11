@@ -4,7 +4,7 @@ import { verifyToken } from '../../middleware/verifyToken';
 import { requireStaff } from '../../middleware/requireStaff';
 import { getPricingByM2 } from '../../services/pricing.service';
 import { FieldValue } from 'firebase-admin/firestore';
-import { updateSubscriptionAmount, searchSubscriptions, searchSubscriptionsCached, invalidateSubsCache, getLastChargedMap, searchPlans, MpSubscription } from '../../services/mercadopago.service';
+import { updateSubscriptionAmount, searchSubscriptions, searchSubscriptionsCached, invalidateSubsCache, getLastChargedMap, getLastChargeAttempt, searchPlans, MpSubscription } from '../../services/mercadopago.service';
 import { logAudit } from '../../services/audit.service';
 
 export const pricingRouter = Router();
@@ -504,5 +504,75 @@ pricingRouter.get('/roster/:branchId', verifyToken, requireStaff, async (_req: R
   } catch (err) {
     console.error('GET /pricing-engine/roster error:', err);
     res.status(500).json({ error: 'No se pudo armar el roster' });
+  }
+});
+
+// GET /pricing-engine/cobros-rechazados/:branchId — READ-ONLY. Bauleras ocupadas cuyo ULTIMO
+// intento de cobro en MP salio RECHAZADO (payment 'rejected' o intento en 'recycling' = MP
+// reintentando). Regla de negocio: 10 DIAS de plazo para regularizar desde el rechazo ->
+// devuelve diasTranscurridos / diasRestantes / vencido. Alimenta el titileo del dashboard e
+// Inventario. Estrategia B (pull a MP, mismo matcheo por codigo que el reprice): cubre TODAS
+// las suscripciones, incluso las legacy creadas en MP antes de que exista la web (sin reserva).
+// El estado se recalcula en cada consulta -> si el cliente paga, deja de figurar solo.
+const PLAZO_REGULARIZAR_DIAS = 10;
+pricingRouter.get('/cobros-rechazados/:branchId', verifyToken, requireStaff, async (_req: Request, res: Response) => {
+  try {
+    const [allSubs, units, resIdToCode] = await Promise.all([
+      searchSubscriptionsCached(), buildRentedUnits(), buildResIdToCodeMap(),
+    ]);
+    const subs = allSubs.filter((s) => s.status === 'authorized' || s.status === 'pending');
+    // Mismo canon/codeOf del reprice (robusto a formatos y ceros a la izquierda).
+    const canon = (c: string): string => {
+      const s = String(c || '').toUpperCase();
+      const m = s.match(/([A-Z]\d)\D*0*(\d+)/);
+      return m ? m[1] + m[2] : s.replace(/[^A-Z0-9]/g, '');
+    };
+    const codeOf = (ext: string): string => { const m = String(ext || '').match(/[A-Za-z]\d+-\d+|[A-Za-z]\d{3,}/); return m ? canon(m[0]) : ''; };
+    const byCode = new Map<string, MpSubscription[]>();
+    const byEmail = new Map<string, MpSubscription[]>();
+    for (const s of subs) {
+      let c = codeOf(s.externalReference);
+      if (!c) { const raw = resIdToCode.get((s.externalReference || '').trim()); if (raw) c = canon(raw); }
+      if (c) { if (!byCode.has(c)) byCode.set(c, []); byCode.get(c)!.push(s); }
+      const e = s.payerEmail.trim().toLowerCase();
+      if (e) { if (!byEmail.has(e)) byEmail.set(e, []); byEmail.get(e)!.push(s); }
+    }
+    const used = new Set<string>();
+    const matched: Array<{ u: RentedUnit; sub: MpSubscription }> = [];
+    for (const u of units) {
+      const c = canon(u.code);
+      let sub = c ? (byCode.get(c) || []).find((s) => !used.has(s.id)) : undefined;
+      if (!sub) { const e = (u.email || '').trim().toLowerCase(); if (e) sub = (byEmail.get(e) || []).find((s) => !used.has(s.id)); }
+      if (sub) { used.add(sub.id); matched.push({ u, sub }); }
+    }
+    // Ultimo intento de cobro SOLO de las matcheadas, en grupos chicos (mismo patron que
+    // getLastChargedMap) para no saturar MP.
+    const rechazados: Array<Record<string, unknown>> = [];
+    let sinDato = 0;
+    const CONC = 3;
+    for (let i = 0; i < matched.length; i += CONC) {
+      await Promise.all(matched.slice(i, i + CONC).map(async ({ u, sub }) => {
+        const att = await getLastChargeAttempt(sub.id);
+        if (!att) { sinDato++; return; }
+        const rechazado = att.payStatus === 'rejected' || att.status === 'recycling';
+        if (!rechazado) return;
+        const t = att.date ? Date.parse(att.date) : NaN;
+        const dias = Number.isFinite(t) ? Math.floor((Date.now() - t) / 86400000) : null;
+        rechazados.push({
+          baulera: u.code, m2: u.m2, cliente: u.name, email: u.email,
+          subId: sub.id, monto: att.amount || sub.amount,
+          fechaRechazo: att.date ? att.date.slice(0, 10) : '',
+          diasTranscurridos: dias,
+          diasRestantes: dias == null ? null : Math.max(0, PLAZO_REGULARIZAR_DIAS - dias),
+          vencido: dias != null && dias > PLAZO_REGULARIZAR_DIAS,
+          mpEstado: att.status, mpDetalle: att.payDetail, reintentos: att.retries ?? null,
+        });
+      }));
+    }
+    rechazados.sort((a, b) => String(a['baulera']).localeCompare(String(b['baulera'])));
+    res.json({ total: rechazados.length, plazoDias: PLAZO_REGULARIZAR_DIAS, revisadas: matched.length, sinDato, rechazados });
+  } catch (err) {
+    console.error('GET /pricing-engine/cobros-rechazados error:', err);
+    res.status(500).json({ error: 'No se pudo consultar los cobros rechazados' });
   }
 });
