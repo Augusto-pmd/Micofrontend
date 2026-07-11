@@ -1,12 +1,13 @@
 import { Router, Request, Response } from 'express';
 import { Timestamp } from 'firebase-admin/firestore';
 import { db } from '../../config/firebase';
-import { getReservationByMpPreapprovalId, updateReservation, MpSubscriptionStatus } from '../../models/reservation.model';
-import { createPayment } from '../../models/payment.model';
+import { getReservationByMpPreapprovalId, getReservation, getReservationByBauleraCodigo, updateReservation, MpSubscriptionStatus } from '../../models/reservation.model';
+import { createPayment, PaymentStatus } from '../../models/payment.model';
 import { verifyMpWebhookSignature } from '../../utils/hmac';
 import { assignRoomForReservation } from '../../services/assignment.service';
 import { logAudit } from '../../services/audit.service';
 import { sendActivationEmail } from '../../services/customerAuth.service';
+import { getPaymentDetail, getSubscriptionStatus, MpPaymentDetail } from '../../services/mercadopago.service';
 
 export const mpWebhookRouter = Router();
 
@@ -37,12 +38,25 @@ async function processWebhook(body: Record<string, unknown>): Promise<void> {
   const data = body.data as Record<string, unknown> | undefined;
 
   if (PAYMENT_APPROVED_TYPES.includes(type)) {
-    const preapprovalId = data?.id as string | undefined;
-    if (!preapprovalId) return;
+    const eventId = data?.id as string | undefined; // en los cobros MP manda el id del PAGO, no del preapproval
+    if (!eventId) return;
 
-    const reservation = await getReservationByMpPreapprovalId(preapprovalId);
+    // Resolver la reserva de forma robusta:
+    // 1) por preapprovalId (el 1er evento suele venir asi);
+    // 2) si no, se pide el pago a MP y se resuelve por external_reference
+    //    (reservationId "MC-XXXX" o "MiContainer Baulera A2-010" -> codigo de baulera).
+    let reservation = await getReservationByMpPreapprovalId(eventId);
+    let paid: MpPaymentDetail | null = null;
     if (!reservation) {
-      console.warn('[mp-webhook] Reservation not found for preapprovalId:', preapprovalId);
+      paid = await getPaymentDetail(eventId);
+      const ext = (paid?.externalReference || '').trim();
+      if (ext) {
+        if (/^MC-/i.test(ext)) reservation = await getReservation(ext);
+        else { const m = ext.match(/[A-Za-z]\d+-?\d+/); if (m) reservation = await getReservationByBauleraCodigo(m[0]); }
+      }
+    }
+    if (!reservation) {
+      console.warn('[mp-webhook] Reservation not found for payment/preapproval:', eventId);
       return;
     }
 
@@ -75,18 +89,20 @@ async function processWebhook(body: Record<string, unknown>): Promise<void> {
       }
     }
 
-    const eventDate = (body.date_created as string) ?? new Date().toISOString();
+    // Registrar el cobro con monto/estado/fecha REALES de MP (si se pudo traer el pago);
+    // si no, cae al configurado (comportamiento anterior) para no perder el registro.
+    const eventDate = paid?.date || (body.date_created as string) || new Date().toISOString();
     const period = eventDate.slice(0, 7);
     await createPayment({
-      id: `${String(data?.id)}-${period}`,
+      id: `${String(eventId)}-${period}`,
       reservationId: reservation.id,
       userUid: reservation.userUid,
-      mpPreapprovalId: preapprovalId,
-      mpPaymentId: String(data?.id),
+      mpPreapprovalId: reservation.mpPreapprovalId || '',
+      mpPaymentId: String(eventId),
       type: reservation.status === 'pending_payment' ? 'initial' : 'recurring_payment',
-      amount: reservation.monthly,
+      amount: (paid && paid.amount > 0) ? paid.amount : reservation.monthly,
       currency: 'ARS',
-      status: 'approved',
+      status: (paid && paid.status) ? (paid.status as PaymentStatus) : 'approved',
       period,
     });
 
@@ -100,27 +116,34 @@ async function processWebhook(body: Record<string, unknown>): Promise<void> {
     const reservation = await getReservationByMpPreapprovalId(preapprovalId);
     if (!reservation) return;
 
-    const rawStatus = data?.status as string;
+    // El body NO trae el status (MP manda solo {id}); se lo pedimos a MP. Sin esto, rawStatus
+    // quedaba undefined y TODO caia a 'payment_failed' por error. Solo 'cancelled' da de baja;
+    // authorized/paused/pending solo ajustan el estado de la suscripcion (NO marcan fallida).
+    const rawStatus = (await getSubscriptionStatus(preapprovalId)) || (data?.status as string) || '';
     const VALID_MP_STATUSES: MpSubscriptionStatus[] = ['pending', 'authorized', 'paused', 'cancelled'];
-    const mpStatus: MpSubscriptionStatus = VALID_MP_STATUSES.includes(rawStatus as MpSubscriptionStatus)
-      ? (rawStatus as MpSubscriptionStatus)
-      : 'cancelled';
-    const newStatus = rawStatus === 'cancelled' ? 'cancelled' : 'payment_failed';
+    const mpStatus = VALID_MP_STATUSES.includes(rawStatus as MpSubscriptionStatus) ? (rawStatus as MpSubscriptionStatus) : null;
+    if (!mpStatus) { console.warn('[mp-webhook] preapproval con status desconocido:', preapprovalId, rawStatus); return; }
 
-    // La baja vino por MP (la inicia el cliente desde su cuenta). Si en el futuro el
-    // admin cancela desde el panel, ese flujo marcara cancelledBy='admin' antes.
+    // La baja vino por MP (la inicia el cliente). Si el admin cancela desde el panel, ese flujo
+    // marcara cancelledBy='admin' antes.
     const cancelledBy = (reservation as any).cancelledBy || 'cliente';
 
+    if (mpStatus !== 'cancelled') {
+      await updateReservation(reservation.id, { mpSubscriptionStatus: mpStatus } as any);
+      console.log(`[mp-webhook] Reservation ${reservation.id} sub -> ${mpStatus}`);
+      return;
+    }
+
     await updateReservation(reservation.id, {
-      status: newStatus,
-      mpSubscriptionStatus: mpStatus,
+      status: 'cancelled',
+      mpSubscriptionStatus: 'cancelled',
       cancelledAt: Timestamp.now(),
       cancelledBy,
-      bajaGestionada: newStatus === 'cancelled' ? false : undefined,
+      bajaGestionada: false,
     } as any);
 
-    // Si quedo cancelada, liberar la baulera para que vuelva a estar disponible
-    if (newStatus === 'cancelled' && reservation.storageRoomId) {
+    // Liberar la baulera para que vuelva a estar disponible.
+    if (reservation.storageRoomId) {
       await db.collection('storageRooms').doc(reservation.storageRoomId).set({
         status: 'available',
         customerId: null,
@@ -149,6 +172,6 @@ async function processWebhook(body: Record<string, unknown>): Promise<void> {
       },
     });
 
-    console.log(`[mp-webhook] Reservation ${reservation.id} → ${newStatus} (por ${cancelledBy})`);
+    console.log(`[mp-webhook] Reservation ${reservation.id} -> cancelled (por ${cancelledBy})`);
   }
 }

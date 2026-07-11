@@ -179,6 +179,44 @@ export async function getPaymentExternalReference(paymentId: string): Promise<st
   } catch { return null; }
 }
 
+// DETALLE de un pago para el webhook de cobros: monto/estado/fecha REALES + external_reference
+// (= "MiContainer Baulera A2-010" o el reservationId). Sirve para registrar el cobro con el dato
+// real (no el configurado) y para ubicar la reserva cuando data.id es el id del PAGO, no del preapproval.
+export interface MpPaymentDetail { externalReference: string; amount: number; status: string; date: string; }
+export async function getPaymentDetail(paymentId: string): Promise<MpPaymentDetail | null> {
+  const accessToken = process.env.MP_ACCESS_TOKEN;
+  if (!accessToken) return null;
+  try {
+    const res = await fetch(`${MP_API_BASE}/v1/payments/${paymentId}`, {
+      headers: { 'Authorization': `Bearer ${accessToken}` },
+    });
+    if (!res.ok) return null;
+    const d = await res.json() as { external_reference?: string; transaction_amount?: number; status?: string; date_approved?: string; date_created?: string };
+    return {
+      externalReference: d.external_reference ? String(d.external_reference) : '',
+      amount: Number(d.transaction_amount) || 0,
+      status: String(d.status || ''),
+      date: String(d.date_approved || d.date_created || ''),
+    };
+  } catch { return null; }
+}
+
+// Estado REAL de una suscripcion (preapproval). El webhook de subscription_preapproval NO trae el
+// status en el body (MP manda solo {id}); hay que pedirselo a MP. Devuelve 'authorized' | 'paused'
+// | 'pending' | 'cancelled' o null si no se pudo.
+export async function getSubscriptionStatus(preapprovalId: string): Promise<string | null> {
+  const accessToken = process.env.MP_ACCESS_TOKEN;
+  if (!accessToken) return null;
+  try {
+    const res = await fetch(`${MP_API_BASE}/preapproval/${encodeURIComponent(preapprovalId)}`, {
+      headers: { 'Authorization': `Bearer ${accessToken}` },
+    });
+    if (!res.ok) return null;
+    const d = await res.json() as { status?: string };
+    return d.status ? String(d.status) : null;
+  } catch { return null; }
+}
+
 
 export interface MpSubscription {
   id: string;

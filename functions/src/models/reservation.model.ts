@@ -74,3 +74,13 @@ export async function getReservationByMpPreapprovalId(mpPreapprovalId: string): 
     .get();
   return snap.empty ? null : (snap.docs[0].data() as Reservation);
 }
+
+// Ubica la reserva por el CODIGO de baulera (para el webhook de cobros: el external_reference del
+// pago trae "MiContainer Baulera A2-010" -> A2-010, y asi se resuelve la reserva sin el preapprovalId).
+export async function getReservationByBauleraCodigo(bauleraCodigo: string): Promise<Reservation | null> {
+  const snap = await reservationsCol()
+    .where('bauleraCodigo', '==', bauleraCodigo)
+    .limit(1)
+    .get();
+  return snap.empty ? null : (snap.docs[0].data() as Reservation);
+}
