@@ -237,6 +237,41 @@ export async function getLastChargeAttempt(preapprovalId: string): Promise<MpCha
   } catch { return null; }
 }
 
+// HISTORIAL REAL de cobros de una suscripcion (para el portal del cliente). Trae todos los
+// authorized_payments y los mapea a {period, date, amount, status}. status: 'approved' (cobrado) /
+// 'rejected' (rebotado / en reintento) / 'pending'. Cache 5 min por preapproval para no pegarle a
+// MP en cada refresh del cliente.
+export interface MpCharge { period: string; date: string; amount: number; status: 'approved' | 'rejected' | 'pending'; }
+const _histCache = new Map<string, { at: number; data: MpCharge[] }>();
+export async function getChargeHistory(preapprovalId: string): Promise<MpCharge[]> {
+  const cached = _histCache.get(preapprovalId);
+  if (cached && Date.now() - cached.at < 5 * 60_000) return cached.data;
+  const accessToken = process.env.MP_ACCESS_TOKEN;
+  if (!accessToken) return [];
+  try {
+    const res = await fetch(`${MP_API_BASE}/authorized_payments/search?preapproval_id=${encodeURIComponent(preapprovalId)}`, {
+      headers: { 'Authorization': `Bearer ${accessToken}` },
+    });
+    if (!res.ok) return [];
+    const d = await res.json() as { results?: Array<Record<string, unknown>> };
+    const rows = Array.isArray(d.results) ? d.results : [];
+    const out: MpCharge[] = rows.map((r) => {
+      const pay = (r['payment'] as Record<string, unknown>) || {};
+      const payStatus = String(pay['status'] || '');
+      const attempt = String(r['status'] || '');
+      const date = String(r['date_created'] || r['last_modified'] || '');
+      let status: MpCharge['status'] = 'pending';
+      if (payStatus === 'approved') status = 'approved';
+      else if (payStatus === 'rejected' || attempt === 'recycling') status = 'rejected';
+      return { period: date.slice(0, 7), date, amount: Number(r['transaction_amount']) || 0, status };
+    }).filter((c) => c.period);
+    out.sort((a, b) => b.date.localeCompare(a.date));
+    const trimmed = out.slice(0, 12);
+    _histCache.set(preapprovalId, { at: Date.now(), data: trimmed });
+    return trimmed;
+  } catch { return []; }
+}
+
 // Estado REAL de una suscripcion (preapproval). El webhook de subscription_preapproval NO trae el
 // status en el body (MP manda solo {id}); hay que pedirselo a MP. Devuelve 'authorized' | 'paused'
 // | 'pending' | 'cancelled' o null si no se pudo.

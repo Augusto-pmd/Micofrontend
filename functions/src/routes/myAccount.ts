@@ -7,8 +7,49 @@
 import { Router, Response } from 'express';
 import { requireAuth, AuthenticatedRequest } from '../middleware/requireAuth';
 import { db, auth } from '../config/firebase';
+import { getChargeHistory } from '../services/mercadopago.service';
 
 export const myAccountRouter = Router();
+
+// Chequeo de email verificado (mismo que en GET /). Devuelve true si puede seguir.
+async function emailVerificadoOk(authReq: AuthenticatedRequest, res: Response): Promise<boolean> {
+  if (process.env.FUNCTIONS_EMULATOR === 'true') return true;
+  try {
+    const fbUser = await auth.getUser(authReq.uid);
+    if (!fbUser.emailVerified) { res.status(403).json({ error: 'Confirmá tu email para acceder a tu portal', code: 'email_not_verified' }); return false; }
+    return true;
+  } catch { res.status(403).json({ error: 'Cuenta no activada', code: 'not_activated' }); return false; }
+}
+
+// GET /my-account/payments — HISTORIAL REAL de cobros del cliente autenticado (de Mercado Pago).
+// Resuelve las suscripciones del cliente por su token (email/uid) → nadie puede pedir el de otro.
+// Reemplaza el historial INVENTADO del portal por los cobros reales (monto/fecha/estado).
+myAccountRouter.get('/payments', requireAuth, async (req, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
+  const email = (authReq.email || '').toLowerCase();
+  if (!email) { res.status(401).json({ error: 'No autenticado' }); return; }
+  if (!(await emailVerificadoOk(authReq, res))) return;
+  try {
+    const [mpByEmail, mpByUid] = await Promise.all([
+      db.collection('reservations').where('customerEmail', '==', email).get(),
+      authReq.uid ? db.collection('reservations').where('userUid', '==', authReq.uid).get() : Promise.resolve({ docs: [] as any[] }),
+    ]);
+    const seen = new Set<string>();
+    const preapprovalIds: string[] = [];
+    [...mpByEmail.docs, ...(mpByUid as any).docs].forEach((d: any) => {
+      const pid = d.data()?.mpPreapprovalId;
+      if (pid && !seen.has(pid)) { seen.add(pid); preapprovalIds.push(pid); }
+    });
+    const subs = await Promise.all(preapprovalIds.map(async (pid) => ({
+      mpPreapprovalId: pid,
+      history: await getChargeHistory(pid),
+    })));
+    res.json({ subs });
+  } catch (err) {
+    console.error('GET /my-account/payments error:', err);
+    res.status(500).json({ error: 'No se pudo obtener el historial de pagos' });
+  }
+});
 
 myAccountRouter.get('/', requireAuth, async (req, res: Response) => {
   const authReq = req as AuthenticatedRequest;

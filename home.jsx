@@ -2120,6 +2120,26 @@ function PortalEntry({ user, reservations, accountData, accountLoading, onLogout
 }
 
 function ProximoPago({ reservation }) {
+  // Historial REAL de cobros (de Mercado Pago). Si no hay sub o falla, queda el calculado (mockHistory).
+  const [realHist, setRealHist] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    const pid = reservation.mpPreapprovalId;
+    if (!pid) return;
+    (async () => {
+      try {
+        const token = await _tryGetFirebaseToken();
+        if (!token) return;
+        const res = await fetch(`${MC_API}/my-account/payments`, { headers: { Authorization: `Bearer ${token}` } });
+        if (!res.ok) return;
+        const data = await res.json();
+        const sub = (data.subs || []).find((s) => s.mpPreapprovalId === pid);
+        if (alive && sub && sub.history && sub.history.length) setRealHist(sub.history);
+      } catch (e) { /* si falla, queda el historial calculado */ }
+    })();
+    return () => { alive = false; };
+  }, [reservation.mpPreapprovalId]);
+
   const calcNextPayment = () => {
     try {
       const start = new Date(reservation.startDate);
@@ -2155,6 +2175,14 @@ function ProximoPago({ reservation }) {
     return rows.reverse().slice(0, 4);
   })();
 
+  // Filas del historial: reales (con estado) si las trajimos de MP; si no, las calculadas.
+  const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  const realRows = realHist ? realHist.map((h) => {
+    const p = String(h.period).split('-');
+    return { label: `${MESES[Number(p[1]) - 1] || p[1]} ${p[0]}`, amount: h.amount, status: h.status };
+  }).slice(0, 6) : null;
+  const rows = realRows || mockHistory;
+
   return (
     <div className="mc-portal-block mc-pago">
       <span className="mc-portal-block-title">Próximo pago</span>
@@ -2173,12 +2201,12 @@ function ProximoPago({ reservation }) {
           <div className="mc-pago-next">Próximo cobro: {nextDate}</div>
         </>
       )}
-      {mockHistory.length > 0 && (
+      {rows.length > 0 && (
         <div className="mc-pago-history">
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--mc-ink-4)', marginBottom: 10 }}>
             Historial
           </div>
-          {mockHistory.map((row, i) => (
+          {rows.map((row, i) => (
             <div key={i} className="mc-pago-row">
               <span>
                 {row.label}
@@ -2186,7 +2214,11 @@ function ProximoPago({ reservation }) {
               </span>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <b>${row.amount.toLocaleString('es-AR')}</b>
-                <a href="#" onClick={(e) => e.preventDefault()}>ver factura ↗</a>
+                {row.status
+                  ? <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em', padding: '2px 8px', borderRadius: 6, background: row.status === 'approved' ? '#e7f6e7' : row.status === 'rejected' ? '#fdecec' : '#fdf4e3', color: row.status === 'approved' ? '#1a7a1a' : row.status === 'rejected' ? '#b42318' : '#8a5a00' }}>
+                      {row.status === 'approved' ? 'Pagado' : row.status === 'rejected' ? 'Rechazado' : 'Pendiente'}
+                    </span>
+                  : <a href="#" onClick={(e) => e.preventDefault()}>ver factura ↗</a>}
               </div>
             </div>
           ))}
