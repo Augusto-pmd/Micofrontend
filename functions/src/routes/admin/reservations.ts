@@ -301,11 +301,13 @@ adminReservationsRouter.post('/sell-plan', requireAuth, async (req, res: Respons
   try {
     const {
       sucursalId = 'nordelta', category = 'Baulera', m2, storageRoomId, bauleraCodigo,
-      name = '', email = '', phone = '', dni = '', startDate, durationMonths, promoMonths, discountPct = 0, priceOverride,
+      name = '', email = '', phone = '', dni = '', startDate, durationMonths, promoMonths, promoUnit, discountPct = 0, priceOverride,
     } = req.body || {};
     if (!email) { res.status(400).json({ error: 'Falta el email del cliente' }); return; }
     if (!m2)    { res.status(400).json({ error: 'Falta la medida (m2)' }); return; }
-    const freeMonths = Math.max(1, Number(promoMonths) || 1);
+    // Período gratis PERSONALIZABLE (promos específicas): cantidad + unidad (días o meses).
+    const freeQty = Math.max(1, Number(promoMonths) || 1);
+    const freeUnit: 'days' | 'months' = promoUnit === 'days' ? 'days' : 'months';
 
     const byM2 = await getPricingByM2(sucursalId);
     let monthlyNum = Number(priceOverride) > 0 ? Number(priceOverride) : (recurringFor(byM2, Number(m2), Number(durationMonths) || 1) ?? 0);
@@ -318,7 +320,8 @@ adminReservationsRouter.post('/sell-plan', requireAuth, async (req, res: Respons
     if (process.env.FUNCTIONS_EMULATOR === 'true') {
       planId = `emu-plan-${m2}`; planLink = `https://www.mercadopago.com.ar/subscriptions/emulator-plan?m2=${m2}`;
     } else {
-      const planRef = db.collection('mpPlans').doc(`m2-${String(m2)}-trial${freeMonths}`);
+      // Un plan por (medida × período gratis): m2-9-trial1m, m2-9-trial15d, etc.
+      const planRef = db.collection('mpPlans').doc(`m2-${String(m2)}-trial${freeQty}${freeUnit === 'days' ? 'd' : 'm'}`);
       const planSnap = await planRef.get();
       if (planSnap.exists) {
         const p = planSnap.data() as Record<string, unknown>;
@@ -328,9 +331,9 @@ adminReservationsRouter.post('/sell-plan', requireAuth, async (req, res: Respons
           await planRef.set({ amount: monthlyNum, updatedAt: new Date().toISOString() }, { merge: true });
         }
       } else {
-        const created = await createPlan({ m2: Number(m2), amount: monthlyNum, freeTrialMonths: freeMonths });
+        const created = await createPlan({ m2: Number(m2), amount: monthlyNum, freeTrialQty: freeQty, freeTrialUnit: freeUnit });
         planId = created.planId; planLink = created.initPoint;
-        await planRef.set({ m2: Number(m2), amount: monthlyNum, freeTrialMonths: freeMonths, planId, initPoint: planLink, createdAt: new Date().toISOString() });
+        await planRef.set({ m2: Number(m2), amount: monthlyNum, freeTrialQty: freeQty, freeTrialUnit: freeUnit, planId, initPoint: planLink, createdAt: new Date().toISOString() });
       }
     }
 
@@ -356,7 +359,8 @@ adminReservationsRouter.post('/sell-plan', requireAuth, async (req, res: Respons
       customerPhone: phone || undefined, customerDni: dni || undefined,
       storageRoomId: hold.roomId,
       bauleraCodigo: hold.bauleraCodigo || bauleraCodigo || undefined,
-      promoMonths: freeMonths,
+      promoMonths: freeUnit === 'months' ? freeQty : 0,
+      promoQty: freeQty, promoUnit: freeUnit,
       paymentMode: 'plan', mpPlanId: planId,
       discountPct: disc,
       source: 'manual_admin',
@@ -367,9 +371,9 @@ adminReservationsRouter.post('/sell-plan', requireAuth, async (req, res: Respons
       via: (req.body?.via as string) || 'admin',
       action: 'link_generado_plan_mes_gratis',
       entity: 'reservation', entityId: id, branchId: sucursalId,
-      detail: { cliente: name, email, baulera: hold.bauleraCodigo || null, m2: Number(m2), mensual: monthlyNum, mesesGratis: freeMonths, planId },
+      detail: { cliente: name, email, baulera: hold.bauleraCodigo || null, m2: Number(m2), mensual: monthlyNum, gratis: `${freeQty} ${freeUnit === 'days' ? 'día(s)' : 'mes(es)'}`, planId },
     });
-    res.status(201).json({ reservationId: id, initPoint: planLink, monthly: monthlyNum, duration: Number(durationMonths) || 1, paymentMode: 'plan', planId });
+    res.status(201).json({ reservationId: id, initPoint: planLink, monthly: monthlyNum, duration: Number(durationMonths) || 1, paymentMode: 'plan', planId, gratis: `${freeQty} ${freeUnit === 'days' ? 'día(s)' : 'mes(es)'}` });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('POST /admin/reservations/sell-plan error:', err);

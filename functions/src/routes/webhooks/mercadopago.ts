@@ -150,7 +150,7 @@ async function processWebhook(body: Record<string, unknown>): Promise<void> {
               via: 'mercadopago',
               action: 'alta_suscripcion_plan',
               entity: 'reservation', entityId: r.id, branchId: r.sucursalId,
-              detail: { cliente: r.customerName || '', baulera: assignedRoom || r.storageRoomId || null, planId: det.planId, monthly: r.monthly, mesesGratis: (r as any).promoMonths || 1 },
+              detail: { cliente: r.customerName || '', baulera: assignedRoom || r.storageRoomId || null, planId: det.planId, monthly: r.monthly, gratis: (r as any).promoQty ? `${(r as any).promoQty} ${(r as any).promoUnit === 'days' ? 'día(s)' : 'mes(es)'}` : ((r as any).promoMonths || 1) },
             });
             if (r.customerEmail) {
               try { await sendActivationEmail(r.customerEmail, r.customerName || ''); }

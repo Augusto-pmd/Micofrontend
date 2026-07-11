@@ -243,17 +243,21 @@ export async function getLastChargeAttempt(preapprovalId: string): Promise<MpCha
 // y su init_point es el LINK DEL PLAN que se comparte al cliente (paga en la pagina de MP,
 // sin tokenizacion). Ver docs/referencia/mercadopago-planes.md §1.5.
 export interface MpPlanCreated { planId: string; initPoint: string; }
-export async function createPlan(params: { m2: number; amount: number; freeTrialMonths: number }): Promise<MpPlanCreated> {
+export type FreeTrialUnit = 'days' | 'months';
+export async function createPlan(params: { m2: number; amount: number; freeTrialQty: number; freeTrialUnit: FreeTrialUnit }): Promise<MpPlanCreated> {
   const accessToken = process.env.MP_ACCESS_TOKEN;
   if (!accessToken) throw new Error('MP_ACCESS_TOKEN not configured');
+  const unidad = params.freeTrialUnit === 'days'
+    ? (params.freeTrialQty > 1 ? 'dias' : 'dia')
+    : (params.freeTrialQty > 1 ? 'meses' : 'mes');
   const body = {
-    reason: `Mi Container Baulera ${params.m2}m2 (${params.freeTrialMonths} mes${params.freeTrialMonths > 1 ? 'es' : ''} gratis)`,
+    reason: `Mi Container Baulera ${params.m2}m2 (${params.freeTrialQty} ${unidad} gratis)`,
     auto_recurring: {
       frequency: 1,
       frequency_type: 'months',
       transaction_amount: params.amount,
       currency_id: 'ARS',
-      free_trial: { frequency: params.freeTrialMonths, frequency_type: 'months' },
+      free_trial: { frequency: params.freeTrialQty, frequency_type: params.freeTrialUnit },
     },
     back_url: 'https://micontainer.com/#/portal',
   };
