@@ -489,6 +489,7 @@ pricingRouter.get('/roster/:branchId', verifyToken, requireStaff, async (_req: R
         mpConfigurado: sub ? sub.amount : null,
         subId: sub ? sub.id : null,
         ultimoCobro: null as number | null, ultimoCobroFecha: null as string | null,
+        configuradoDesde: sub ? (sub.lastModified || null) : null, // fecha del último cambio de la sub (para reconciliar)
       });
     }
     // Último cobro real solo de las que tienen MP.

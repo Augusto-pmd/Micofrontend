@@ -295,6 +295,7 @@ export async function searchSubscriptions(status?: string): Promise<MpSubscripti
         reason: String(r['reason'] ?? ''),
         amount: Number(ar['transaction_amount']) || 0,
         status: String(r['status'] ?? ''),
+        lastModified: String(r['last_modified'] ?? ''), // fecha del ultimo cambio de la sub (para reconciliar)
       });
     }
     offset += limit;
