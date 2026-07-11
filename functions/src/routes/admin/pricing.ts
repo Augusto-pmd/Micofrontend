@@ -448,3 +448,61 @@ pricingRouter.get('/find-sub', verifyToken, requireStaff, async (req: Request, r
     res.status(500).json({ error: 'No se pudo buscar' });
   }
 });
+
+// GET /pricing-engine/roster/:branchId — PADRÓN read-only de todas las bauleras: quién la tiene,
+// cómo paga (MP vs efectivo/sin-MP), precio de inventario, monto MP y último cobro real.
+// Reusa la MISMA lógica del reprice (buildRentedUnits + matcheo por código de baulera) → NO
+// modifica nada (no toca precios ni suscripciones). Solo lee y arma el padrón.
+pricingRouter.get('/roster/:branchId', verifyToken, requireStaff, async (_req: Request, res: Response) => {
+  try {
+    const [allSubs, units, resIdToCode] = await Promise.all([
+      searchSubscriptionsCached(), buildRentedUnits(), buildResIdToCodeMap(),
+    ]);
+    const subs = allSubs.filter((s) => s.status === 'authorized' || s.status === 'pending');
+    // Mismo canon/codeOf que computeMeasure (robusto a formatos y ceros a la izquierda).
+    const canon = (c: string): string => {
+      const s = String(c || '').toUpperCase();
+      const m = s.match(/([A-Z]\d)\D*0*(\d+)/);
+      return m ? m[1] + m[2] : s.replace(/[^A-Z0-9]/g, '');
+    };
+    const codeOf = (ext: string): string => { const m = String(ext || '').match(/[A-Za-z]\d+-\d+|[A-Za-z]\d{3,}/); return m ? canon(m[0]) : ''; };
+    const byCode = new Map<string, MpSubscription[]>();
+    const byEmail = new Map<string, MpSubscription[]>();
+    for (const s of subs) {
+      let c = codeOf(s.externalReference);
+      if (!c) { const raw = resIdToCode.get((s.externalReference || '').trim()); if (raw) c = canon(raw); }
+      if (c) { if (!byCode.has(c)) byCode.set(c, []); byCode.get(c)!.push(s); }
+      const e = s.payerEmail.trim().toLowerCase();
+      if (e) { if (!byEmail.has(e)) byEmail.set(e, []); byEmail.get(e)!.push(s); }
+    }
+    const used = new Set<string>();
+    const ocupadas: Array<Record<string, unknown>> = [];
+    for (const u of units) {
+      const c = canon(u.code);
+      let sub = c ? (byCode.get(c) || []).find((s) => !used.has(s.id)) : undefined;
+      if (!sub) { const e = (u.email || '').trim().toLowerCase(); if (e) sub = (byEmail.get(e) || []).find((s) => !used.has(s.id)); }
+      if (sub) used.add(sub.id);
+      ocupadas.push({
+        baulera: u.code, m2: u.m2, cliente: u.name, email: u.email, dni: u.dni,
+        metodo: sub ? 'MP' : 'efectivo/sin-MP',
+        precioInventario: u.monthly,
+        mpConfigurado: sub ? sub.amount : null,
+        subId: sub ? sub.id : null,
+        ultimoCobro: null as number | null, ultimoCobroFecha: null as string | null,
+      });
+    }
+    // Último cobro real solo de las que tienen MP.
+    const withSub = ocupadas.filter((r) => r['subId']);
+    const lc = await getLastChargedMap(withSub.map((r) => String(r['subId'])));
+    for (const r of withSub) { const x = lc.get(String(r['subId'])); if (x) { r['ultimoCobro'] = x.lastCharged || null; r['ultimoCobroFecha'] = x.lastChargedDate || null; } }
+    // Bauleras NO ocupadas (vacías/anuladas) para completar el padrón.
+    const allRooms = await db.collection('storageRooms').get();
+    const vacias: Array<Record<string, unknown>> = [];
+    allRooms.forEach((d) => { const r = d.data() as Record<string, unknown>; if (r['status'] !== 'occupied') vacias.push({ baulera: String(r['space'] || r['name'] || d.id), m2: Number(r['areaM2']) || 0, status: String(r['status'] || '') }); });
+    const conMP = ocupadas.filter((r) => r['metodo'] === 'MP').length;
+    res.json({ ocupadasTotal: ocupadas.length, conMP, sinMP: ocupadas.length - conMP, vaciasTotal: vacias.length, ocupadas, vacias });
+  } catch (err) {
+    console.error('GET /pricing-engine/roster error:', err);
+    res.status(500).json({ error: 'No se pudo armar el roster' });
+  }
+});
