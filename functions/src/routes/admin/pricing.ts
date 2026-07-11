@@ -515,8 +515,15 @@ pricingRouter.get('/roster/:branchId', verifyToken, requireStaff, async (_req: R
 // las suscripciones, incluso las legacy creadas en MP antes de que exista la web (sin reserva).
 // El estado se recalcula en cada consulta -> si el cliente paga, deja de figurar solo.
 const PLAZO_REGULARIZAR_DIAS = 10;
-pricingRouter.get('/cobros-rechazados/:branchId', verifyToken, requireStaff, async (_req: Request, res: Response) => {
+// Cache 10 min: la consulta hace ~77 llamadas a MP (~30s). El estado "rechazado" no cambia
+// minuto a minuto; asi el menu/inventario cargan al toque. ?refresh=1 fuerza recalcular.
+let _rechazadosCache: { at: number; data: Record<string, unknown> } | null = null;
+pricingRouter.get('/cobros-rechazados/:branchId', verifyToken, requireStaff, async (req: Request, res: Response) => {
   try {
+    if (req.query['refresh'] !== '1' && _rechazadosCache && Date.now() - _rechazadosCache.at < 10 * 60_000) {
+      res.json({ ..._rechazadosCache.data, cacheado: true });
+      return;
+    }
     const [allSubs, units, resIdToCode] = await Promise.all([
       searchSubscriptionsCached(), buildRentedUnits(), buildResIdToCodeMap(),
     ]);
@@ -570,7 +577,9 @@ pricingRouter.get('/cobros-rechazados/:branchId', verifyToken, requireStaff, asy
       }));
     }
     rechazados.sort((a, b) => String(a['baulera']).localeCompare(String(b['baulera'])));
-    res.json({ total: rechazados.length, plazoDias: PLAZO_REGULARIZAR_DIAS, revisadas: matched.length, sinDato, rechazados });
+    const payload = { total: rechazados.length, plazoDias: PLAZO_REGULARIZAR_DIAS, revisadas: matched.length, sinDato, rechazados };
+    _rechazadosCache = { at: Date.now(), data: payload };
+    res.json(payload);
   } catch (err) {
     console.error('GET /pricing-engine/cobros-rechazados error:', err);
     res.status(500).json({ error: 'No se pudo consultar los cobros rechazados' });
