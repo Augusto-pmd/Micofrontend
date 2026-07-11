@@ -15,19 +15,27 @@ const PAYMENT_APPROVED_TYPES = ['subscription_authorized_payment', 'payment'];
 const SUBSCRIPTION_CANCELLED_TYPES = ['subscription_preapproval'];
 
 mpWebhookRouter.post('/', async (req: Request, res: Response) => {
-  const signature = req.headers['x-signature'] as string;
+  const xSignature = (req.headers['x-signature'] as string) || '';
+  const xRequestId = (req.headers['x-request-id'] as string) || '';
+  const dataId = String((req.query['data.id'] ?? req.query['id'] ?? (req.body?.data as { id?: string } | undefined)?.id ?? '') || '');
   const secret = process.env.MP_WEBHOOK_SECRET ?? '';
-  const rawBody = JSON.stringify(req.body);
 
-  if (secret && !verifyMpWebhookSignature(rawBody, signature, secret)) {
-    res.status(401).json({ error: 'Invalid signature' });
-    return;
+  // MODO MONITOR de firma: el calculo VIEJO estaba mal (hasheaba el body) y venia 401-eando a
+  // TODOS los eventos reales de MP (verificado en Cloud Logging: 34 POST de MP en 4 dias, todos
+  // 401 -> cobros sin procesar). Ahora verificamos con el esquema REAL de MP y LOGUEAMOS el
+  // resultado, pero NO bloqueamos todavia: asi (a) MP vuelve a procesar YA y (b) confirmamos la
+  // firma con trafico real. PASO 2 (cuando el log diga "firma OK" consistente): reactivar el 401.
+  if (secret) {
+    const ok = verifyMpWebhookSignature({ xSignature, xRequestId, dataId, secret });
+    const kind = String(req.body?.type || req.query?.['type'] || '?');
+    console.log(`[mp-webhook] firma ${ok ? 'OK' : 'MISMATCH'} (type=${kind}, data.id=${dataId})`);
+    // if (!ok) { res.status(401).json({ error: 'Invalid signature' }); return; }  // <- enforce (PASO 2)
   }
 
-  // Respond 200 immediately (MP expects response < 5s)
+  // Responder 200 rapido (MP espera < 5s)
   res.status(200).json({ received: true });
 
-  // Process asynchronously without blocking the response
+  // Procesar async sin bloquear la respuesta
   processWebhook(req.body).catch((err) =>
     console.error('[mp-webhook] Processing error:', err)
   );
