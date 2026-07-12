@@ -22,7 +22,8 @@ mailingRouter.post('/send', verifyToken, async (req: Request, res: Response) => 
     if (recipients.length === 0) { res.status(400).json({ error: 'Sin destinatarios.' }); return; }
     if (!subject) { res.status(400).json({ error: 'Falta el asunto.' }); return; }
 
-    const sender = from || process.env.RESEND_FROM || 'Mi Container <onboarding@resend.dev>';
+    // Default = dominio verificado en Resend (resend.dev es el remitente de prueba → 403 a terceros)
+    const sender = from || process.env.RESEND_FROM || 'Mi Container <comercial@micontainer.com>';
     const bodyHtml = html || `<div style="font-family:Arial,sans-serif;white-space:pre-wrap;font-size:15px;color:#222">${String(text || '')}</div>`;
 
     let sent = 0;

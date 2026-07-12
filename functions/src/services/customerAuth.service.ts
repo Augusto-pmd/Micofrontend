@@ -6,7 +6,11 @@ const RESEND_API = 'https://api.resend.com/emails';
 async function sendEmail(to: string, subject: string, html: string): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) { console.warn('[customerAuth] sin RESEND_API_KEY: no se envia el mail'); return; }
-  const from = process.env.RESEND_FROM || 'Mi Container <onboarding@resend.dev>';
+  // El default DEBE ser del dominio verificado en Resend (micontainer.com). El viejo
+  // 'onboarding@resend.dev' es el remitente de PRUEBA de Resend → 403 a cualquier destinatario
+  // que no sea el dueño de la cuenta (por eso los clientes NO recibían el mail de activación,
+  // aunque el dominio estuviera bien verificado — bug destapado con la prueba real del 11/07).
+  const from = process.env.RESEND_FROM || 'Mi Container <comercial@micontainer.com>';
   const r = await fetch(RESEND_API, {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
