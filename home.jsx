@@ -2104,6 +2104,7 @@ function PortalEntry({ user, reservations, accountData, accountLoading, onLogout
         </div>
       </section>
       <div className="mc-res-selector">
+        <TourBienvenida onReserve={onReserve} />
         {confirmedActive.map((r) => (
           <div key={r.id} style={{ marginBottom: 36 }}>
             <EspacioResumen reservation={r} />
@@ -2157,6 +2158,35 @@ const ESTADO_COLOR = {
   'Pago fallido': { bg: '#fdecec', ink: '#b42318' },
   'Cancelación programada': { bg: '#f0f0f0', ink: '#555' },
 };
+
+// TUTORIAL de primera vez en el portal: explica cada sección y las acciones típicas.
+// Se muestra una sola vez (localStorage mc.portalTourSeen); "Entendido" lo cierra.
+function TourBienvenida({ onReserve }) {
+  const [visto, setVisto] = useState(() => {
+    try { return localStorage.getItem('mc.portalTourSeen') === '1'; } catch (e) { return true; }
+  });
+  if (visto) return null;
+  const cerrar = () => { try { localStorage.setItem('mc.portalTourSeen', '1'); } catch (e) {} setVisto(true); };
+  const item = { display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 14, color: 'var(--mc-ink-2)', marginBottom: 10 };
+  return (
+    <div className="mc-portal-block" style={{ border: '1.5px solid color-mix(in oklab, var(--mc-violet) 35%, transparent)', marginBottom: 24 }}>
+      <span className="mc-portal-block-title">👋 Bienvenido a tu portal — cómo se usa</span>
+      <div style={{ marginTop: 10 }}>
+        <div style={item}><span>📦</span><span><b>Tu espacio</b> — tu baulera, su estado ("Activa" = todo en orden) y tus datos del contrato.</span></div>
+        <div style={item}><span>💳</span><span><b>Próximo pago</b> — cuánto y cuándo se te cobra (o hasta cuándo está pago si abonaste de una).</span></div>
+        <div style={item}><span>🧾</span><span><b>Historial de pagos</b> — cada mes con su estado: <b style={{ color: '#1a7a1a' }}>Pagado</b> o <b style={{ color: '#b42318' }}>Rechazado</b>.</span></div>
+        <div style={item}><span>⚙️</span><span><b>Gestionar este espacio</b> — desde ahí podés <b>cambiar de tamaño</b> tu baulera o cancelar.</span></div>
+        <div style={item}><span>➕</span><span><b>¿Necesitás más lugar?</b> Botón <b>"+ Nueva reserva"</b> (abajo) y sumás otra baulera.</span></div>
+        <div style={item}><span>💬</span><span><b>¿Dudas o ayuda?</b> Escribinos por <a href={WHATSAPP} target="_blank" rel="noreferrer" style={{ color: 'var(--mc-violet)', fontWeight: 700 }}>WhatsApp</a> — respondemos rápido.</span></div>
+      </div>
+      <div style={{ marginTop: 6 }}>
+        <button className="mc-btn mc-btn-violet" onClick={cerrar} style={{ fontSize: 13 }}>
+          <span>Entendido, ¡gracias!</span>
+        </button>
+      </div>
+    </div>
+  );
+}
 
 // Resumen del espacio (dashboard vertical): código de baulera + estado legible + datos clave.
 function EspacioResumen({ reservation }) {
@@ -2224,15 +2254,34 @@ function ProximoPago({ reservation }) {
           </a>
         </div>
       )}
-      {!isFailed && esUnico && (
-        <>
-          <div className="mc-pago-amount">${monthly.toLocaleString('es-AR')}<small> abonado</small></div>
-          <div className="mc-pago-next">
-            Pago único{reservation.paidMonths ? ` por ${reservation.paidMonths} mes${reservation.paidMonths > 1 ? 'es' : ''}` : ''} · sin débito automático.
-            {reservation.endDate ? <> Válido hasta <b>{String(reservation.endDate).split('-').reverse().join('/')}</b>.</> : null}
-          </div>
-        </>
-      )}
+      {!isFailed && esUnico && (() => {
+        const fecha = reservation.endDate ? String(reservation.endDate).split('-').reverse().join('/') : null;
+        const vencido = reservation.endDate ? (new Date(`${reservation.endDate}T23:59:59`) < new Date()) : false;
+        const cod = reservation.bauleraCodigo || 'mi baulera';
+        const waRenovar = `${WHATSAPP}?text=${encodeURIComponent(`Hola! Mi pago de la baulera ${cod} vence el ${fecha || ''}. Quiero un nuevo link de pago para renovar.`)}`;
+        const waSuscribir = `${WHATSAPP}?text=${encodeURIComponent(`Hola! Tengo la baulera ${cod} con pago único y quiero pasarme a suscripción con débito automático.`)}`;
+        return (
+          <>
+            <div className="mc-pago-amount">${monthly.toLocaleString('es-AR')}<small> abonado{reservation.paidMonths ? ` · ${reservation.paidMonths} mes${reservation.paidMonths > 1 ? 'es' : ''}` : ''}</small></div>
+            <div className="mc-pago-alert" style={vencido ? {} : { background: '#fdf4e3', borderColor: '#e8c77a' }}>
+              <b style={vencido ? {} : { color: '#8a5a00' }}>{vencido ? `Tu permanencia venció el ${fecha}` : `Tu permanencia vence el ${fecha}`}</b>
+              <p style={vencido ? {} : { color: '#8a5a00' }}>
+                {vencido
+                  ? 'Renovala para conservar tu baulera:'
+                  : 'Para seguir después de esa fecha, pedí un nuevo link de pago — o pasate al débito automático y olvidate:'}
+              </p>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <a className="mc-btn mc-btn-green" href={waRenovar} target="_blank" rel="noreferrer" style={{ fontSize: 13 }}>
+                  <span>Pedir nuevo link de pago</span>
+                </a>
+                <a className="mc-btn mc-btn-ghost-violet" href={waSuscribir} target="_blank" rel="noreferrer" style={{ fontSize: 13 }}>
+                  <span>Suscribirme al débito automático</span>
+                </a>
+              </div>
+            </div>
+          </>
+        );
+      })()}
       {!isFailed && !esUnico && (
         <>
           <div className="mc-pago-amount">${monthly.toLocaleString('es-AR')}<small>/ mes</small></div>
