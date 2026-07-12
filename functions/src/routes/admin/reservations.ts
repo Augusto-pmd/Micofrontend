@@ -5,7 +5,7 @@ import * as admin from 'firebase-admin';
 import * as crypto from 'crypto';
 import { assignRoomForReservation, holdRoomForReservation } from '../../services/assignment.service';
 import { getReservation, createReservation } from '../../models/reservation.model';
-import { createSubscription, createCheckoutPreference, createPlan, updatePlanAmount } from '../../services/mercadopago.service';
+import { createSubscription, createCheckoutPreference, createPlan, updatePlanAmount, cancelSubscription, getSubscriptionStatus } from '../../services/mercadopago.service';
 import { getPricingByM2, recurringFor } from '../../services/pricing.service';
 import { generateReservationId } from '../../utils/generateId';
 import { logAudit } from '../../services/audit.service';
@@ -431,6 +431,66 @@ adminReservationsRouter.post('/:id/assign-room', requireAuth, async (req, res: R
   } catch (err) {
     console.error('POST /admin/reservations/:id/assign-room error:', err);
     res.status(500).json({ error: 'Could not assign room' });
+  }
+});
+
+// POST /admin/reservations/:id/cancel — DAR DE BAJA desde el panel (Ventas en curso).
+// Si tiene suscripción MP la CANCELA en MP (corta el cobro de verdad — a diferencia de Eliminar,
+// que solo borra el registro). Marca la reserva cancelada y LIBERA la baulera. Para pago único
+// (sin sub) marca + libera. El webhook de MP puede llegar después con la misma baja: es idempotente.
+adminReservationsRouter.post('/:id/cancel', requireAuth, async (req, res: Response) => {
+  try {
+    const snap = await db.collection('reservations').doc(req.params.id).get();
+    if (!snap.exists) { res.status(404).json({ error: 'Reservation not found' }); return; }
+    const r = snap.data() as any;
+    if (r.status === 'cancelled') { res.json({ message: 'Ya estaba dada de baja' }); return; }
+
+    // 1) Cortar el cobro en MP (lo importante). Si MP falla, verificar el estado real:
+    //    solo seguimos si la sub ya está cancelada; si no, NO marcamos nada (evita
+    //    "cancelada local pero cobrando en MP").
+    if (r.mpPreapprovalId) {
+      try {
+        await cancelSubscription(String(r.mpPreapprovalId));
+      } catch (e) {
+        const st = await getSubscriptionStatus(String(r.mpPreapprovalId));
+        if (st !== 'cancelled') {
+          res.status(502).json({ error: 'MP no aceptó la cancelación de la suscripción. Cancelala desde el panel de MP y reintentá.' });
+          return;
+        }
+      }
+    }
+
+    // 2) Marcar la reserva de baja (mismo shape que la baja vía webhook)
+    await db.collection('reservations').doc(req.params.id).update({
+      status: 'cancelled',
+      mpSubscriptionStatus: 'cancelled',
+      cancelledAt: admin.firestore.Timestamp.now(),
+      cancelledBy: 'admin',
+      bajaGestionada: true,
+    });
+
+    // 3) Liberar la baulera
+    if (r.storageRoomId) {
+      await db.collection('storageRooms').doc(String(r.storageRoomId)).set({
+        status: 'available', customerId: null, currentTenant: null,
+        reservationId: null, heldUntil: null, heldByReservationId: null,
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+    }
+
+    await logAudit({
+      actor: (req as any).email || (req as any).uid || 'admin',
+      via: 'admin',
+      role: 'admin',
+      action: 'baja_suscripcion',
+      entity: 'reservation', entityId: req.params.id, branchId: r.sucursalId,
+      detail: { cliente: r.customerName || '', baulera: r.bauleraCodigo || r.storageRoomId || null, dadaDeBajaPor: 'admin', teniaSubMP: !!r.mpPreapprovalId, paymentMode: r.paymentMode || 'subscription' },
+    });
+
+    res.json({ message: 'Dada de baja', mpCancelled: !!r.mpPreapprovalId, roomFreed: !!r.storageRoomId });
+  } catch (err) {
+    console.error('POST /admin/reservations/:id/cancel error:', err);
+    res.status(500).json({ error: 'No se pudo dar de baja' });
   }
 });
 
