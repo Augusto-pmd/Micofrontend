@@ -26,6 +26,12 @@ function staffSet(): Set<string> {
   return new Set([...DEFAULT_STAFF.map((e) => e.toLowerCase()), ...extra]);
 }
 
+/** ¿El email pertenece al staff? (allowlist + env STAFF_EMAILS). Para usos fuera del middleware
+ *  (ej. /auth/forgot-password: solo staff recibe el mail de contraseña del panel). */
+export function isStaffEmail(email: string): boolean {
+  return staffSet().has(String(email || '').toLowerCase());
+}
+
 /**
  * Debe usarse DESPUES de verifyToken (que setea req.email).
  * Permite solo a emails de staff. Clientes del portal => 403.

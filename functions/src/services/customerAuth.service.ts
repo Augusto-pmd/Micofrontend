@@ -19,6 +19,27 @@ async function sendEmail(to: string, subject: string, html: string): Promise<voi
   if (!r.ok) console.warn('[customerAuth] Resend fallo:', (await r.text()).slice(0, 160));
 }
 
+// Mail de contraseña del PANEL (staff): link seguro de Firebase para crear/cambiar la contraseña,
+// que al terminar vuelve al login del admin. Lo usa POST /auth/forgot-password (solo staff).
+// Sirve también para que quienes entran con Google se agreguen una contraseña.
+export async function sendAdminPasswordEmail(email: string): Promise<void> {
+  const e = email.trim().toLowerCase();
+  await ensureAuthUser(e);
+  const link = await auth.generatePasswordResetLink(e, { url: 'https://admin-panel-ten-pied.vercel.app/login' });
+  const html = `
+    <div style="font-family:Arial,sans-serif;font-size:15px;color:#222;max-width:520px;margin:auto">
+      <img src="https://micontainer.com/assets/logo.png" alt="Mi Container" width="150" style="display:block;margin:0 0 18px" />
+      <h2 style="color:#3D3083;margin-bottom:6px">Contraseña del panel de gestión</h2>
+      <p>Para crear (o cambiar) tu contraseña del <b>panel de Mi Container</b>, hacé clic acá:</p>
+      <p style="margin:22px 0">
+        <a href="${link}" style="background:#3D3083;color:#fff;padding:13px 24px;border-radius:10px;text-decoration:none;font-weight:bold;display:inline-block">Crear / cambiar mi contraseña</a>
+      </p>
+      <p style="color:#666;font-size:13px">Al terminar volvés al login del panel y podés entrar con tu email y la clave nueva — o seguir usando Google, como prefieras.</p>
+      <p style="color:#999;font-size:12px;margin-top:24px">Si no pediste este mail, podés ignorarlo: tu acceso no cambia.</p>
+    </div>`;
+  await sendEmail(e, 'Tu contraseña del panel — Mi Container', html);
+}
+
 // Crea (si no existe) la cuenta de Firebase Auth del cliente, con email SIN verificar.
 export async function ensureAuthUser(email: string, displayName?: string): Promise<string> {
   const e = email.trim().toLowerCase();
