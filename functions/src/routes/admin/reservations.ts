@@ -9,6 +9,7 @@ import { createSubscription, createCheckoutPreference, createPlan, updatePlanAmo
 import { getPricingByM2, recurringFor } from '../../services/pricing.service';
 import { generateReservationId } from '../../utils/generateId';
 import { logAudit } from '../../services/audit.service';
+import { sendActivationEmail } from '../../services/customerAuth.service';
 
 export const adminReservationsRouter = Router();
 
@@ -431,6 +432,31 @@ adminReservationsRouter.post('/:id/assign-room', requireAuth, async (req, res: R
   } catch (err) {
     console.error('POST /admin/reservations/:id/assign-room error:', err);
     res.status(500).json({ error: 'Could not assign room' });
+  }
+});
+
+// POST /admin/reservations/:id/resend-activation — reenvía el mail de activación del portal
+// (crear contraseña + confirmar email). Útil cuando el mail original no llegó (ej. el bug del
+// remitente resend.dev, arreglado el 11/07) o el cliente lo perdió.
+adminReservationsRouter.post('/:id/resend-activation', requireAuth, async (req, res: Response) => {
+  try {
+    const snap = await db.collection('reservations').doc(req.params.id).get();
+    if (!snap.exists) { res.status(404).json({ error: 'Reservation not found' }); return; }
+    const r = snap.data() as any;
+    const email = String(r.customerEmail || '').trim().toLowerCase();
+    if (!email) { res.status(400).json({ error: 'La reserva no tiene email de cliente' }); return; }
+    await sendActivationEmail(email, String(r.customerName || ''));
+    await logAudit({
+      actor: (req as any).email || (req as any).uid || 'admin',
+      via: 'admin', role: 'admin',
+      action: 'reenvio_activacion',
+      entity: 'reservation', entityId: req.params.id, branchId: r.sucursalId,
+      detail: { cliente: r.customerName || '', email },
+    });
+    res.json({ message: 'Mail de activación enviado', to: email });
+  } catch (err) {
+    console.error('POST /admin/reservations/:id/resend-activation error:', err);
+    res.status(500).json({ error: 'No se pudo reenviar el mail de activación' });
   }
 });
 

@@ -2045,6 +2045,20 @@ function PortalEntry({ user, reservations, accountData, accountLoading, onLogout
           </div>
         </section>
         <div className="mc-res-selector">
+          {accountData && accountData.__error === 'email_not_verified' ? (
+            <div className="mc-portal-block" style={{ textAlign: 'center', padding: '48px 24px' }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>✉️</div>
+              <h3 style={{ fontFamily: 'var(--font-cond)', fontSize: 22, fontWeight: 900, margin: '0 0 8px' }}>
+                Confirmá tu email para ver tus espacios
+              </h3>
+              <p style={{ fontSize: 14, color: 'var(--mc-ink-2)', marginBottom: 8 }}>
+                Te enviamos un mail a <b>{user.email}</b> para activar tu cuenta y crear tu contraseña.
+              </p>
+              <p style={{ fontSize: 13, color: 'var(--mc-ink-3)', marginBottom: 0 }}>
+                ¿No te llegó? Revisá spam o escribinos y te lo reenviamos.
+              </p>
+            </div>
+          ) : (
           <div className="mc-portal-block" style={{ textAlign: 'center', padding: '48px 24px' }}>
             <div style={{ fontSize: 40, marginBottom: 12 }}>📦</div>
             <h3 style={{ fontFamily: 'var(--font-cond)', fontSize: 22, fontWeight: 900, margin: '0 0 8px' }}>
@@ -2058,6 +2072,7 @@ function PortalEntry({ user, reservations, accountData, accountLoading, onLogout
               <span>Reservar ahora</span><span className="arrow">→</span>
             </button>
           </div>
+          )}
           <div style={{ marginTop: 16 }}>
             <button className="mc-btn mc-btn-ghost" onClick={onLogout}><span>Cerrar sesión</span></button>
           </div>
@@ -2760,7 +2775,12 @@ async function fetchMyAccount(email) {
 
     const url = `${MC_API}/my-account${!headers['Authorization'] ? `?email=${encodeURIComponent(email)}` : ''}`;
     const res = await fetch(url, { headers });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      // No tragarse el motivo: si el backend pide confirmar el email (403 email_not_verified),
+      // el portal debe AVISARLO, no mostrar "no tenés espacios" como si no hubiera nada.
+      try { const err = await res.json(); if (err && err.code) return { __error: err.code }; } catch (e) { /* sin cuerpo */ }
+      return null;
+    }
     return await res.json();
   } catch (err) {
     console.warn('[portal] Error cargando cuenta:', err);
