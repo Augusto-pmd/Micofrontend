@@ -46,6 +46,7 @@ export async function sendActivationEmail(email: string, name?: string): Promise
   const saludo = name ? `, ${name}` : '';
   const html = `
     <div style="font-family:Arial,sans-serif;font-size:15px;color:#222;max-width:520px;margin:auto">
+      <img src="https://micontainer.com/assets/logo.png" alt="Mi Container" width="150" style="display:block;margin:0 0 18px" />
       <h2 style="color:#3D3083;margin-bottom:6px">Bienvenido a Mi Container${saludo}</h2>
       <p>Para activar tu cuenta y entrar a tu portal, <b>creá tu contraseña</b> haciendo clic acá:</p>
       <p style="margin:22px 0">

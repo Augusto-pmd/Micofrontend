@@ -130,7 +130,8 @@ async function notifyPriceChange(to: string, name: string, oldAmount: number, ne
   if (!apiKey || !to) return;
   const from = process.env.RESEND_FROM || 'Mi Container <comercial@micontainer.com>';
   const fmt = (n: number) => '$' + Number(n).toLocaleString('es-AR');
-  const html = `<p>Hola ${name || ''},</p>`
+  const html = `<img src="https://micontainer.com/assets/logo.png" alt="Mi Container" width="150" style="display:block;margin:0 0 18px" />`
+    + `<p>Hola ${name || ''},</p>`
     + `<p>Te informamos que el valor de tu alquiler en Mi Container se actualizara de <b>${fmt(oldAmount)}</b> a <b>${fmt(newAmount)}</b> por mes, a partir de tu proximo cobro.</p>`
     + `<p>Ante cualquier duda, escribinos. Gracias por elegirnos.</p>`;
   try {
