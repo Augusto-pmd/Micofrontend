@@ -166,20 +166,7 @@ export async function createCheckoutPreference(
   return { preferenceId: d.id, initPoint: d.init_point };
 }
 
-// Dado un payment id, devuelve su external_reference (= reservationId) para ubicar la reserva.
-export async function getPaymentExternalReference(paymentId: string): Promise<string | null> {
-  const accessToken = process.env.MP_ACCESS_TOKEN;
-  if (!accessToken) return null;
-  try {
-    const res = await fetch(`${MP_API_BASE}/v1/payments/${paymentId}`, {
-      headers: { 'Authorization': `Bearer ${accessToken}` },
-    });
-    if (!res.ok) return null;
-    const d = await res.json() as { external_reference?: string; status?: string };
-    if (d.status && d.status !== 'approved') return null;
-    return d.external_reference ? String(d.external_reference) : null;
-  } catch { return null; }
-}
+// (getPaymentExternalReference ELIMINADA 12/07: 0 usos — superada por getPaymentDetail.)
 
 // DETALLE de un pago para el webhook de cobros: monto/estado/fecha REALES + external_reference
 // (= "MiContainer Baulera A2-010" o el reservationId). Sirve para registrar el cobro con el dato
