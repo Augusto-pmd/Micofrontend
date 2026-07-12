@@ -23,6 +23,22 @@ operatorsRouter.get('/', verifyToken, async (req: Request, res: Response) => {
   }
 });
 
+// GET /operator/user/:userId — busca el operador por su userId de auth. El front (OrderCreate)
+// llama a esta ruta desde siempre, pero NO existía: caía en GET /:id con id="user" → 404.
+// OJO: debe declararse ANTES de '/:id' para que Express no la pise.
+operatorsRouter.get('/user/:userId', verifyToken, async (req: Request, res: Response) => {
+  try {
+    const uid = req.params['userId'];
+    const snap = await db.collection('operators').where('userId', '==', uid).limit(1).get();
+    if (snap.empty) { res.status(404).json({ message: 'Operator not found for user' }); return; }
+    const d = snap.docs[0];
+    res.json({ id: d.id, ...d.data() });
+  } catch (err) {
+    console.error('GET /operator/user/:userId error:', err);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
 // GET /operator/:id
 operatorsRouter.get('/:id', verifyToken, async (req: Request, res: Response) => {
   try {

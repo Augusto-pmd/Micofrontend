@@ -6,6 +6,15 @@ import { getBuildingMap } from '../../utils/buildingCache';
 
 export const ordersRouter = Router();
 
+// El front (types/order.ts) espera status en MAYÚSCULAS (PENDING/CONFIRMED/CANCELED); en la
+// base conviven minúsculas ('pending' al crear, 'cancelled' al cancelar) y mayúsculas (seed).
+// Normalizamos SIEMPRE en la lectura — los datos guardados no se tocan.
+function normalizarStatus(s: unknown): string {
+  const v = String(s || '').toUpperCase();
+  if (v === 'CANCELLED') return 'CANCELED';
+  return v || 'PENDING';
+}
+
 // Enriquece SOLO los docs de la página actual (≤ limit), no toda la colección.
 // buildings/branches vienen del cache (TTL), evitando releerlos por request.
 async function enrichOrders(orders: any[]) {
@@ -42,6 +51,10 @@ async function enrichOrders(orders: any[]) {
 
   return orders.map((o: any) => ({
     ...o,
+    // CASING del status normalizado a lo que espera el front (types/order.ts usa MAYÚSCULAS):
+    // el backend guardaba 'pending'/'cancelled' en minúscula → los badges caían al fallback y
+    // las canceladas no se reconocían. Se normaliza en la LECTURA (no se tocan datos guardados).
+    status: normalizarStatus(o.status),
     // Alias campos del seed para que encajen con el tipo OrderCustomer
     customer: customers[o.customerId] || (o.customerName ? {
       id: o.customerId,
@@ -79,7 +92,14 @@ ordersRouter.get('/', verifyToken, async (req: Request, res: Response) => {
 
     // where() ANTES de orderBy para que el índice compuesto aplique
     let baseQuery: FirebaseFirestore.Query = db.collection('reservationOrders');
-    if (status) baseQuery = baseQuery.where('status', '==', status);
+    if (status) {
+      // La base tiene casing mixto ('pending' del create, 'CONFIRMED' del seed, 'cancelled' del
+      // cancel) → el filtro matchea todas las variantes del status pedido.
+      const s = String(status);
+      const variantes = [...new Set([s, s.toLowerCase(), s.toUpperCase(),
+        s.toUpperCase() === 'CANCELED' ? 'cancelled' : '', s.toLowerCase() === 'cancelled' ? 'CANCELED' : ''].filter(Boolean))];
+      baseQuery = baseQuery.where('status', 'in', variantes);
+    }
     if (customerId) baseQuery = baseQuery.where('customerId', '==', customerId);
     baseQuery = baseQuery.orderBy('createdAt', 'desc');
 
@@ -139,7 +159,16 @@ ordersRouter.get('/customer/:customerId', verifyToken, async (req: Request, res:
 ordersRouter.post('/', verifyToken, async (req: Request, res: Response) => {
   try {
     const now = new Date().toISOString();
-    const data = { ...req.body, status: req.body.status ?? 'pending', createdAt: now, updatedAt: now };
+    const data: any = { ...req.body, status: req.body.status ?? 'pending', createdAt: now, updatedAt: now };
+    // totalAmount: el form de crear NO lo manda → antes la orden nacía sin monto y el admin
+    // mostraba $NaN hasta editarla. Se completa desde el precio real de la baulera elegida.
+    if (!data.totalAmount && data.storageRoomId) {
+      try {
+        const room = await db.collection('storageRooms').doc(String(data.storageRoomId)).get();
+        const precio = room.exists ? Number((room.data() as any).price) || 0 : 0;
+        if (precio > 0) { data.totalAmount = String(precio); data.monthlyPrice = precio; }
+      } catch { /* sin precio: queda como antes */ }
+    }
     const ref = await db.collection('reservationOrders').add(data);
     res.status(201).json({ id: ref.id, ...data });
   } catch (err) {
