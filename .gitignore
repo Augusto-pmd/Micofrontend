@@ -1,3 +1,4 @@
 functions/.env.local
 functions/lib/
 node_modules/
+functions/src/routes/admin/seed-data.local.ts
