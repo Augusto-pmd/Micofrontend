@@ -26,10 +26,19 @@ function staffSet(): Set<string> {
   return new Set([...DEFAULT_STAFF.map((e) => e.toLowerCase()), ...extra]);
 }
 
-/** ¿El email pertenece al staff? (allowlist + env STAFF_EMAILS). Para usos fuera del middleware
- *  (ej. /auth/forgot-password: solo staff recibe el mail de contraseña del panel). */
+/** ¿El email pertenece al staff? REGLA UNIFICADA (12/07): allowlist + env STAFF_EMAILS +
+ *  cualquier casilla @micontainer.com (antes el front aceptaba el dominio pero el backend no
+ *  → un @micontainer.com podía loguear y recibir 403 en todo). FUENTE ÚNICA de verdad:
+ *  el front consulta POST /auth/is-staff en el login en vez de su lista local. */
 export function isStaffEmail(email: string): boolean {
-  return staffSet().has(String(email || '').toLowerCase());
+  const e = String(email || '').toLowerCase().trim();
+  if (!e) return false;
+  return e.endsWith('@micontainer.com') || staffSet().has(e);
+}
+
+/** Lista de emails de la allowlist (para la pantalla de usuarios del panel). */
+export function staffEmails(): string[] {
+  return [...staffSet()].sort();
 }
 
 /**
@@ -39,6 +48,6 @@ export function isStaffEmail(email: string): boolean {
 export function requireStaff(req: Request, res: Response, next: NextFunction): void {
   if (process.env.FUNCTIONS_EMULATOR === 'true') { next(); return; }
   const email = String((req as AuthenticatedRequest).email || '').toLowerCase();
-  if (email && staffSet().has(email)) { next(); return; }
+  if (isStaffEmail(email)) { next(); return; }
   res.status(403).json({ error: 'Solo personal autorizado puede cambiar el valor de suscripciones.' });
 }
