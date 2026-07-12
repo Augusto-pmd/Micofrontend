@@ -18,7 +18,8 @@ mailingRouter.post('/send', verifyToken, async (req: Request, res: Response) => 
     const { to, subject, text, html, from } = req.body as {
       to?: string[]; subject?: string; text?: string; html?: string; from?: string;
     };
-    const recipients = (Array.isArray(to) ? to : []).map((e) => String(e).trim()).filter(Boolean);
+    // Dedupe defensivo: nunca 2 mails a la misma casilla en un mismo envío
+    const recipients = [...new Set((Array.isArray(to) ? to : []).map((e) => String(e).trim().toLowerCase()).filter(Boolean))];
     if (recipients.length === 0) { res.status(400).json({ error: 'Sin destinatarios.' }); return; }
     if (!subject) { res.status(400).json({ error: 'Falta el asunto.' }); return; }
 

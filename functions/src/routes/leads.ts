@@ -15,11 +15,21 @@ leadsRouter.get('/', verifyToken, async (req: Request, res: Response) => {
       db.collection('waitlist').get(),
     ]);
 
+    // DEDUPE por persona: customers guarda UN doc por contrato/venta (PALCARE tiene 3, etc.)
+    // → sin esto la pantalla Avisos contaba "148 clientes" y podía mandarle el mismo mail
+    // varias veces a la misma persona. Se unifica por email (o teléfono si no hay email).
+    const vistos = new Set<string>();
     const clientes = custSnap.docs.map((d) => {
       const c = d.data() as Record<string, unknown>;
       const name = String(c.fullName || `${c.firstName || ''} ${c.lastName || ''}`).trim();
       return { id: d.id, name, email: String(c.email || ''), phone: String(c.phone || ''), m2: c.m2 ?? null };
-    }).filter((c) => c.email || c.phone);
+    }).filter((c) => c.email || c.phone)
+      .filter((c) => {
+        const clave = (c.email || `tel:${c.phone}`).toLowerCase().trim();
+        if (vistos.has(clave)) return false;
+        vistos.add(clave);
+        return true;
+      });
 
     const emails = new Set(clientes.map((c) => c.email.toLowerCase()).filter(Boolean));
 
