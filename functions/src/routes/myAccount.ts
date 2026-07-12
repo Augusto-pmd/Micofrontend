@@ -125,11 +125,14 @@ myAccountRouter.get('/', requireAuth, async (req, res: Response) => {
       return {
         id: d.id,
         contractNumber: null,
-        bauleraCodigo: null,
-        storageRoomId: null,
+        // La baulera SÍ existe en la reserva (se asigna al pagar) — antes iba null y el
+        // portal no podía mostrar el código del espacio.
+        bauleraCodigo: r.bauleraCodigo || null,
+        storageRoomId: r.storageRoomId || null,
         category: r.category,
         m2: r.m2,
         monthlyPrice: r.monthly,
+        firstMonth: r.firstMonth,
         startDate: r.startDate,
         status: r.status,
         mpPreapprovalId: r.mpPreapprovalId,
@@ -138,6 +141,11 @@ myAccountRouter.get('/', requireAuth, async (req, res: Response) => {
         customerName: r.customerName,
         source: 'mp',
         branchId: r.sucursalId,
+        // Modo de pago (suscripción / plan / pago único) + vencimiento del pago único
+        paymentMode: r.paymentMode || 'subscription',
+        paidMonths: r.paidMonths || null,
+        endDate: r.endDate || null,
+        promosApplied: r.promosApplied || [],
       };
     });
 

@@ -2024,15 +2024,11 @@ function PortalEntry({ user, reservations, accountData, accountLoading, onLogout
     );
   }
 
-  // Auto-redirect SOLO cuando hay exactamente 1 reserva ACTIVA (no pendiente)
+  // DASHBOARD VERTICAL (pedido de Lucas 11/07): ya NO se redirige ni hay que entrar a un botón.
+  // Todo se ve de entrada, apilado: espacio + estado legible + próximo pago + historial.
   const confirmedActive = active.filter(r =>
     r.status === 'active' || r.status === 'CONFIRMED' || r.status === 'authorized'
   );
-  useEffect(() => {
-    if (!accountLoading && confirmedActive.length === 1 && active.length === 1) {
-      window.location.hash = `#/portal/r/${confirmedActive[0].id}`;
-    }
-  }, [confirmedActive.length, active.length, accountLoading]);
 
   // 0 reservations (activas + pendientes) — empty state
   if (active.length === 0 && reservations.length === 0) {
@@ -2094,52 +2090,53 @@ function PortalEntry({ user, reservations, accountData, accountLoading, onLogout
     );
   }
 
-  // 1 reserva CONFIRMADA — el redirect va a disparar, mostrar loading.
-  // Las no confirmadas (pending_payment, etc.) caen al selector, no al loader (evita cuelgue).
-  if (confirmedActive.length === 1 && active.length === 1) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', padding: '80px 20px' }}>
-        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--mc-ink-4)' }}>
-          Cargando tu espacio...
-        </div>
-      </div>
-    );
-  }
-
-  // 2+ reservations — selector
+  // DASHBOARD VERTICAL — todo de entrada, sin selector ni redirect (pedido de Lucas 11/07):
+  // por cada espacio: TU ESPACIO (código + estado legible) → PRÓXIMO PAGO → HISTORIAL DE PAGOS,
+  // como bloques separados. Los no activos (pendientes/cancelados) quedan listados abajo.
+  const inactivos = reservations.filter((r) => !confirmedActive.some((a) => a.id === r.id));
   return (
     <>
       <section className="mc-portal-hero">
         <div className="mc-portal-hero-inner">
           <span className="mc-eyebrow on-dark">Portal cliente</span>
           <h1>Hola, <span className="g">{user.name || user.email.split('@')[0]}</span>.</h1>
-          <p>Elegí el espacio que querés gestionar.</p>
+          <p>{confirmedActive.length === 1 ? 'Tu espacio, tus pagos y tu estado — todo acá.' : 'Tus espacios, tus pagos y tu estado — todo acá.'}</p>
         </div>
       </section>
       <div className="mc-res-selector">
-        <h2>Tus espacios</h2>
-        <div className="mc-res-selector-grid">
-          {reservations.map((r) => {
-            const statusMap = {
-              active: 'Activa', pending_payment: 'Pendiente de pago',
-              cancelled: 'Cancelada', payment_failed: 'Pago fallido',
-              cancellation_scheduled: 'Cancelación programada',
-            };
-            return (
-              <a key={r.id} className="mc-res-selector-card" href={`#/portal/r/${r.id}`}>
-                <div className="info">
-                  <b>{r.category?.label || r.size?.label} · {r.option ? `${formatM2(r.option.m2)} m²` : r.size?.range}</b>
-                  <span>{r.sucursal?.name} · {statusMap[r.status] || r.status}</span>
-                </div>
-                <span className="arrow">→</span>
-              </a>
-            );
-          })}
-          <button className="mc-btn mc-btn-ghost" onClick={onReserve} style={{ marginTop: 8 }}>
+        {confirmedActive.map((r) => (
+          <div key={r.id} style={{ marginBottom: 36 }}>
+            <EspacioResumen reservation={r} />
+            <ProximoPago reservation={r} />
+            <HistorialPagos reservation={r} />
+          </div>
+        ))}
+
+        {inactivos.length > 0 && (
+          <div style={{ marginTop: 8 }}>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--mc-ink-4)', marginBottom: 10 }}>
+              Otras reservas
+            </div>
+            {inactivos.map((r) => {
+              const estado = ESTADO_ES[r.status] || r.status;
+              const c = ESTADO_COLOR[estado] || { bg: '#f0f0f0', ink: '#555' };
+              return (
+                <a key={r.id} className="mc-res-selector-card" href={`#/portal/r/${r.id}`} style={{ marginBottom: 8 }}>
+                  <div className="info">
+                    <b>{r.bauleraCodigo || r.category?.label || r.category || 'Baulera'}{r.m2 || r.option?.m2 ? ` · ${formatM2(r.m2 || r.option.m2)} m²` : ''}</b>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, textTransform: 'uppercase', padding: '2px 8px', borderRadius: 6, background: c.bg, color: c.ink }}>{estado}</span>
+                  </div>
+                  <span className="arrow">→</span>
+                </a>
+              );
+            })}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 12, marginTop: 20, flexWrap: 'wrap' }}>
+          <button className="mc-btn mc-btn-ghost" onClick={onReserve}>
             <span>+ Nueva reserva</span>
           </button>
-        </div>
-        <div style={{ marginTop: 24 }}>
           <button className="mc-btn mc-btn-ghost" onClick={onLogout}><span>Cerrar sesión</span></button>
         </div>
       </div>
@@ -2147,8 +2144,109 @@ function PortalEntry({ user, reservations, accountData, accountLoading, onLogout
   );
 }
 
+// Estado de la reserva en cristiano (nada de "CONFIRMED"/"authorized" crudos en pantalla)
+const ESTADO_ES = {
+  active: 'Activa', CONFIRMED: 'Activa', authorized: 'Activa',
+  pending_payment: 'Pendiente de pago', cancelled: 'Cancelada',
+  payment_failed: 'Pago fallido', cancellation_scheduled: 'Cancelación programada',
+};
+const ESTADO_COLOR = {
+  Activa: { bg: '#e7f6e7', ink: '#1a7a1a' },
+  'Pendiente de pago': { bg: '#fdf4e3', ink: '#8a5a00' },
+  Cancelada: { bg: '#fdecec', ink: '#b42318' },
+  'Pago fallido': { bg: '#fdecec', ink: '#b42318' },
+  'Cancelación programada': { bg: '#f0f0f0', ink: '#555' },
+};
+
+// Resumen del espacio (dashboard vertical): código de baulera + estado legible + datos clave.
+function EspacioResumen({ reservation }) {
+  const r = reservation;
+  const estado = ESTADO_ES[r.status] || r.status;
+  const c = ESTADO_COLOR[estado] || { bg: '#f0f0f0', ink: '#555' };
+  const m2 = r.m2 || r.option?.m2;
+  const codigo = r.bauleraCodigo || (r.storageRoom && r.storageRoom.space) || null;
+  return (
+    <div className="mc-portal-block mc-espacio">
+      <span className="mc-portal-block-title">Tu espacio</span>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+        <div style={{ fontFamily: 'var(--font-cond)', fontSize: 30, fontWeight: 900 }}>
+          {codigo || 'Baulera'}{m2 ? <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--mc-ink-3)', marginLeft: 10 }}>{formatM2 ? formatM2(m2) : m2} m²</span> : null}
+        </div>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', padding: '4px 12px', borderRadius: 999, background: c.bg, color: c.ink, fontWeight: 600 }}>{estado}</span>
+      </div>
+      <div className="mc-espacio-grid">
+        <div className="mc-espacio-item">
+          <span className="lbl">Sucursal</span>
+          <b>{r.sucursal?.name || 'Nordelta'}</b>
+        </div>
+        <div className="mc-espacio-item">
+          <span className="lbl">Inicio</span>
+          <span>{r.startDate || '—'}</span>
+        </div>
+        <div className="mc-espacio-item">
+          <span className="lbl">{r.paymentMode === 'onetime' ? 'Abonado' : 'Mensual'}</span>
+          <b>${Number(r.monthly || r.monthlyPrice || 0).toLocaleString('es-AR')}{r.paymentMode === 'onetime' ? '' : '/mes'}</b>
+        </div>
+      </div>
+      <div style={{ marginTop: 14 }}>
+        <a className="mc-btn mc-btn-ghost-violet" href={`#/portal/r/${r.id}`} style={{ fontSize: 13 }}>
+          <span>Gestionar este espacio</span><span className="arrow">→</span>
+        </a>
+      </div>
+    </div>
+  );
+}
+
 function ProximoPago({ reservation }) {
-  // Historial REAL de cobros (de Mercado Pago). Si no hay sub o falla, queda el calculado (mockHistory).
+  const calcNextPayment = () => {
+    try {
+      const start = new Date(reservation.startDate);
+      const today = new Date();
+      const next = new Date(start);
+      while (next <= today) next.setMonth(next.getMonth() + 1);
+      return next.toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' });
+    } catch { return '—'; }
+  };
+
+  const monthly = reservation.monthly || reservation.monthlyPrice || 0;
+  const isFailed = reservation.status === 'payment_failed';
+  const esUnico = reservation.paymentMode === 'onetime';
+
+  return (
+    <div className="mc-portal-block mc-pago">
+      <span className="mc-portal-block-title">Próximo pago</span>
+      {isFailed && (
+        <div className="mc-pago-alert">
+          <b>Problema con tu pago</b>
+          <p>No pudimos cobrar el monto mensual. Tu acceso se suspende en 7 días si no se actualiza la tarjeta.</p>
+          <a className="mc-btn mc-btn-ghost" href="https://www.mercadopago.com.ar/subscriptions" target="_blank" rel="noreferrer" style={{ fontSize: 13 }}>
+            <span>Actualizar tarjeta en Mercado Pago →</span>
+          </a>
+        </div>
+      )}
+      {!isFailed && esUnico && (
+        <>
+          <div className="mc-pago-amount">${monthly.toLocaleString('es-AR')}<small> abonado</small></div>
+          <div className="mc-pago-next">
+            Pago único{reservation.paidMonths ? ` por ${reservation.paidMonths} mes${reservation.paidMonths > 1 ? 'es' : ''}` : ''} · sin débito automático.
+            {reservation.endDate ? <> Válido hasta <b>{String(reservation.endDate).split('-').reverse().join('/')}</b>.</> : null}
+          </div>
+        </>
+      )}
+      {!isFailed && !esUnico && (
+        <>
+          <div className="mc-pago-amount">${monthly.toLocaleString('es-AR')}<small>/ mes</small></div>
+          <div className="mc-pago-next">Próximo cobro: {calcNextPayment()}</div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// HISTORIAL DE PAGOS — bloque propio, separado de "Próximo pago" (pedido de Lucas 11/07:
+// las secciones se veían "muy uno solo"). Trae los cobros REALES de MP; para pago único
+// muestra el pago real hecho; si no hay datos reales, cae al calculado.
+function HistorialPagos({ reservation }) {
   const [realHist, setRealHist] = useState(null);
   useEffect(() => {
     let alive = true;
@@ -2163,24 +2261,22 @@ function ProximoPago({ reservation }) {
         const data = await res.json();
         const sub = (data.subs || []).find((s) => s.mpPreapprovalId === pid);
         if (alive && sub && sub.history && sub.history.length) setRealHist(sub.history);
-      } catch (e) { /* si falla, queda el historial calculado */ }
+      } catch (e) { /* si falla, queda el calculado */ }
     })();
     return () => { alive = false; };
   }, [reservation.mpPreapprovalId]);
 
-  const calcNextPayment = () => {
-    try {
-      const start = new Date(reservation.startDate);
-      const today = new Date();
-      const next = new Date(start);
-      while (next <= today) next.setMonth(next.getMonth() + 1);
-      return next.toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' });
-    } catch { return '—'; }
-  };
-
-  const nextDate = calcNextPayment();
   const monthly = reservation.monthly || reservation.monthlyPrice || 0;
-  const isFailed = reservation.status === 'payment_failed';
+  const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+
+  // Pago único ACTIVO = ese pago ya se hizo (la activación solo ocurre cuando MP confirma el cobro)
+  const esUnicoPagado = reservation.paymentMode === 'onetime' &&
+    (reservation.status === 'active' || reservation.status === 'CONFIRMED');
+  const unicoRow = esUnicoPagado ? [{
+    label: (() => { try { const d = new Date(`${reservation.startDate}T12:00:00`); return `${MESES[d.getMonth()]} ${d.getFullYear()}`; } catch { return reservation.startDate; } })(),
+    amount: reservation.firstMonth || monthly,
+    status: 'approved',
+  }] : null;
 
   const mockHistory = (() => {
     if (!reservation.startDate) return [];
@@ -2203,55 +2299,35 @@ function ProximoPago({ reservation }) {
     return rows.reverse().slice(0, 4);
   })();
 
-  // Filas del historial: reales (con estado) si las trajimos de MP; si no, las calculadas.
-  const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
   const realRows = realHist ? realHist.map((h) => {
     const p = String(h.period).split('-');
     return { label: `${MESES[Number(p[1]) - 1] || p[1]} ${p[0]}`, amount: h.amount, status: h.status };
   }).slice(0, 6) : null;
-  const rows = realRows || mockHistory;
+
+  const rows = realRows || unicoRow || mockHistory;
+  if (!rows.length) return null;
 
   return (
     <div className="mc-portal-block mc-pago">
-      <span className="mc-portal-block-title">Próximo pago</span>
-      {isFailed && (
-        <div className="mc-pago-alert">
-          <b>Problema con tu pago</b>
-          <p>No pudimos cobrar el monto mensual. Tu acceso se suspende en 7 días si no se actualiza la tarjeta.</p>
-          <a className="mc-btn mc-btn-ghost" href="https://www.mercadopago.com.ar/subscriptions" target="_blank" rel="noreferrer" style={{ fontSize: 13 }}>
-            <span>Actualizar tarjeta en Mercado Pago →</span>
-          </a>
-        </div>
-      )}
-      {!isFailed && (
-        <>
-          <div className="mc-pago-amount">${monthly.toLocaleString('es-AR')}<small>/ mes</small></div>
-          <div className="mc-pago-next">Próximo cobro: {nextDate}</div>
-        </>
-      )}
-      {rows.length > 0 && (
-        <div className="mc-pago-history">
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--mc-ink-4)', marginBottom: 10 }}>
-            Historial
-          </div>
-          {rows.map((row, i) => (
-            <div key={i} className="mc-pago-row">
-              <span>
-                {row.label}
-                {row.promoLabel && <span style={{ marginLeft: 6, color: 'var(--mc-green-ink)', fontFamily: 'var(--font-mono)', fontSize: 10 }}>{row.promoLabel}</span>}
-              </span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <b>${row.amount.toLocaleString('es-AR')}</b>
-                {row.status
-                  ? <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em', padding: '2px 8px', borderRadius: 6, background: row.status === 'approved' ? '#e7f6e7' : row.status === 'rejected' ? '#fdecec' : '#fdf4e3', color: row.status === 'approved' ? '#1a7a1a' : row.status === 'rejected' ? '#b42318' : '#8a5a00' }}>
-                      {row.status === 'approved' ? 'Pagado' : row.status === 'rejected' ? 'Rechazado' : 'Pendiente'}
-                    </span>
-                  : <a href="#" onClick={(e) => e.preventDefault()}>ver factura ↗</a>}
-              </div>
+      <span className="mc-portal-block-title">Historial de pagos</span>
+      <div className="mc-pago-history" style={{ marginTop: 4 }}>
+        {rows.map((row, i) => (
+          <div key={i} className="mc-pago-row">
+            <span>
+              {row.label}
+              {row.promoLabel && <span style={{ marginLeft: 6, color: 'var(--mc-green-ink)', fontFamily: 'var(--font-mono)', fontSize: 10 }}>{row.promoLabel}</span>}
+            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <b>${row.amount.toLocaleString('es-AR')}</b>
+              {row.status
+                ? <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em', padding: '2px 8px', borderRadius: 6, background: row.status === 'approved' ? '#e7f6e7' : row.status === 'rejected' ? '#fdecec' : '#fdf4e3', color: row.status === 'approved' ? '#1a7a1a' : row.status === 'rejected' ? '#b42318' : '#8a5a00' }}>
+                    {row.status === 'approved' ? 'Pagado' : row.status === 'rejected' ? 'Rechazado' : 'Pendiente'}
+                  </span>
+                : <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--mc-ink-4)' }}>estimado</span>}
             </div>
-          ))}
-        </div>
-      )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -2737,6 +2813,7 @@ function ReservationPortal({ reservation: rawReservation, user, initialView, onU
       <div className="mc-res-portal">
         <AccesoFacial reservation={reservation} onUpdate={onUpdate} />
         <ProximoPago reservation={reservation} />
+        <HistorialPagos reservation={reservation} />
         <TuEspacio reservation={reservation} m2Label={m2Label} catLabel={catLabel} />
         <Gestionar
           reservation={reservation}
