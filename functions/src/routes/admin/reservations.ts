@@ -54,6 +54,9 @@ adminReservationsRouter.get('/', requireAuth, async (req, res: Response) => {
         bauleraCodigo: data['bauleraCodigo'] || null,
         heldUntil:    data['heldUntil'] || null,
         source:       data['source'] || 'online',
+        // Face ID: para que Ventas en curso muestre "alta pendiente" y el botón de alta
+        faceEnrollStatus: data['faceEnrollStatus'] || 'not_started',
+        paymentMode:  data['paymentMode'] || 'subscription',
         // Timestamps
         createdAt: data['createdAt']?.toDate?.()?.toISOString() || null,
         cancelledAt: data['cancelledAt']?.toDate?.()?.toISOString() || null,
@@ -457,6 +460,72 @@ adminReservationsRouter.get('/:id/face-photo', requireAuth, async (req, res: Res
   } catch (err) {
     console.error('GET /admin/reservations/:id/face-photo error:', err);
     res.status(500).json({ error: 'No se pudo obtener la foto' });
+  }
+});
+
+// POST /admin/reservations/:id/face-enrolled — ALTA DE FACE ID confirmada por el ADMIN.
+// Paso manual OBLIGATORIO (decisión Lucas 11/07): el staff mira la foto, la carga a mano en el
+// dispositivo de acceso, y recién ahí confirma acá. Marca 'enrolled' (el cliente ve "Acceso
+// activo") y BORRA la foto del Storage (como promete el consentimiento biométrico).
+// Cuando exista integración con el dispositivo (servicio externo a definir), este endpoint
+// será el lugar donde se dispare.
+adminReservationsRouter.post('/:id/face-enrolled', requireAuth, async (req, res: Response) => {
+  try {
+    const snap = await db.collection('reservations').doc(req.params.id).get();
+    if (!snap.exists) { res.status(404).json({ error: 'Reservation not found' }); return; }
+    const r = snap.data() as any;
+    if (!r.facePhotoPath && r.faceEnrollStatus !== 'queued') {
+      res.status(400).json({ error: 'Esta reserva no tiene un alta de Face ID pendiente' }); return;
+    }
+    // Borrar la foto del Storage (el dato biométrico queda solo en el dispositivo)
+    if (r.facePhotoPath) {
+      try { await storage.bucket('mc-nordelta-2026.firebasestorage.app').file(String(r.facePhotoPath)).delete(); }
+      catch (e) { console.warn('face-enrolled: no se pudo borrar la foto (sigue igual):', e); }
+    }
+    await db.collection('reservations').doc(req.params.id).update({
+      faceEnrollStatus: 'enrolled',
+      facePhotoPath: admin.firestore.FieldValue.delete(),
+      faceEnrolledAt: new Date().toISOString(),
+      faceEnrolledBy: (req as any).email || 'admin',
+    });
+    await logAudit({
+      actor: (req as any).email || 'admin', via: 'admin', role: 'admin',
+      action: 'face_alta_confirmada',
+      entity: 'reservation', entityId: req.params.id, branchId: r.sucursalId,
+      detail: { cliente: r.customerName || '', baulera: r.bauleraCodigo || r.storageRoomId || null, fotoBorrada: !!r.facePhotoPath },
+    });
+    res.json({ message: 'Alta de Face ID confirmada — el cliente ya ve "Acceso activo"' });
+  } catch (err) {
+    console.error('POST /admin/reservations/:id/face-enrolled error:', err);
+    res.status(500).json({ error: 'No se pudo confirmar el alta' });
+  }
+});
+
+// POST /admin/reservations/:id/face-reject — la foto NO sirve (borrosa, con lentes, etc.):
+// se borra del Storage y el cliente ve "Error al activar — intentá de nuevo" en su portal.
+adminReservationsRouter.post('/:id/face-reject', requireAuth, async (req, res: Response) => {
+  try {
+    const snap = await db.collection('reservations').doc(req.params.id).get();
+    if (!snap.exists) { res.status(404).json({ error: 'Reservation not found' }); return; }
+    const r = snap.data() as any;
+    if (r.facePhotoPath) {
+      try { await storage.bucket('mc-nordelta-2026.firebasestorage.app').file(String(r.facePhotoPath)).delete(); }
+      catch (e) { console.warn('face-reject: no se pudo borrar la foto:', e); }
+    }
+    await db.collection('reservations').doc(req.params.id).update({
+      faceEnrollStatus: 'failed',
+      facePhotoPath: admin.firestore.FieldValue.delete(),
+    });
+    await logAudit({
+      actor: (req as any).email || 'admin', via: 'admin', role: 'admin',
+      action: 'face_foto_rechazada',
+      entity: 'reservation', entityId: req.params.id, branchId: r.sucursalId,
+      detail: { cliente: r.customerName || '', baulera: r.bauleraCodigo || r.storageRoomId || null },
+    });
+    res.json({ message: 'Foto rechazada — el cliente puede subir otra desde su portal' });
+  } catch (err) {
+    console.error('POST /admin/reservations/:id/face-reject error:', err);
+    res.status(500).json({ error: 'No se pudo rechazar la foto' });
   }
 });
 
