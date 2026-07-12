@@ -40,6 +40,26 @@ export async function sendAdminPasswordEmail(email: string): Promise<void> {
   await sendEmail(e, 'Tu contraseña del panel — Mi Container', html);
 }
 
+// Mail de RECUPERACIÓN para un cliente que YA activó su cuenta antes (email verificado).
+// Distinto del de activación: acá no es "bienvenido, activá tu cuenta" — es "recuperá tu clave".
+export async function sendPasswordRecoveryEmail(email: string, name?: string): Promise<void> {
+  const e = email.trim().toLowerCase();
+  const link = await auth.generatePasswordResetLink(e, { url: 'https://micontainer.com/#/portal' });
+  const saludo = name ? `, ${name}` : '';
+  const html = `
+    <div style="font-family:Arial,sans-serif;font-size:15px;color:#222;max-width:520px;margin:auto">
+      <img src="https://micontainer.com/assets/logo.png" alt="Mi Container" width="150" style="display:block;margin:0 0 18px" />
+      <h2 style="color:#3D3083;margin-bottom:6px">Recuperá tu contraseña</h2>
+      <p>Hola${saludo}. Si no recordás tu contraseña, hacé clic en el siguiente botón y restablecela:</p>
+      <p style="margin:22px 0">
+        <a href="${link}" style="background:#5ECA00;color:#fff;padding:13px 24px;border-radius:10px;text-decoration:none;font-weight:bold;display:inline-block">Restablecer mi contraseña</a>
+      </p>
+      <p style="color:#666;font-size:13px">Al terminar volvés a tu portal y entrás con tu email y la clave nueva.</p>
+      <p style="color:#999;font-size:12px;margin-top:24px">Si no pediste este mail, ignoralo: tu contraseña actual sigue siendo válida.</p>
+    </div>`;
+  await sendEmail(e, 'Recuperá tu contraseña — Mi Container', html);
+}
+
 // Crea (si no existe) la cuenta de Firebase Auth del cliente, con email SIN verificar.
 export async function ensureAuthUser(email: string, displayName?: string): Promise<string> {
   const e = email.trim().toLowerCase();
