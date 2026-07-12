@@ -2654,7 +2654,7 @@ function FaceEnrollFlow({ reservation, onUpdate, onDone }) {
               )}
             </span>
             <span className="legal">
-              <b>Acepto el uso de mis datos biométricos</b> exclusivamente para el control de acceso al local de Mi Container (CORDIS MS SA). Mi foto se guarda en forma segura y privada solo para registrar mi cara en el sistema de acceso del local, y se elimina de los servidores una vez completada el alta en el dispositivo.
+              <b>Acepto el uso de mis datos biométricos</b> exclusivamente para el control de acceso al local de Mi Container (CORDIS MS SA). Mi foto se guarda en forma segura y privada solo para registrar mi cara en el sistema de acceso (Hikvision) del local, y se elimina de los servidores una vez completada el alta en el dispositivo.
             </span>
           </button>
           <button
@@ -2678,9 +2678,10 @@ function FaceEnrollFlow({ reservation, onUpdate, onDone }) {
             Sacate una foto o subí una imagen
           </p>
           <div style={{ background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, color: 'var(--mc-ink-2)' }}>
-            <b style={{ color: 'var(--mc-violet)' }}>Cómo tiene que ser la foto (tipo carnet):</b>
+            <b style={{ color: 'var(--mc-violet)' }}>Cómo tiene que ser la foto:</b>
             <div style={{ marginTop: 6, display: 'grid', gap: 3 }}>
-              <span>✔️ De frente, mirando a la cámara, solo tu cara</span>
+              <span>✔️ De la <b>mitad del torso para arriba</b>: hombros y cara bien visibles</span>
+              <span>✔️ De frente, mirando a la cámara</span>
               <span>✔️ Con buena luz y fondo claro, foto nítida</span>
               <span>✖️ Sin lentes oscuros, gorra ni barbijo</span>
             </div>
