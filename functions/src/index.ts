@@ -60,7 +60,8 @@ app.use(
     credentials: true,
   })
 );
-app.use(express.json());
+// Límite 8mb: la foto biométrica del portal viaja en base64 (POST /my-account/face-enroll)
+app.use(express.json({ limit: '8mb' }));
 
 // ── Method override ───────────────────────────────────────────────────
 // El admin panel usa PATCH para los updates, pero el backend implementa PUT.

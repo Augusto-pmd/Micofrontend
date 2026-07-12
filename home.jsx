@@ -2577,6 +2577,8 @@ function FaceEnrollFlow({ reservation, onUpdate, onDone }) {
   const [step, setStep] = useState(1); // 1=consent, 2=photo, 3=sent
   const [consented, setConsented] = useState(false);
   const [photoPreview, setPhotoPreview] = useState(null);
+  const [sending, setSending] = useState(false);
+  const [sendErr, setSendErr] = useState('');
   const fileRef = useRef(null);
 
   const handleFile = (e) => {
@@ -2587,9 +2589,48 @@ function FaceEnrollFlow({ reservation, onUpdate, onDone }) {
     reader.readAsDataURL(file);
   };
 
-  const handleSend = () => {
-    onUpdate(reservation.id, { faceEnrollStatus: 'queued' });
-    setStep(3);
+  // Achica la foto (máx 1024px, JPEG) para que viaje liviana sin perder calidad de registro.
+  const comprimir = (dataUrl) => new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const max = 1024;
+        let w = img.width, h = img.height;
+        if (w >= h && w > max) { h = Math.round(h * max / w); w = max; }
+        else if (h > w && h > max) { w = Math.round(w * max / h); h = max; }
+        const cv = document.createElement('canvas');
+        cv.width = w; cv.height = h;
+        cv.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(cv.toDataURL('image/jpeg', 0.85));
+      } catch (e) { resolve(dataUrl); }
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+
+  // SUBIDA REAL: la foto va a Firebase Storage anexada a la reserva/baulera
+  // (POST /my-account/face-enroll). Antes esto era solo visual y la foto no iba a ningún lado.
+  const handleSend = async () => {
+    if (!photoPreview || sending) return;
+    setSending(true); setSendErr('');
+    try {
+      const token = await _tryGetFirebaseToken();
+      if (!token) { setSendErr('Tu sesión venció. Cerrá sesión y volvé a entrar.'); setSending(false); return; }
+      const image = await comprimir(photoPreview);
+      const res = await fetch(`${MC_API}/my-account/face-enroll`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ reservationId: reservation.id, image }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { setSendErr(data.error || 'No se pudo subir la foto. Probá de nuevo.'); setSending(false); return; }
+      onUpdate(reservation.id, { faceEnrollStatus: 'queued' });
+      setStep(3);
+    } catch (e) {
+      setSendErr('No se pudo subir la foto. Revisá tu conexión y probá de nuevo.');
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -2613,7 +2654,7 @@ function FaceEnrollFlow({ reservation, onUpdate, onDone }) {
               )}
             </span>
             <span className="legal">
-              <b>Acepto el uso de mis datos biométricos</b> exclusivamente para el control de acceso al local de Mi Container (CORDIS MS SA). Mi foto se usa para registrar mi cara en el sistema Hikvision del local y se elimina de los servidores dentro de las 24 hs. El dato biométrico reside únicamente en el dispositivo de acceso.
+              <b>Acepto el uso de mis datos biométricos</b> exclusivamente para el control de acceso al local de Mi Container (CORDIS MS SA). Mi foto se guarda en forma segura y privada solo para registrar mi cara en el sistema de acceso del local, y se elimina de los servidores una vez completada el alta en el dispositivo.
             </span>
           </button>
           <button
@@ -2633,18 +2674,23 @@ function FaceEnrollFlow({ reservation, onUpdate, onDone }) {
       {step === 2 && (
         <div className="mc-enroll-step">
           <div className="mc-enroll-step-num">2</div>
-          <p style={{ fontSize: 14, color: 'var(--mc-ink-1)', fontWeight: 600, marginBottom: 12 }}>
+          <p style={{ fontSize: 14, color: 'var(--mc-ink-1)', fontWeight: 600, marginBottom: 8 }}>
             Sacate una foto o subí una imagen
           </p>
+          <div style={{ background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, color: 'var(--mc-ink-2)' }}>
+            <b style={{ color: 'var(--mc-violet)' }}>Cómo tiene que ser la foto (tipo carnet):</b>
+            <div style={{ marginTop: 6, display: 'grid', gap: 3 }}>
+              <span>✔️ De frente, mirando a la cámara, solo tu cara</span>
+              <span>✔️ Con buena luz y fondo claro, foto nítida</span>
+              <span>✖️ Sin lentes oscuros, gorra ni barbijo</span>
+            </div>
+          </div>
           <div className="mc-enroll-photo" onClick={() => fileRef.current?.click()} style={{ cursor: 'pointer' }}>
             {photoPreview
               ? <img src={photoPreview} alt="Vista previa" className="mc-enroll-preview" />
               : <span style={{ fontSize: 28 }}>📷</span>
             }
             <p>{photoPreview ? 'Tocá para cambiar' : 'Tocá para elegir foto'}</p>
-            <div className="mc-enroll-photo-req">
-              Cara centrada · buena iluminación · sin anteojos de sol · mínimo 640×480px
-            </div>
           </div>
           <input
             ref={fileRef}
@@ -2654,13 +2700,14 @@ function FaceEnrollFlow({ reservation, onUpdate, onDone }) {
             onChange={handleFile}
             style={{ display: 'none' }}
           />
+          {sendErr && <span className="err" style={{ display: 'block', marginTop: 10 }}>{sendErr}</span>}
           <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
             <button
               className="mc-btn mc-btn-violet"
-              disabled={!photoPreview}
+              disabled={!photoPreview || sending}
               onClick={handleSend}
             >
-              <span>Enviar foto →</span>
+              <span>{sending ? 'Subiendo foto…' : 'Enviar foto →'}</span>
             </button>
             <button className="mc-btn mc-btn-ghost" onClick={() => setStep(1)}>
               <span>← Atrás</span>

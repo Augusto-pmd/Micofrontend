@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import { requireAuth } from '../../middleware/requireAuth';
-import { db } from '../../config/firebase';
+import { db, storage } from '../../config/firebase';
 import * as admin from 'firebase-admin';
 import * as crypto from 'crypto';
 import { assignRoomForReservation, holdRoomForReservation } from '../../services/assignment.service';
@@ -432,6 +432,31 @@ adminReservationsRouter.post('/:id/assign-room', requireAuth, async (req, res: R
   } catch (err) {
     console.error('POST /admin/reservations/:id/assign-room error:', err);
     res.status(500).json({ error: 'Could not assign room' });
+  }
+});
+
+// GET /admin/reservations/:id/face-photo — URL FIRMADA temporal (15 min) de la foto biométrica
+// que subió el cliente desde el portal (Storage privado: face-enroll/{id}/...). Para que el staff
+// la vea y dé el alta en el dispositivo de acceso.
+adminReservationsRouter.get('/:id/face-photo', requireAuth, async (req, res: Response) => {
+  try {
+    const snap = await db.collection('reservations').doc(req.params.id).get();
+    if (!snap.exists) { res.status(404).json({ error: 'Reservation not found' }); return; }
+    const r = snap.data() as any;
+    if (!r.facePhotoPath) { res.status(404).json({ error: 'Esta reserva no tiene foto biométrica subida' }); return; }
+    try {
+      const [url] = await storage.bucket('mc-nordelta-2026.firebasestorage.app')
+        .file(String(r.facePhotoPath))
+        .getSignedUrl({ action: 'read', expires: Date.now() + 15 * 60 * 1000 });
+      res.json({ url, expiraEnMin: 15, status: r.faceEnrollStatus || null, subida: r.faceEnrollAt || null, baulera: r.bauleraCodigo || null });
+    } catch (signErr) {
+      // Si la cuenta de servicio no puede firmar URLs, devolver el path (se abre desde la consola de Firebase → Storage)
+      console.warn('GET face-photo: no se pudo firmar URL:', signErr);
+      res.json({ path: r.facePhotoPath, nota: 'Abrir desde Firebase Console → Storage', status: r.faceEnrollStatus || null, subida: r.faceEnrollAt || null });
+    }
+  } catch (err) {
+    console.error('GET /admin/reservations/:id/face-photo error:', err);
+    res.status(500).json({ error: 'No se pudo obtener la foto' });
   }
 });
 

@@ -6,8 +6,11 @@
  */
 import { Router, Response } from 'express';
 import { requireAuth, AuthenticatedRequest } from '../middleware/requireAuth';
-import { db, auth } from '../config/firebase';
+import { db, auth, storage } from '../config/firebase';
 import { getChargeHistory } from '../services/mercadopago.service';
+import { logAudit } from '../services/audit.service';
+
+const FACE_BUCKET = 'mc-nordelta-2026.firebasestorage.app';
 
 export const myAccountRouter = Router();
 
@@ -20,6 +23,58 @@ async function emailVerificadoOk(authReq: AuthenticatedRequest, res: Response): 
     return true;
   } catch { res.status(403).json({ error: 'Cuenta no activada', code: 'not_activated' }); return false; }
 }
+
+// POST /my-account/face-enroll — SUBE la foto biométrica del cliente a Firebase Storage,
+// ANEXADA a su reserva/baulera (face-enroll/{reservationId}/...). Antes la foto no iba a
+// ningún lado (solo preview local). El estado pasa a 'queued' = pendiente de alta en el
+// dispositivo de acceso (la hace el staff mirando la foto desde el admin).
+myAccountRouter.post('/face-enroll', requireAuth, async (req, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
+  const email = (authReq.email || '').toLowerCase();
+  if (!email) { res.status(401).json({ error: 'No autenticado' }); return; }
+  if (!(await emailVerificadoOk(authReq, res))) return;
+  try {
+    const { reservationId, image } = (req.body || {}) as { reservationId?: string; image?: string };
+    if (!reservationId || typeof image !== 'string') { res.status(400).json({ error: 'Faltan datos (reserva o imagen)' }); return; }
+
+    const snap = await db.collection('reservations').doc(String(reservationId)).get();
+    if (!snap.exists) { res.status(404).json({ error: 'Reserva no encontrada' }); return; }
+    const r = snap.data() as any;
+    const esSuya = String(r.customerEmail || '').toLowerCase() === email || r.userUid === authReq.uid;
+    if (!esSuya) { res.status(403).json({ error: 'La reserva no pertenece a tu cuenta' }); return; }
+
+    const m = image.match(/^data:image\/(jpeg|jpg|png);base64,(.+)$/);
+    if (!m) { res.status(400).json({ error: 'Formato inválido: mandá una foto JPG o PNG' }); return; }
+    const buf = Buffer.from(m[2], 'base64');
+    if (buf.length < 10 * 1024) { res.status(400).json({ error: 'La imagen es demasiado chica' }); return; }
+    if (buf.length > 6 * 1024 * 1024) { res.status(400).json({ error: 'La foto es muy pesada (máx. 6MB)' }); return; }
+
+    const ext = m[1] === 'png' ? 'png' : 'jpg';
+    const path = `face-enroll/${reservationId}/${Date.now()}.${ext}`;
+    await storage.bucket(FACE_BUCKET).file(path).save(buf, {
+      contentType: ext === 'png' ? 'image/png' : 'image/jpeg',
+      resumable: false,
+      metadata: { metadata: { reservationId: String(reservationId), baulera: String(r.bauleraCodigo || r.storageRoomId || ''), email } },
+    });
+
+    await db.collection('reservations').doc(String(reservationId)).update({
+      faceEnrollStatus: 'queued',
+      faceEnrollAttempts: (Number(r.faceEnrollAttempts) || 0) + 1,
+      facePhotoPath: path,
+      faceEnrollAt: new Date().toISOString(),
+    });
+    await logAudit({
+      actor: email, via: 'portal',
+      action: 'face_enroll_subida',
+      entity: 'reservation', entityId: String(reservationId), branchId: r.sucursalId,
+      detail: { baulera: r.bauleraCodigo || r.storageRoomId || null, path, bytes: buf.length },
+    });
+    res.json({ message: 'Foto recibida — tu alta está en proceso', status: 'queued' });
+  } catch (err) {
+    console.error('POST /my-account/face-enroll error:', err);
+    res.status(500).json({ error: 'No se pudo subir la foto. Probá de nuevo.' });
+  }
+});
 
 // GET /my-account/payments — HISTORIAL REAL de cobros del cliente autenticado (de Mercado Pago).
 // Resuelve las suscripciones del cliente por su token (email/uid) → nadie puede pedir el de otro.
@@ -146,6 +201,7 @@ myAccountRouter.get('/', requireAuth, async (req, res: Response) => {
         paidMonths: r.paidMonths || null,
         endDate: r.endDate || null,
         promosApplied: r.promosApplied || [],
+        faceEnrollStatus: r.faceEnrollStatus || 'not_started',
       };
     });
 
