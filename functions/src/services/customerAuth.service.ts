@@ -42,7 +42,9 @@ export async function ensureAuthUser(email: string, displayName?: string): Promi
 export async function sendActivationEmail(email: string, name?: string): Promise<void> {
   const e = email.trim().toLowerCase();
   await ensureAuthUser(e, name);
-  const link = await auth.generatePasswordResetLink(e);
+  // continueUrl: al terminar de crear la contraseña, la página de Firebase ofrece "Continuar"
+  // que lleva DIRECTO al portal (antes quedaba muerta en "contraseña cambiada").
+  const link = await auth.generatePasswordResetLink(e, { url: 'https://micontainer.com/#/portal' });
   const saludo = name ? `, ${name}` : '';
   const html = `
     <div style="font-family:Arial,sans-serif;font-size:15px;color:#222;max-width:520px;margin:auto">

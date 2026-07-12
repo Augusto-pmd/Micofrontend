@@ -2739,7 +2739,13 @@ section { position: relative; z-index: 2; }
     box-shadow: 0 16px 32px -8px rgba(10, 10, 10, 0.15);
   }
   .mc-links.open a { padding: 12px 16px; font-size: 15px; }
-  .mc-nav-phone, .mc-nav-portal { display: none; }
+  .mc-nav-phone { display: none; }
+  /* Portal cliente SIEMPRE visible, también en móvil (pedido 11/07): en pantalla chica queda
+     como botón de ícono (se oculta solo el texto). Antes estaba display:none y el cliente no
+     tenía cómo entrar a su portal desde el celular. */
+  .mc-nav-portal { padding: 9px 10px; }
+  .mc-nav-portal .lbl { display: none; }
+  .mc-nav-portal svg { width: 17px; height: 17px; }
   .mc-burger { display: inline-flex; }
   .mc-nav-right .mc-btn-primary {
     padding: 10px 18px; font-size: 13px;
