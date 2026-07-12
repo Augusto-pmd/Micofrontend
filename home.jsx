@@ -11,11 +11,11 @@ const MC_API = (typeof location !== 'undefined' && (location.hostname === 'local
 // Intenta obtener un token Firebase si el usuario está logueado.
 // Si no hay sesión activa, devuelve null (guest checkout).
 async function _tryGetFirebaseToken() {
+  // Usa el Firebase YA cargado en index.html (window._fb). NADA de import() dinámico acá:
+  // Babel lo transpila mal y tiraba SIEMPRE → el token nunca llegaba → 401 en el portal.
   try {
-    const { getAuth } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
-    const user = getAuth().currentUser;
-    if (!user) return null;
-    return user.getIdToken();
+    if (window._fb && window._fb.getIdToken) return await window._fb.getIdToken();
+    return null;
   } catch {
     return null;
   }
@@ -2045,7 +2045,20 @@ function PortalEntry({ user, reservations, accountData, accountLoading, onLogout
           </div>
         </section>
         <div className="mc-res-selector">
-          {accountData && accountData.__error === 'email_not_verified' ? (
+          {accountData && accountData.__error === 'no_auth' ? (
+            <div className="mc-portal-block" style={{ textAlign: 'center', padding: '48px 24px' }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>🔒</div>
+              <h3 style={{ fontFamily: 'var(--font-cond)', fontSize: 22, fontWeight: 900, margin: '0 0 8px' }}>
+                Tu sesión venció
+              </h3>
+              <p style={{ fontSize: 14, color: 'var(--mc-ink-2)', marginBottom: 16 }}>
+                Cerrá sesión y volvé a entrar para ver tus espacios.
+              </p>
+              <button className="mc-btn mc-btn-violet" onClick={onLogout}>
+                <span>Volver a iniciar sesión</span>
+              </button>
+            </div>
+          ) : accountData && accountData.__error === 'email_not_verified' ? (
             <div className="mc-portal-block" style={{ textAlign: 'center', padding: '48px 24px' }}>
               <div style={{ fontSize: 40, marginBottom: 12 }}>✉️</div>
               <h3 style={{ fontFamily: 'var(--font-cond)', fontSize: 22, fontWeight: 900, margin: '0 0 8px' }}>
@@ -2754,30 +2767,16 @@ function ReservationPortal({ reservation: rawReservation, user, initialView, onU
 async function fetchMyAccount(email) {
   if (!email) return null;
   try {
-    // Intentar con Firebase token si está disponible
-    let headers = { 'Content-Type': 'application/json' };
-    try {
-      const { getAuth, onAuthStateChanged } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
-      const _auth = getAuth();
-      // Esperar a que Firebase restaure la sesion: currentUser puede ser null al cargar.
-      let fbUser = _auth.currentUser;
-      if (!fbUser) {
-        fbUser = await new Promise((resolve) => {
-          const unsub = onAuthStateChanged(_auth, (u) => { unsub(); resolve(u); });
-          setTimeout(() => { try { unsub(); } catch (e) {} resolve(_auth.currentUser); }, 4000);
-        });
-      }
-      if (fbUser) {
-        const token = await fbUser.getIdToken();
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-    } catch (e) { /* sin token, usar email como fallback */ }
+    // Token del Firebase ya cargado en index.html (window._fb). El viejo import() dinámico
+    // acá fallaba SIEMPRE (Babel) → salía sin Authorization → 401 → portal vacío para TODOS.
+    const token = await _tryGetFirebaseToken();
+    if (!token) return { __error: 'no_auth' }; // sin sesión Firebase: avisar, no mentir "sin espacios"
+    const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
 
-    const url = `${MC_API}/my-account${!headers['Authorization'] ? `?email=${encodeURIComponent(email)}` : ''}`;
-    const res = await fetch(url, { headers });
+    const res = await fetch(`${MC_API}/my-account`, { headers });
     if (!res.ok) {
-      // No tragarse el motivo: si el backend pide confirmar el email (403 email_not_verified),
-      // el portal debe AVISARLO, no mostrar "no tenés espacios" como si no hubiera nada.
+      // No tragarse el motivo: 403 email_not_verified / 401 sesión → el portal lo AVISA.
+      if (res.status === 401) return { __error: 'no_auth' };
       try { const err = await res.json(); if (err && err.code) return { __error: err.code }; } catch (e) { /* sin cuerpo */ }
       return null;
     }

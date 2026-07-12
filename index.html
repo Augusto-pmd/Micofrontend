@@ -45,6 +45,19 @@
       signInWithGoogle: () => signInWithPopup(auth, provider),
       signInWithEmail: (email, password) => signInWithEmailAndPassword(auth, email, password),
       signOut: () => signOut(auth),
+      // Espera a que Firebase restaure la sesión (o 4s) y devuelve el user (o null).
+      // Lo usa home.jsx para conseguir el token SIN import() dinámico (Babel lo rompía:
+      // el import() dentro del JSX transpolado fallaba SIEMPRE → las llamadas al backend
+      // salían sin Authorization → 401 → el portal se veía vacío).
+      waitUser: () => new Promise((resolve) => {
+        if (auth.currentUser) { resolve(auth.currentUser); return; }
+        const unsub = onAuthStateChanged(auth, (u) => { try { unsub(); } catch (e) {} resolve(u); });
+        setTimeout(() => { try { unsub(); } catch (e) {} resolve(auth.currentUser); }, 4000);
+      }),
+      getIdToken: async () => {
+        const u = auth.currentUser || await window._fb.waitUser();
+        return u ? u.getIdToken() : null;
+      },
     };
 
     // Sincroniza sesión de Firebase con el store de la app
@@ -162,6 +175,6 @@
     });
   })();
   </script>
-  <script type="text/babel" data-presets="env,react" src="home.jsx?v=20260711-3"></script>
+  <script type="text/babel" data-presets="env,react" src="home.jsx?v=20260711-4"></script>
 </body>
 </html>
