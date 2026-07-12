@@ -89,6 +89,31 @@ ordersRouter.get('/', verifyToken, async (req: Request, res: Response) => {
     const cursor = req.query['cursor'] as string | undefined;
     const status = req.query['status'] as string | undefined;
     const customerId = req.query['customerId'] as string | undefined;
+    const search = (req.query['search'] as string | undefined)?.toLowerCase().trim();
+
+    // ── Búsqueda server-side (antes se ignoraba: el buscador solo filtraba la página cargada
+    // y "no encontraba" órdenes existentes). Escaneo acotado + enriquecido + filtro por
+    // cliente/contrato/baulera/id.
+    if (search) {
+      const SCAN_CAP = 1000;
+      const snap = await db.collection('reservationOrders').orderBy('createdAt', 'desc').limit(SCAN_CAP).get();
+      if (snap.size === SCAN_CAP) console.warn(`[orders] búsqueda alcanzó el tope de ${SCAN_CAP} docs`);
+      const rawAll = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const enrichedAll = await enrichOrders(rawAll);
+      const hits = enrichedAll.filter((o: any) =>
+        String(o.id || '').toLowerCase().includes(search) ||
+        String(o.contractNumber || '').toLowerCase().includes(search) ||
+        String(o.bauleraCodigo || '').toLowerCase().includes(search) ||
+        String(o.customer?.fullName || '').toLowerCase().includes(search) ||
+        String(o.customer?.email || '').toLowerCase().includes(search) ||
+        String(o.customer?.dni || '').toLowerCase().includes(search) ||
+        String(o.storageRoom?.space || o.storageRoom?.name || '').toLowerCase().includes(search)
+      );
+      const total = hits.length;
+      const start = (page - 1) * limit;
+      res.json({ data: hits.slice(start, start + limit), total, page, limit, totalPages: Math.ceil(total / limit) });
+      return;
+    }
 
     // where() ANTES de orderBy para que el índice compuesto aplique
     let baseQuery: FirebaseFirestore.Query = db.collection('reservationOrders');

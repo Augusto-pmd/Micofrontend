@@ -4,14 +4,25 @@ import { verifyToken } from '../../middleware/verifyToken';
 
 export const operatorsRouter = Router();
 
-// GET /operator
+// GET /operator — con ?search= server-side (antes se ignoraba: el buscador de la pantalla
+// solo filtraba la página cargada y "no encontraba" operadores existentes).
 operatorsRouter.get('/', verifyToken, async (req: Request, res: Response) => {
   try {
     const page = parseInt(req.query['page'] as string) || 1;
     const limit = parseInt(req.query['limit'] as string) || 10;
+    const search = (req.query['search'] as string | undefined)?.toLowerCase().trim();
 
     const snapshot = await db.collection('operators').orderBy('createdAt', 'desc').get();
-    const all = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    let all = snapshot.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
+    if (search) {
+      all = all.filter((o: any) =>
+        String(o.fullName || '').toLowerCase().includes(search) ||
+        String(o.firstName || '').toLowerCase().includes(search) ||
+        String(o.lastName || '').toLowerCase().includes(search) ||
+        String(o.email || '').toLowerCase().includes(search) ||
+        String(o.branchName || o.branch?.name || '').toLowerCase().includes(search)
+      );
+    }
     const total = all.length;
     const start = (page - 1) * limit;
     const data = all.slice(start, start + limit);
