@@ -85,6 +85,19 @@ async function processWebhook(body: Record<string, unknown>): Promise<void> {
         return;
       }
 
+      // GAP (mes gratis): pago único de alineación al 1°. La baulera la ACTIVA la SUSCRIPCIÓN
+      // (link 1), no este pago — acá solo se registra que el cliente pagó el gap.
+      if (/^GAP\s+/i.test(extRaw)) {
+        if (paid?.status === 'approved') {
+          const resId = extRaw.replace(/^GAP\s+/i, '').trim();
+          await logAudit({ actor: 'cliente', via: 'mercadopago', action: 'gap_pagado', entity: 'reservation', entityId: resId, detail: { monto: paid.amount } });
+          console.log(`[mp-webhook] GAP de alineación pagado para reserva ${resId}`);
+        } else {
+          console.warn(`[mp-webhook] pago de GAP NO approved (status=${paid?.status ?? '?'}) ref=${extRaw}`);
+        }
+        return;
+      }
+
       // El marcador "ONETIME " es de la ruta de pago único — se quita para resolver la reserva.
       const ext = extRaw.replace(/^ONETIME\s+/i, '');
       if (ext) {

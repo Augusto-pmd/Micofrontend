@@ -5,7 +5,7 @@ import * as admin from 'firebase-admin';
 import * as crypto from 'crypto';
 import { assignRoomForReservation, holdRoomForReservation } from '../../services/assignment.service';
 import { getReservation, createReservation, updateReservation, getReservationByMpPreapprovalId, getReservationByBauleraCodigo } from '../../models/reservation.model';
-import { createSubscription, createCheckoutPreference, createDebtPreference, cancelSubscription, getSubscriptionStatus, invalidateSubsCache, searchSubscriptionsCached } from '../../services/mercadopago.service';
+import { createSubscription, createCheckoutPreference, createDebtPreference, createGapPreference, cancelSubscription, getSubscriptionStatus, invalidateSubsCache, searchSubscriptionsCached } from '../../services/mercadopago.service';
 import { getOrCreateAlignedPlan } from '../../services/planCatalog.service';
 import { createDebt, DebtTipo } from '../../services/debts.service';
 import { invalidateRechazadosCache } from './pricing';
@@ -342,6 +342,31 @@ adminReservationsRouter.post('/sell-plan', requireAuth, async (req, res: Respons
       return;
     }
 
+    // GAP (mes gratis, decisión Lucas): 2° link. La suscripción por sí sola da free_trial hasta el
+    // 1° (~1.5 meses gratis). Este PAGO ÚNICO cobra SOLO los días entre que termina el mes gratis
+    // (hoy + período) y ese 1°, para que el NETO gratis sea 1 mes EXACTO. La cuenta queda anexada
+    // a la SUSCRIPCIÓN (link 1), no a este pago único. Nota: el gap se calcula con la fecha de HOY
+    // (≈ cuándo autoriza el cliente); un desfasaje de días se afina con una prueba real (SPEC §4).
+    let gapInitPoint: string | null = null, gapPreferenceId: string | null = null, gapDays = 0, gapAmount = 0;
+    {
+      const hoy = new Date();
+      const freeEnd = new Date(hoy);
+      if (freeUnit === 'days') freeEnd.setDate(freeEnd.getDate() + freeQty);
+      else freeEnd.setMonth(freeEnd.getMonth() + freeQty);
+      const align = new Date(freeEnd.getFullYear(), freeEnd.getMonth(), 1);
+      if (align.getTime() < freeEnd.getTime()) align.setMonth(align.getMonth() + 1);
+      gapDays = Math.max(0, Math.round((align.getTime() - freeEnd.getTime()) / 86400000));
+      gapAmount = gapDays > 0 ? Math.round(monthlyNum * gapDays / 30) : 0;
+      if (gapAmount > 0 && process.env.FUNCTIONS_EMULATOR !== 'true') {
+        const gp = await createGapPreference({
+          reservationId: id,
+          title: `Mi Container ${hold.bauleraCodigo || String(m2) + 'm2'} — ${gapDays} días de alineación al 1°`,
+          amount: gapAmount, email: String(email), backUrl: 'https://micontainer.com/#/portal',
+        });
+        gapInitPoint = gp.initPoint; gapPreferenceId = gp.preferenceId;
+      }
+    }
+
     await createReservation({
       id, userUid: uid, sucursalId, category, m2: Number(m2),
       monthly: monthlyNum, firstMonth: 0,
@@ -358,6 +383,7 @@ adminReservationsRouter.post('/sell-plan', requireAuth, async (req, res: Respons
       promoMonths: freeUnit === 'months' ? freeQty : 0,
       promoQty: freeQty, promoUnit: freeUnit,
       paymentMode: 'plan', mpPlanId: planId,
+      gapPreferenceId, gapAmount, gapInitPoint, gapDays,
       discountPct: disc,
       source: 'manual_admin',
     } as any);
@@ -367,9 +393,16 @@ adminReservationsRouter.post('/sell-plan', requireAuth, async (req, res: Respons
       via: (req.body?.via as string) || 'admin',
       action: 'link_generado_plan_mes_gratis',
       entity: 'reservation', entityId: id, branchId: sucursalId,
-      detail: { cliente: name, email, baulera: hold.bauleraCodigo || null, m2: Number(m2), mensual: monthlyNum, gratis: `${freeQty} ${freeUnit === 'days' ? 'día(s)' : 'mes(es)'}`, planId },
+      detail: { cliente: name, email, baulera: hold.bauleraCodigo || null, m2: Number(m2), mensual: monthlyNum, gratis: `${freeQty} ${freeUnit === 'days' ? 'día(s)' : 'mes(es)'}`, planId, gapDias: gapDays, gapMonto: gapAmount },
     });
-    res.status(201).json({ reservationId: id, initPoint: planLink, monthly: monthlyNum, duration: Number(durationMonths) || 1, paymentMode: 'plan', planId, gratis: `${freeQty} ${freeUnit === 'days' ? 'día(s)' : 'mes(es)'}` });
+    // 2 LINKS: la suscripción (cuenta anexada acá) + el pago único del gap (si hay días de diferencia).
+    res.status(201).json({
+      reservationId: id,
+      initPoint: planLink, suscripcionLink: planLink,
+      gapLink: gapInitPoint, gapAmount, gapDays,
+      monthly: monthlyNum, duration: Number(durationMonths) || 1, paymentMode: 'plan', planId,
+      gratis: `${freeQty} ${freeUnit === 'days' ? 'día(s)' : 'mes(es)'}`,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('POST /admin/reservations/sell-plan error:', err);

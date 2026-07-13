@@ -196,6 +196,35 @@ export async function createDebtPreference(p: {
   return { preferenceId: d.id, initPoint: d.init_point };
 }
 
+// PAGO ÚNICO de ALINEACIÓN ("gap") para MES GRATIS (SPEC cobros-alineados §4, decisión Lucas):
+// como no se puede prorratear + mes gratis en una sola suscripción, la venta con mes gratis usa
+// 2 links: (1) la suscripción/plan con free_trial hasta el 1° (queda anexada la cuenta) y (2) este
+// pago único que cobra SOLO los días de diferencia (gap) para que el neto gratis sea 1 mes exacto.
+// external_reference "GAP <reservationId>" → el webhook lo registra sin activar (activa la sub).
+export async function createGapPreference(p: {
+  reservationId: string; title: string; amount: number; email: string; backUrl: string;
+}): Promise<{ preferenceId: string; initPoint: string }> {
+  const accessToken = process.env.MP_ACCESS_TOKEN;
+  if (!accessToken) throw new Error('MP_ACCESS_TOKEN not configured');
+  const body = {
+    items: [{ title: p.title, quantity: 1, unit_price: p.amount, currency_id: 'ARS' }],
+    payer: { email: p.email },
+    external_reference: `GAP ${p.reservationId}`,
+    back_urls: { success: p.backUrl, pending: p.backUrl, failure: p.backUrl },
+    auto_return: 'approved',
+  };
+  const res = await fetch(`${MP_API_BASE}/checkout/preferences`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}`, 'X-Idempotency-Key': `gap-${p.reservationId}` },
+    body: JSON.stringify(body),
+  });
+  const text = await res.text();
+  if (!res.ok) throw new Error(`MP gap preference ${res.status}: ${text.slice(0, 200)}`);
+  const d = JSON.parse(text) as { id?: string; init_point?: string };
+  if (!d.id || !d.init_point) throw new Error(`MP gap preference sin id/init_point: ${text.slice(0, 200)}`);
+  return { preferenceId: d.id, initPoint: d.init_point };
+}
+
 // (getPaymentExternalReference ELIMINADA 12/07: 0 usos — superada por getPaymentDetail.)
 
 // DETALLE de un pago para el webhook de cobros: monto/estado/fecha REALES + external_reference
