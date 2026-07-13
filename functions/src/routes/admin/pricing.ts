@@ -673,7 +673,9 @@ pricingRouter.get('/cobros-rechazados/:branchId', verifyToken, requireStaff, asy
     const [allSubs, units, resIdToCode] = await Promise.all([
       searchSubscriptionsCached(), buildRentedUnits(), buildResIdToCodeMap(),
     ]);
-    const subs = allSubs.filter((s) => s.status === 'authorized' || s.status === 'pending');
+    // Incluye 'paused': MP PAUSA la sub cuando agota los reintentos → antes esas desaparecían
+    // del radar de rechazados justo cuando más importaban (hallazgo Lucas 13/07, baulera A1-007).
+    const subs = allSubs.filter((s) => s.status === 'authorized' || s.status === 'pending' || s.status === 'paused');
     // Mismo canon/codeOf del reprice (robusto a formatos y ceros a la izquierda).
     const canon = (c: string): string => {
       const s = String(c || '').toUpperCase();

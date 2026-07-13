@@ -5,7 +5,7 @@ import * as admin from 'firebase-admin';
 import * as crypto from 'crypto';
 import { assignRoomForReservation, holdRoomForReservation } from '../../services/assignment.service';
 import { getReservation, createReservation, updateReservation, getReservationByMpPreapprovalId, getReservationByBauleraCodigo } from '../../models/reservation.model';
-import { createSubscription, createCheckoutPreference, createPlan, updatePlanAmount, cancelSubscription, getSubscriptionStatus, invalidateSubsCache } from '../../services/mercadopago.service';
+import { createSubscription, createCheckoutPreference, createPlan, updatePlanAmount, cancelSubscription, getSubscriptionStatus, invalidateSubsCache, searchSubscriptionsCached } from '../../services/mercadopago.service';
 import { getPricingByM2, recurringFor } from '../../services/pricing.service';
 import { generateReservationId } from '../../utils/generateId';
 import { logAudit } from '../../services/audit.service';
@@ -628,10 +628,13 @@ adminReservationsRouter.post('/:id/cancel', requireAuth, async (req, res: Respon
 adminReservationsRouter.post('/rebill', requireAuth, async (req, res: Response) => {
   try {
     const { subId, baulera, amount, email, cliente } = (req.body || {}) as Record<string, string | number | undefined>;
-    if (!subId) { res.status(400).json({ error: 'Falta subId (la suscripción rechazada)' }); return; }
+    // subId es OPCIONAL (caso MANUAL: MP muestra el rechazo pero la web no lo detectó —
+    // sub sin external_reference matcheable, pausada, etc.). Con baulera alcanza: la sub
+    // vieja se busca en MP por código/email para cancelarla igual.
+    if (!subId && !baulera) { res.status(400).json({ error: 'Falta subId o baulera' }); return; }
 
     // 1) Reserva existente (por sub, o por código de baulera) — puede NO existir (sub legacy).
-    let reservation = await getReservationByMpPreapprovalId(String(subId));
+    let reservation = subId ? await getReservationByMpPreapprovalId(String(subId)) : null;
     if (!reservation && baulera) reservation = await getReservationByBauleraCodigo(String(baulera));
 
     // 2) Baulera real (para anexar todo: room + tenant + precio).
@@ -654,6 +657,21 @@ adminReservationsRouter.post('/rebill', requireAuth, async (req, res: Response) 
     if (!(monto > 0)) { res.status(400).json({ error: 'No pude determinar el monto mensual (mandalo en amount)' }); return; }
     if (!mailCliente) { res.status(400).json({ error: 'Sin email del cliente: cargalo para poder mandarle el link' }); return; }
 
+    // 2b) Sub VIEJA a cancelar: la clickeada (rechazados), la de la reserva, o BUSCARLA en MP
+    // por código de baulera / email — incluye 'paused' (MP pausa tras agotar reintentos).
+    let oldSubId = String(subId || reservation?.mpPreapprovalId || '');
+    if (!oldSubId) {
+      try {
+        const canon = (c: string): string => { const s = String(c || '').toUpperCase(); const m = s.match(/([A-Z]\d)\D*0*(\d+)/); return m ? m[1] + m[2] : s.replace(/[^A-Z0-9]/g, ''); };
+        const codeOf = (ext: string): string => { const m = String(ext || '').match(/[A-Za-z]\d+-\d+|[A-Za-z]\d{3,}/); return m ? canon(m[0]) : ''; };
+        const subs = (await searchSubscriptionsCached()).filter((s) => s.status === 'authorized' || s.status === 'pending' || s.status === 'paused');
+        const target = canon(code);
+        let hit = target ? subs.find((s) => codeOf(s.externalReference) === target) : undefined;
+        if (!hit && mailCliente) hit = subs.find((s) => s.payerEmail.trim().toLowerCase() === mailCliente);
+        if (hit) oldSubId = hit.id;
+      } catch { /* sin acceso a MP: seguimos sin cancelar (se avisa en la respuesta) */ }
+    }
+
     // 3) Crear la sub NUEVA (idempotency key propia: con la de la reserva, MP devolvería la vieja).
     const resId = reservation?.id || generateReservationId();
     const { preapprovalId: nuevaSubId, initPoint } = await createSubscription({
@@ -662,7 +680,7 @@ adminReservationsRouter.post('/rebill', requireAuth, async (req, res: Response) 
       m2, amount: monto, email: mailCliente,
       backUrl: 'https://micontainer.com/#/portal',
       bauleraCodigo: code || undefined,
-      idempotencyKey: `rebill-${subId}-${Date.now()}`,
+      idempotencyKey: `rebill-${oldSubId || 'manual'}-${Date.now()}`,
     });
 
     // 4) Reapuntar/crear la reserva ANTES de cancelar la vieja (ver ORDEN CRÍTICO arriba).
@@ -670,7 +688,7 @@ adminReservationsRouter.post('/rebill', requireAuth, async (req, res: Response) 
       mpPreapprovalId: nuevaSubId, mpInitPoint: initPoint, mpSubscriptionStatus: 'pending' as const,
       rebillAt: new Date().toISOString(),
       rebillBy: String((req as unknown as { email?: string }).email || 'admin'),
-      rebillPrevPreapprovalId: String(subId),
+      rebillPrevPreapprovalId: oldSubId,
     };
     if (reservation) {
       await updateReservation(reservation.id, {
@@ -698,11 +716,15 @@ adminReservationsRouter.post('/rebill', requireAuth, async (req, res: Response) 
 
     // 5) AHORA sí: cancelar la sub vieja en MP (acá paran los reintentos). Si MP falla y no
     // quedó cancelada, devolvemos el link nuevo igual con aviso (cancelarla desde el panel MP).
-    let viejaCancelada = true;
-    try { await cancelSubscription(String(subId)); }
-    catch {
-      const st = await getSubscriptionStatus(String(subId));
-      viejaCancelada = st === 'cancelled';
+    // Caso manual sin sub encontrada: no hay nada que cancelar → se avisa en la respuesta.
+    let viejaCancelada = false;
+    if (oldSubId) {
+      viejaCancelada = true;
+      try { await cancelSubscription(oldSubId); }
+      catch {
+        const st = await getSubscriptionStatus(oldSubId);
+        viejaCancelada = st === 'cancelled';
+      }
     }
 
     // 6) Mail al cliente + caches + auditoría.
@@ -715,10 +737,10 @@ adminReservationsRouter.post('/rebill', requireAuth, async (req, res: Response) 
       actor: String((req as unknown as { email?: string }).email || 'admin'), via: 'admin', role: 'admin',
       action: 'reenvio_link_cobro', entity: 'reservation', entityId: resId,
       branchId: String(room?.['branchId'] || reservation?.sucursalId || 'nordelta'),
-      detail: { baulera: code || null, cliente: nombre, monto, subVieja: String(subId), subNueva: nuevaSubId, viejaCancelada, emailEnviado, legacy: !reservation },
+      detail: { baulera: code || null, cliente: nombre, monto, subVieja: oldSubId || null, subNueva: nuevaSubId, viejaCancelada, emailEnviado, legacy: !reservation },
     });
 
-    res.json({ ok: true, reservationId: resId, initPoint, viejaCancelada, emailEnviado, email: mailCliente });
+    res.json({ ok: true, reservationId: resId, initPoint, viejaCancelada, subViejaEncontrada: !!oldSubId, emailEnviado, email: mailCliente });
   } catch (err) {
     console.error('POST /admin/reservations/rebill error:', err);
     res.status(500).json({ error: 'No se pudo generar el nuevo link de cobro', detail: err instanceof Error ? err.message : String(err) });
