@@ -2,8 +2,22 @@ import { Router, Response } from 'express';
 import { requireAuth } from '../../middleware/requireAuth';
 import { db } from '../../config/firebase';
 import { logAudit } from '../../services/audit.service';
+import { limpiarPendientesVencidos } from '../../jobs/cleanup';
 
 export const adminMaintenanceRouter = Router();
+
+// POST /admin/maintenance/cleanup-pendings — dispara A MANO la misma limpieza del cron
+// (holds de venta vencidos → solicitud cancelada + sub pendiente cancelada en MP; barre
+// también las subs 'pending' viejas no referenciadas). Devuelve qué limpió.
+adminMaintenanceRouter.post('/cleanup-pendings', requireAuth, async (_req, res: Response) => {
+  try {
+    const out = await limpiarPendientesVencidos();
+    res.json(out);
+  } catch (err) {
+    console.error('POST /admin/maintenance/cleanup-pendings error:', err);
+    res.status(500).json({ error: 'No se pudo correr la limpieza' });
+  }
+});
 
 // GET /admin/maintenance/rooms-report — SOLO LECTURA: diagnostico de bauleras (no modifica nada)
 adminMaintenanceRouter.get('/rooms-report', requireAuth, async (_req, res: Response) => {

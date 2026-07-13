@@ -374,6 +374,7 @@ export interface MpSubscription {
   lastChargedDate?: string;
   lastModified?: string;     // fecha del ultimo cambio de la suscripcion (last_modified) — incluye cambios de monto
   planId?: string;           // preapproval_plan_id: presente si la sub NACIÓ de un plan (mes gratis)
+  dateCreated?: string;      // date_created: para barrer pendings viejas (checkouts abandonados)
 }
 
 // Trae TODAS las suscripciones (preapprovals) de la cuenta con el status dado,
@@ -407,6 +408,7 @@ export async function searchSubscriptions(status?: string): Promise<MpSubscripti
         status: String(r['status'] ?? ''),
         lastModified: String(r['last_modified'] ?? ''), // fecha del ultimo cambio de la sub (para reconciliar)
         planId: String(r['preapproval_plan_id'] ?? ''), // no-vacío = la sub nació de un plan (mes gratis)
+        dateCreated: String(r['date_created'] ?? ''),
       });
     }
     offset += limit;

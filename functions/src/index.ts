@@ -1,6 +1,8 @@
 import { onRequest } from 'firebase-functions/v2/https';
+import { onSchedule } from 'firebase-functions/v2/scheduler';
 import express from 'express';
 import cors from 'cors';
+import { limpiarPendientesVencidos } from './jobs/cleanup';
 import { reservationsRouter } from './routes/reservations';
 import { mpWebhookRouter } from './routes/webhooks/mercadopago';
 import { availabilityRouter } from './routes/availability';
@@ -117,4 +119,11 @@ export const api = onRequest(
     secrets: ['MP_ACCESS_TOKEN', 'MP_WEBHOOK_SECRET', 'ANTHROPIC_API_KEY', 'SYNC_TOKEN', 'RESEND_API_KEY'],
   },
   app
+);
+
+// LIMPIEZA cada 15 min (regla Lucas 13/07): venta de primera vez con 20 min sin pagar →
+// solicitud CANCELADA (no queda pending) + sub pendiente cancelada en MP. Los recobros no vencen.
+export const cleanupPendings = onSchedule(
+  { schedule: 'every 15 minutes', region: 'us-central1', memory: '256MiB', secrets: ['MP_ACCESS_TOKEN'] },
+  async () => { await limpiarPendientesVencidos(); }
 );
