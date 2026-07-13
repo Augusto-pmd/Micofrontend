@@ -58,6 +58,7 @@ adminReservationsRouter.get('/', requireAuth, async (req, res: Response) => {
         // Face ID: para que Ventas en curso muestre "alta pendiente" y el botón de alta
         faceEnrollStatus: data['faceEnrollStatus'] || 'not_started',
         paymentMode:  data['paymentMode'] || 'subscription',
+        rebillAt:     data['rebillAt'] || null, // recobro: cuándo se le envió link (para titilar violeta en el plano)
         // Timestamps
         createdAt: data['createdAt']?.toDate?.()?.toISOString() || null,
         cancelledAt: data['cancelledAt']?.toDate?.()?.toISOString() || null,
