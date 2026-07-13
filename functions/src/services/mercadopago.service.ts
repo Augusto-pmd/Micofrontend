@@ -276,6 +276,19 @@ export async function updatePlanAmount(planId: string, amount: number): Promise<
   if (!res.ok) { const t = await res.text(); throw new Error(`MP plan update ${res.status}: ${t.slice(0, 200)}`); }
 }
 
+// Cancela un PLAN: su link muere para FUTUROS suscriptos. Los YA suscriptos no se tocan
+// (sus preapprovals siguen cobrando normal).
+export async function cancelPlan(planId: string): Promise<void> {
+  const accessToken = process.env.MP_ACCESS_TOKEN;
+  if (!accessToken) throw new Error('MP_ACCESS_TOKEN not configured');
+  const res = await fetch(`${MP_API_BASE}/preapproval_plan/${encodeURIComponent(planId)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
+    body: JSON.stringify({ status: 'cancelled' }),
+  });
+  if (!res.ok) { const t = await res.text(); throw new Error(`MP plan cancel ${res.status}: ${t.slice(0, 200)}`); }
+}
+
 // Detalle de un preapproval — para CASAR una sub creada via LINK de plan con su venta pendiente.
 export interface MpPreapprovalDetail { status: string; planId: string; externalReference: string; payerEmail: string; }
 export async function getPreapprovalDetail(preapprovalId: string): Promise<MpPreapprovalDetail | null> {

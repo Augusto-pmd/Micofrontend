@@ -4,7 +4,7 @@ import { verifyToken } from '../../middleware/verifyToken';
 import { requireStaff } from '../../middleware/requireStaff';
 import { getPricingByM2, recurringFor } from '../../services/pricing.service';
 import { FieldValue } from 'firebase-admin/firestore';
-import { updateSubscriptionAmount, updatePlanAmount, searchSubscriptions, searchSubscriptionsCached, invalidateSubsCache, getLastChargedMap, getLastChargeAttempt, searchPlans, MpSubscription } from '../../services/mercadopago.service';
+import { updateSubscriptionAmount, updatePlanAmount, searchSubscriptions, searchSubscriptionsCached, invalidateSubsCache, getLastChargedMap, getLastChargeAttempt, searchPlans, cancelSubscription, cancelPlan, MpSubscription } from '../../services/mercadopago.service';
 import { logAudit } from '../../services/audit.service';
 
 export const pricingRouter = Router();
@@ -519,16 +519,74 @@ pricingRouter.get('/planes/:branchId', verifyToken, requireStaff, async (req: Re
           estado: s.status,
         };
       });
+    // Suscripciones SUELTAS: vivas en MP pero que el matcheo (el mismo del roster) no une a
+    // ninguna baulera ocupada → duplicadas, huérfanas o de otro negocio. Se listan para poder
+    // darlas de baja SIN generar links nuevos (pedido Lucas 13/07).
+    const matchables = allSubs.filter((s) => s.status === 'authorized' || s.status === 'pending');
+    const byCode2 = new Map<string, MpSubscription[]>();
+    const byEmail2 = new Map<string, MpSubscription[]>();
+    for (const s of matchables) {
+      const c = codeOf(s.externalReference);
+      if (c) { if (!byCode2.has(c)) byCode2.set(c, []); byCode2.get(c)!.push(s); }
+      const e = (s.payerEmail || '').trim().toLowerCase();
+      if (e) { if (!byEmail2.has(e)) byEmail2.set(e, []); byEmail2.get(e)!.push(s); }
+    }
+    const usadas = new Set<string>();
+    for (const u2 of units) {
+      const c = canon(u2.code);
+      let hit = c ? (byCode2.get(c) || []).find((s) => !usadas.has(s.id)) : undefined;
+      if (!hit) { const e = (u2.email || '').trim().toLowerCase(); if (e) hit = (byEmail2.get(e) || []).find((s) => !usadas.has(s.id)); }
+      if (hit) usadas.add(hit.id);
+    }
+    const sueltas = allSubs
+      .filter((s) => (s.status === 'authorized' || s.status === 'pending' || s.status === 'paused') && !usadas.has(s.id))
+      .map((s) => ({ id: s.id, ref: s.externalReference || '', monto: s.amount, estado: s.status, email: s.payerEmail || '' }));
+
     res.json({
       total: planes.length,
       desactualizados: planes.filter((x) => x.desactualizado).length,
       planes,
       suscriptosViaPlan: suscriptos.length,
       suscriptos,
+      sueltasTotal: sueltas.length,
+      sueltas,
     });
   } catch (err) {
     console.error('GET /pricing-engine/planes error:', err);
     res.status(500).json({ error: 'No se pudieron listar los planes' });
+  }
+});
+
+// POST /pricing-engine/subs/:subId/cancel — dar de BAJA una suscripción vieja/suelta en MP
+// SIN generar link nuevo. Corta el cobro en MP y nada más (no toca reservas ni bauleras).
+pricingRouter.post('/subs/:subId/cancel', verifyToken, requireStaff, async (req: Request, res: Response) => {
+  try {
+    const subId = req.params['subId'];
+    await cancelSubscription(subId);
+    invalidateSubsCache();
+    await logAudit({
+      actor: (req as unknown as { email?: string }).email || 'admin', via: 'admin',
+      action: 'baja_sub_mp_manual', entity: 'subscription', entityId: subId, detail: { motivo: 'baja manual desde Tarifas (sub vieja/suelta)' },
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(502).json({ error: 'MP no aceptó cancelar la suscripción', detail: String(err).slice(0, 200) });
+  }
+});
+
+// POST /pricing-engine/planes/:planId/cancel — cancelar un PLAN viejo: su link muere para
+// futuros suscriptos; a los YA suscriptos no los toca.
+pricingRouter.post('/planes/:planId/cancel', verifyToken, requireStaff, async (req: Request, res: Response) => {
+  try {
+    const planId = req.params['planId'];
+    await cancelPlan(planId);
+    await logAudit({
+      actor: (req as unknown as { email?: string }).email || 'admin', via: 'admin',
+      action: 'baja_plan_mp', entity: 'plan', entityId: planId, detail: {},
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(502).json({ error: 'MP no aceptó cancelar el plan', detail: String(err).slice(0, 200) });
   }
 });
 

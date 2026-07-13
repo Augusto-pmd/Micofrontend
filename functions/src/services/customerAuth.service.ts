@@ -104,6 +104,9 @@ export async function ensureAuthUser(email: string, displayName?: string): Promi
 // el mail y elegir su propia clave.
 export async function sendActivationEmail(email: string, name?: string): Promise<void> {
   const e = email.trim().toLowerCase();
+  // Cliente EXISTENTE con cuenta ya verificada (ej: re-alta tras un recobro): NO mandarle
+  // "activá tu cuenta" — su portal sigue tal cual (misma contraseña, mismos datos).
+  try { const u0 = await auth.getUserByEmail(e); if (u0.emailVerified) return; } catch { /* no existe: alta normal */ }
   await ensureAuthUser(e, name);
   // continueUrl: al terminar de crear la contraseña, la página de Firebase ofrece "Continuar"
   // que lleva DIRECTO al portal (antes quedaba muerta en "contraseña cambiada").
