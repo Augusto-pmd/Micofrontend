@@ -66,7 +66,9 @@ async function processWebhook(body: Record<string, unknown>): Promise<void> {
     let paid: MpPaymentDetail | null = null;
     if (!reservation) {
       paid = await getPaymentDetail(eventId);
-      if (!paid) paid = await getPaymentDetail(eventId); // reintento ante fallo transitorio de MP
+      // reintento ante fallo transitorio de MP, con un respiro corto (un reintento instantáneo casi
+      // siempre re-falla; MP a veces tarda en indexar el pago recién creado).
+      if (!paid) { await new Promise((r) => setTimeout(r, 600)); paid = await getPaymentDetail(eventId); }
       // Sin el detalle no podemos resolver el pago (DEUDA/GAP/reserva): 500 para que MP REINTENTE
       // en vez de descartarlo en silencio (antes se perdía una deuda pagada → riesgo de re-pago).
       if (!paid) throw new Error(`[mp-webhook] getPaymentDetail null para el pago ${eventId} — retry vía 500`);
@@ -98,8 +100,12 @@ async function processWebhook(body: Record<string, unknown>): Promise<void> {
       // GAP (mes gratis): pago único de alineación al 1°. La baulera la ACTIVA la SUSCRIPCIÓN
       // (link 1), no este pago — acá solo se registra que el cliente pagó el gap.
       if (/^GAP\s+/i.test(extRaw)) {
+        const resId = extRaw.replace(/^GAP\s+/i, '').trim();
         if (paid?.status === 'approved') {
-          const resId = extRaw.replace(/^GAP\s+/i, '').trim();
+          // Idempotencia (igual que DEUDA): si el gap ya se registró (reentrega de MP), no re-loguear.
+          const rGap = await getReservation(resId);
+          if (rGap?.gapPaidAt) { console.log(`[mp-webhook] GAP ${resId} ya registrado (reentrega) → ignoro`); return; }
+          if (rGap) await updateReservation(resId, { gapPaidAt: new Date().toISOString() });
           await logAudit({ actor: 'cliente', via: 'mercadopago', action: 'gap_pagado', entity: 'reservation', entityId: resId, detail: { monto: paid.amount } });
           console.log(`[mp-webhook] GAP de alineación pagado para reserva ${resId}`);
         } else {
@@ -199,9 +205,19 @@ async function processWebhook(body: Record<string, unknown>): Promise<void> {
         // cliente que usó el mismo link. Se desambigua SIEMPRE por el EMAIL del pagador: si no
         // matchea ninguna venta pendiente, NO se activa (reconciliar a mano) para no cruzar clientes.
         const em = (det.payerEmail || '').trim().toLowerCase();
-        let candidatos = em
-          ? pend.docs.filter((d) => String((d.data() as Record<string, unknown>)['customerEmail'] || '').toLowerCase().trim() === em)
-          : pend.docs;
+        let candidatos: typeof pend.docs;
+        if (em) {
+          candidatos = pend.docs.filter((d) => String((d.data() as Record<string, unknown>)['customerEmail'] || '').toLowerCase().trim() === em);
+        } else if (pend.docs.length === 1) {
+          // Sin email del pagador pero UNA sola venta pendiente del plan → no hay ambigüedad ni cruce
+          // posible; se activa esa (no frenamos el caso común si MP no informa el email).
+          candidatos = pend.docs;
+          console.warn(`[mp-webhook] sub ${preapprovalId}: sin email del pagador; 1 sola pendiente del plan → activo esa`);
+        } else {
+          // Sin email y >1 pendiente: NO se puede desambiguar sin arriesgar CRUZAR clientes → NO activar.
+          candidatos = [];
+          console.warn(`[mp-webhook] sub ${preapprovalId} del plan ${det.planId}: sin email del pagador y ${pend.size} pendientes → reconciliar a mano (no activo para no cruzar clientes)`);
+        }
         // Mismo cliente con >1 baulera de la misma medida (varias pendientes que matchean el email):
         // tomar la MÁS VIEJA; el próximo evento encontrará la otra (esta ya quedó estampada/activa).
         candidatos = candidatos.slice().sort((a, b) => {

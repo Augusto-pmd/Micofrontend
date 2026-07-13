@@ -14,17 +14,26 @@ import { createPlan, updatePlanBilling, FreeTrialUnit, MpPlanCreated } from './m
 // que ya tenía sell-plan). Si el doc es viejo y no tiene billingDay, se hace el PUT de upgrade.
 // CAVEAT documentado: el plan es compartido por medida — dos ventas simultáneas de la misma medida
 // con montos distintos pisan el monto del plan (riesgo bajo, igual que sell-plan desde el 11/07).
+// CLAVE del catálogo (doc id en mpPlans). Incluye el MONTO: el plan (y su init_point) es compartido
+// por quienes se suscriban por ese link, y el cobro sale del transaction_amount del plan. Sin el monto
+// en la clave, dos ventas de la misma medida con precios distintos (descuento/override/reprice) pisaban
+// el monto y cobraban a ambos el último → cobro por monto equivocado. Con el monto en la clave, cada
+// precio = su plan. INVARIANTE: el plan del doc en la clave K SIEMPRE cobra el monto embebido en K.
+// repricePlans (admin/pricing.ts) mantiene el invariante RE-KEYEANDO el doc al cambiarle el monto;
+// getOrCreateAlignedPlan confía en la clave sin re-chequear el monto contra MP.
+export function planKey(p: { m2: number; amount: number; freeQty?: number; freeUnit?: FreeTrialUnit }): string {
+  const q = Math.max(0, Number(p.freeQty) || 0);
+  const unit: FreeTrialUnit = p.freeUnit === 'days' ? 'days' : 'months';
+  const amt = Math.round(Number(p.amount));
+  return q > 0 ? `m2-${String(p.m2)}-${amt}-trial${q}${unit === 'days' ? 'd' : 'm'}` : `m2-${String(p.m2)}-${amt}-alin1`;
+}
+
 export async function getOrCreateAlignedPlan(p: {
   m2: number; amount: number; freeQty?: number; freeUnit?: FreeTrialUnit;
 }): Promise<MpPlanCreated> {
   const q = Math.max(0, Number(p.freeQty) || 0);
   const unit: FreeTrialUnit = p.freeUnit === 'days' ? 'days' : 'months';
-  // La clave incluye el MONTO: el plan (y su init_point) es compartido por quienes se suscriban por
-  // ese link, y el cobro sale del transaction_amount del plan. Sin el monto en la clave, dos ventas
-  // de la misma medida con precios distintos (descuento/override/reprice) pisaban el monto y cobraban
-  // a ambos el último → cobro por monto equivocado. Con el monto en la clave, cada precio = su plan.
-  const amt = Math.round(Number(p.amount));
-  const key = q > 0 ? `m2-${String(p.m2)}-${amt}-trial${q}${unit === 'days' ? 'd' : 'm'}` : `m2-${String(p.m2)}-${amt}-alin1`;
+  const key = planKey({ m2: p.m2, amount: p.amount, freeQty: q, freeUnit: unit });
   const ref = db.collection('mpPlans').doc(key);
   const snap = await ref.get();
 

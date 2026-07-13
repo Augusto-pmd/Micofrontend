@@ -57,6 +57,7 @@ export interface Reservation {
   gapAmount?: number;
   gapInitPoint?: string | null;
   gapDays?: number;
+  gapPaidAt?: string;       // gap del mes gratis cobrado (idempotencia del webhook GAP): ISO
 }
 
 export const reservationsCol = () => db.collection('reservations');

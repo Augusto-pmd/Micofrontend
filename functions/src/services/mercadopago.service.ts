@@ -1,3 +1,5 @@
+import { fetchWithTimeout } from '../utils/http';
+
 const MP_API_BASE = 'https://api.mercadopago.com';
 
 interface CreateSubscriptionParams {
@@ -235,7 +237,7 @@ export async function getPaymentDetail(paymentId: string): Promise<MpPaymentDeta
   const accessToken = process.env.MP_ACCESS_TOKEN;
   if (!accessToken) return null;
   try {
-    const res = await fetch(`${MP_API_BASE}/v1/payments/${paymentId}`, {
+    const res = await fetchWithTimeout(`${MP_API_BASE}/v1/payments/${paymentId}`, {
       headers: { 'Authorization': `Bearer ${accessToken}` },
     });
     if (!res.ok) return null;
@@ -387,7 +389,7 @@ export async function getPreapprovalDetail(preapprovalId: string): Promise<MpPre
   const accessToken = process.env.MP_ACCESS_TOKEN;
   if (!accessToken) return null;
   try {
-    const res = await fetch(`${MP_API_BASE}/preapproval/${encodeURIComponent(preapprovalId)}`, {
+    const res = await fetchWithTimeout(`${MP_API_BASE}/preapproval/${encodeURIComponent(preapprovalId)}`, {
       headers: { 'Authorization': `Bearer ${accessToken}` },
     });
     if (!res.ok) return null;
@@ -407,7 +409,7 @@ export async function setPreapprovalExternalReference(preapprovalId: string, ref
   const accessToken = process.env.MP_ACCESS_TOKEN;
   if (!accessToken) return false;
   try {
-    const res = await fetch(`${MP_API_BASE}/preapproval/${encodeURIComponent(preapprovalId)}`, {
+    const res = await fetchWithTimeout(`${MP_API_BASE}/preapproval/${encodeURIComponent(preapprovalId)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
       body: JSON.stringify({ external_reference: ref }),
@@ -458,7 +460,7 @@ export async function getSubscriptionStatus(preapprovalId: string): Promise<stri
   const accessToken = process.env.MP_ACCESS_TOKEN;
   if (!accessToken) return null;
   try {
-    const res = await fetch(`${MP_API_BASE}/preapproval/${encodeURIComponent(preapprovalId)}`, {
+    const res = await fetchWithTimeout(`${MP_API_BASE}/preapproval/${encodeURIComponent(preapprovalId)}`, {
       headers: { 'Authorization': `Bearer ${accessToken}` },
     });
     if (!res.ok) return null;

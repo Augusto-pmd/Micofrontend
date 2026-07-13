@@ -6,6 +6,7 @@ import { getPricingByM2, recurringFor } from '../../services/pricing.service';
 import { FieldValue } from 'firebase-admin/firestore';
 import { updateSubscriptionAmount, updatePlanAmount, searchSubscriptions, searchSubscriptionsCached, invalidateSubsCache, getLastChargedMap, getLastChargeAttempt, searchPlans, cancelSubscription, cancelPlan, MpSubscription } from '../../services/mercadopago.service';
 import { debtsByBaulera } from '../../services/debts.service';
+import { planKey } from '../../services/planCatalog.service';
 import { logAudit } from '../../services/audit.service';
 
 export const pricingRouter = Router();
@@ -334,6 +335,31 @@ async function runTargets(targets: Target[], notify: boolean): Promise<{ actuali
 // suscripciones NO los toca. Sin esto, un link de plan viejo sigue vendiendo al precio
 // anterior (hallazgo Lucas 13/07). Actualiza los planes guardados (mpPlans) de esa medida
 // en MP y en la base local.
+// Actualiza el monto de UN plan en MP + RE-KEYEA su doc de catálogo (mpPlans). La clave embebe el
+// MONTO y getOrCreateAlignedPlan reusa el plan por (m2×monto×trial) confiando en la clave SIN
+// re-chequear el monto contra MP. Si dejáramos la clave con el monto viejo, una venta posterior a
+// ESE monto viejo reusaría este plan que ahora cobra el monto NUEVO → cobro equivocado al cliente.
+// Movemos el doc a la clave nueva para mantener el invariante clave↔monto (ver planKey).
+async function repriceAndRekeyPlan(
+  planId: string, docSnap: FirebaseFirestore.QueryDocumentSnapshot | null, m2n: number, newAmount: number,
+): Promise<void> {
+  await updatePlanAmount(planId, newAmount);
+  if (!docSnap) return;
+  const p = docSnap.data() as Record<string, unknown>;
+  const q = Number(p['freeTrialQty']) || 0;
+  const unit: 'days' | 'months' = p['freeTrialUnit'] === 'days' ? 'days' : 'months';
+  const newKey = planKey({ m2: m2n, amount: newAmount, freeQty: q, freeUnit: unit });
+  if (newKey === docSnap.id) {
+    await docSnap.ref.set({ amount: newAmount, updatedAt: new Date().toISOString() }, { merge: true });
+    return;
+  }
+  const dst = db.collection('mpPlans').doc(newKey);
+  // Si ya hay un doc en la clave nueva (otro plan del MISMO monto), lo dejamos: ese queda como
+  // canónico y este queda huérfano (sigue cobrando bien, solo no se reusa para ventas nuevas).
+  if (!(await dst.get()).exists) await dst.set({ ...p, amount: newAmount, updatedAt: new Date().toISOString() });
+  await docSnap.ref.delete();
+}
+
 async function repricePlans(m2n: number, newAmount: number): Promise<{ planesActualizados: number; planesErrores: Array<{ id: string; error: string }> }> {
   const snap = await db.collection('mpPlans').where('m2', '==', m2n).get();
   let planesActualizados = 0;
@@ -342,8 +368,7 @@ async function repricePlans(m2n: number, newAmount: number): Promise<{ planesAct
     const p = d.data() as Record<string, unknown>;
     if (Number(p['amount']) === newAmount) continue; // ya está en el precio nuevo
     try {
-      await updatePlanAmount(String(p['planId']), newAmount);
-      await d.ref.set({ amount: newAmount, updatedAt: new Date().toISOString() }, { merge: true });
+      await repriceAndRekeyPlan(String(p['planId']), d, m2n, newAmount);
       planesActualizados++;
     } catch (e) { planesErrores.push({ id: String(p['planId']), error: String(e).slice(0, 200) }); }
   }
@@ -608,12 +633,13 @@ pricingRouter.post('/planes/:branchId/sync', verifyToken, requireStaff, async (r
       if (p.status !== 'active') continue;
       const localDoc = localDocByPlanId.get(p.id) || null;
       const m2 = planM2(p.reason, localDoc ? (localDoc.data() as Record<string, unknown>) : null);
-      const tarifa = m2 != null ? recurringFor(byM2, m2, 1) : null;
+      if (m2 == null) { sinMedida++; continue; }
+      const tarifa = recurringFor(byM2, m2, 1);
       if (tarifa == null || !(tarifa > 0)) { sinMedida++; continue; }
       if (p.amount === tarifa) { yaEnPrecio++; continue; }
       try {
-        await updatePlanAmount(p.id, tarifa);
-        if (localDoc) await localDoc.ref.set({ amount: tarifa, updatedAt: new Date().toISOString() }, { merge: true });
+        // Re-keyea el doc igual que repricePlans: mantiene el invariante clave↔monto para el reuso.
+        await repriceAndRekeyPlan(p.id, localDoc, m2, tarifa);
         actualizados.push({ planId: p.id, nombre: p.reason, de: p.amount, a: tarifa });
       } catch (e) { errores.push({ planId: p.id, error: String(e).slice(0, 200) }); }
     }

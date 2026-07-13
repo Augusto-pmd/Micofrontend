@@ -351,8 +351,18 @@ adminReservationsRouter.post('/sell-plan', requireAuth, async (req, res: Respons
     {
       const hoy = new Date(); hoy.setHours(0, 0, 0, 0); // a medianoche: comparación por fecha, no por hora
       const freeEnd = new Date(hoy);
-      if (freeUnit === 'days') freeEnd.setDate(freeEnd.getDate() + freeQty);
-      else freeEnd.setMonth(freeEnd.getMonth() + freeQty);
+      if (freeUnit === 'days') {
+        freeEnd.setDate(freeEnd.getDate() + freeQty);
+      } else {
+        // setMonth DESBORDA a fin de mes: 31-ene +1 mes → 02/03-mar (no 28-feb), y align saltaría al
+        // 1-abr sobrecobrando ~29 días de "alineación". Clampear el día al último día real del mes
+        // destino (setDate(1) antes de mover el mes evita el desborde intermedio).
+        const d0 = freeEnd.getDate();
+        freeEnd.setDate(1);
+        freeEnd.setMonth(freeEnd.getMonth() + freeQty);
+        const lastDay = new Date(freeEnd.getFullYear(), freeEnd.getMonth() + 1, 0).getDate();
+        freeEnd.setDate(Math.min(d0, lastDay));
+      }
       // align = primer día 1° >= freeEnd. Con freeEnd a medianoche, si freeEnd YA es un 1° el align
       // queda igual → gap 0. (Antes freeEnd arrastraba la hora → en el borde saltaba al mes siguiente
       // y sobrecobraba un mes entero como si fuera "alineación".)

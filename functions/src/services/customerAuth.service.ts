@@ -1,5 +1,6 @@
 import { auth } from '../config/firebase';
 import * as crypto from 'crypto';
+import { fetchWithTimeout } from '../utils/http';
 
 const RESEND_API = 'https://api.resend.com/emails';
 
@@ -11,7 +12,9 @@ async function sendEmail(to: string, subject: string, html: string): Promise<voi
   // que no sea el dueño de la cuenta (por eso los clientes NO recibían el mail de activación,
   // aunque el dominio estuviera bien verificado — bug destapado con la prueba real del 11/07).
   const from = process.env.RESEND_FROM || 'Mi Container <comercial@micontainer.com>';
-  const r = await fetch(RESEND_API, {
+  // Timeout: el webhook de MP espera este envío antes de responder; si Resend cuelga, no queremos
+  // pasarnos de la ventana de MP. El activation-email va dentro de try/catch en el caller (best-effort).
+  const r = await fetchWithTimeout(RESEND_API, {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ from, to: [to], subject, html }),
