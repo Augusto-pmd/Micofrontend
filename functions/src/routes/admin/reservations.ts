@@ -357,7 +357,11 @@ adminReservationsRouter.post('/sell-plan', requireAuth, async (req, res: Respons
       if (align.getTime() < freeEnd.getTime()) align.setMonth(align.getMonth() + 1);
       gapDays = Math.max(0, Math.round((align.getTime() - freeEnd.getTime()) / 86400000));
       gapAmount = gapDays > 0 ? Math.round(monthlyNum * gapDays / 30) : 0;
-      if (gapAmount > 0 && process.env.FUNCTIONS_EMULATOR !== 'true') {
+      // El gap es OPCIONAL/diferible (decisión Lucas): se puede cobrar AHORA (si el operador manda
+      // generarGapAhora) o DESPUÉS desde Inventario con el botón "cobro proporcional" (mismo /deuda
+      // tipo='proporcional'), cuando pasen los días. La cuenta queda anexada a la SUSCRIPCIÓN igual.
+      // Siempre se calcula y guarda gapDays/gapAmount para que Inventario los pre-cargue.
+      if (gapAmount > 0 && req.body?.generarGapAhora === true && process.env.FUNCTIONS_EMULATOR !== 'true') {
         const gp = await createGapPreference({
           reservationId: id,
           title: `Mi Container ${hold.bauleraCodigo || String(m2) + 'm2'} — ${gapDays} días de alineación al 1°`,
