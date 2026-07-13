@@ -72,7 +72,17 @@ async function processWebhook(body: Record<string, unknown>): Promise<void> {
       return;
     }
 
-    if (reservation.status === 'pending_payment') {
+    // #4: para ACTIVAR la baulera hay que confirmar que el pago está APPROVED. Si todavía no
+    // trajimos el detalle del pago (caso: la reserva se resolvió por preapprovalId), lo pedimos.
+    // Un pago RECHAZADO/pendiente NO debe activar (antes activaba solo por status pending_payment
+    // → una tarjeta rechazada daba baulera gratis).
+    if (paid === null) paid = await getPaymentDetail(eventId);
+    const pagoApproved = paid?.status === 'approved';
+    if (!pagoApproved && reservation.status === 'pending_payment') {
+      console.warn(`[mp-webhook] pago NO approved (status=${paid?.status ?? 'desconocido'}) para ${reservation.id} -> NO se activa la baulera`);
+    }
+
+    if (reservation.status === 'pending_payment' && pagoApproved) {
       await updateReservation(reservation.id, {
         status: 'active',
         mpSubscriptionStatus: 'authorized',
@@ -181,6 +191,17 @@ async function processWebhook(body: Record<string, unknown>): Promise<void> {
     if (mpStatus !== 'cancelled') {
       await updateReservation(reservation.id, { mpSubscriptionStatus: mpStatus } as any);
       console.log(`[mp-webhook] Reservation ${reservation.id} sub -> ${mpStatus}`);
+      return;
+    }
+
+    // #6 IDEMPOTENCIA: si la reserva YA está cancelada, este evento es una RE-ENTREGA de MP
+    // (reenvía el mismo aviso) o llega DESPUÉS de una baja desde el panel (que ya cortó MP,
+    // liberó la baulera y marcó bajaGestionada). NO reprocesar:
+    //  - re-liberar la baulera BORRARÍA al nuevo inquilino si ya se re-alquiló;
+    //  - re-escribir bajaGestionada:false haría reaparecer la baja como pendiente (pisa al staff/admin);
+    //  - movería cancelledAt y duplicaría la auditoría.
+    if (reservation.status === 'cancelled') {
+      console.log(`[mp-webhook] baja ya procesada para ${reservation.id} (evento re-entregado / baja de panel) -> ignoro`);
       return;
     }
 
