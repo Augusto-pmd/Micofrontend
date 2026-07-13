@@ -337,13 +337,18 @@ export async function createPlan(params: { m2: number; amount: number; freeTrial
 // Actualiza monto + alineación al día fijo de un plan (upgrade de planes viejos sin billing_day
 // y reprice de los alineados). Spike 13/07: el PUT de monto solo CONSERVA billing_day; acá lo
 // mandamos explícito igual para poder "subir de nivel" un plan viejo. Fallback: monto solo.
-export async function updatePlanBilling(planId: string, amount: number, billingDay = 1): Promise<void> {
+export async function updatePlanBilling(planId: string, amount: number, billingDay = 1, proportional = true): Promise<void> {
   const accessToken = process.env.MP_ACCESS_TOKEN;
   if (!accessToken) throw new Error('MP_ACCESS_TOKEN not configured');
+  // proportional SOLO en entrada paga (sin trial). Con MES GRATIS no se prorratea (mismo guard
+  // que createPlan). BUG que arreglaba: antes mandaba proportional:true SIEMPRE, y al reprice de
+  // un plan de mes gratis reintroducía el prorrateo → MP cobraba un parcial en vez de $0.
+  const ar: Record<string, unknown> = { transaction_amount: amount, currency_id: 'ARS', billing_day: billingDay };
+  if (proportional) ar['billing_day_proportional'] = true;
   const full = await fetch(`${MP_API_BASE}/preapproval_plan/${encodeURIComponent(planId)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
-    body: JSON.stringify({ auto_recurring: { transaction_amount: amount, currency_id: 'ARS', billing_day: billingDay, billing_day_proportional: true } }),
+    body: JSON.stringify({ auto_recurring: ar }),
   });
   if (full.ok) return;
   const t = await full.text();

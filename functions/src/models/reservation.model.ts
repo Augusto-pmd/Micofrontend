@@ -47,6 +47,16 @@ export interface Reservation {
   rebillAt?: string;                 // cuándo se reenvió (ISO)
   rebillBy?: string;                 // staff que lo disparó
   rebillPrevPreapprovalId?: string;  // la sub rechazada que se canceló
+  // Promos / descuento (se escribían con 'as any' — declarados para type-safety):
+  promoMonths?: number;
+  promoQty?: number;
+  promoUnit?: 'days' | 'months';
+  discountPct?: number;
+  // GAP del mes gratis (SPEC §4): 2° link (pago único de alineación al 1°). Pre-carga en Inventario.
+  gapPreferenceId?: string | null;
+  gapAmount?: number;
+  gapInitPoint?: string | null;
+  gapDays?: number;
 }
 
 export const reservationsCol = () => db.collection('reservations');

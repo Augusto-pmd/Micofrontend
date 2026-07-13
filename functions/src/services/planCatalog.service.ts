@@ -19,7 +19,12 @@ export async function getOrCreateAlignedPlan(p: {
 }): Promise<MpPlanCreated> {
   const q = Math.max(0, Number(p.freeQty) || 0);
   const unit: FreeTrialUnit = p.freeUnit === 'days' ? 'days' : 'months';
-  const key = q > 0 ? `m2-${String(p.m2)}-trial${q}${unit === 'days' ? 'd' : 'm'}` : `m2-${String(p.m2)}-alin1`;
+  // La clave incluye el MONTO: el plan (y su init_point) es compartido por quienes se suscriban por
+  // ese link, y el cobro sale del transaction_amount del plan. Sin el monto en la clave, dos ventas
+  // de la misma medida con precios distintos (descuento/override/reprice) pisaban el monto y cobraban
+  // a ambos el último → cobro por monto equivocado. Con el monto en la clave, cada precio = su plan.
+  const amt = Math.round(Number(p.amount));
+  const key = q > 0 ? `m2-${String(p.m2)}-${amt}-trial${q}${unit === 'days' ? 'd' : 'm'}` : `m2-${String(p.m2)}-${amt}-alin1`;
   const ref = db.collection('mpPlans').doc(key);
   const snap = await ref.get();
 
@@ -27,11 +32,10 @@ export async function getOrCreateAlignedPlan(p: {
     const doc = snap.data() as Record<string, unknown>;
     const planId = String(doc['planId']);
     const initPoint = String(doc['initPoint']);
-    const needAmount = Number(doc['amount']) !== p.amount;
-    const needBilling = Number(doc['billingDay']) !== 1; // plan viejo sin alinear → upgrade
-    if (needAmount || needBilling) {
-      await updatePlanBilling(planId, p.amount, 1);
-      await ref.set({ amount: p.amount, billingDay: 1, updatedAt: new Date().toISOString() }, { merge: true });
+    // El monto ya está fijado por la clave; solo puede faltar el upgrade de alineación (plan viejo).
+    if (Number(doc['billingDay']) !== 1) {
+      await updatePlanBilling(planId, p.amount, 1, q === 0); // proporcional SOLO sin trial
+      await ref.set({ billingDay: 1, updatedAt: new Date().toISOString() }, { merge: true });
     }
     return { planId, initPoint };
   }

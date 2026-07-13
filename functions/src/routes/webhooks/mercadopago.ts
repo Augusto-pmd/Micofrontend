@@ -37,13 +37,17 @@ mpWebhookRouter.post('/', async (req: Request, res: Response) => {
     if (!ok) { res.status(401).json({ error: 'Invalid signature' }); return; }
   }
 
-  // Responder 200 rapido (MP espera < 5s)
-  res.status(200).json({ received: true });
-
-  // Procesar async sin bloquear la respuesta
-  processWebhook(req.body).catch((err) =>
-    console.error('[mp-webhook] Processing error:', err)
-  );
+  // Procesar ANTES de responder: si algo falla devolvemos 500 y MP REINTENTA (antes se respondía
+  // 200 y se procesaba async → un fallo/reciclado de la instancia perdía el evento sin reintento,
+  // dejando bauleras sin activar o deudas sin marcar pagadas). El procesamiento es idempotente
+  // (ramas DEUDA/GAP/plan/baja), así que un reintento de MP es seguro. MP tolera ~5s.
+  try {
+    await processWebhook(req.body);
+    res.status(200).json({ received: true });
+  } catch (err) {
+    console.error('[mp-webhook] Processing error:', err);
+    res.status(500).json({ error: 'processing failed' });
+  }
 });
 
 async function processWebhook(body: Record<string, unknown>): Promise<void> {
@@ -62,16 +66,22 @@ async function processWebhook(body: Record<string, unknown>): Promise<void> {
     let paid: MpPaymentDetail | null = null;
     if (!reservation) {
       paid = await getPaymentDetail(eventId);
-      const extRaw = (paid?.externalReference || '').trim();
+      if (!paid) paid = await getPaymentDetail(eventId); // reintento ante fallo transitorio de MP
+      // Sin el detalle no podemos resolver el pago (DEUDA/GAP/reserva): 500 para que MP REINTENTE
+      // en vez de descartarlo en silencio (antes se perdía una deuda pagada → riesgo de re-pago).
+      if (!paid) throw new Error(`[mp-webhook] getPaymentDetail null para el pago ${eventId} — retry vía 500`);
+      const extRaw = (paid.externalReference || '').trim();
 
       // DEUDA (SPEC cobros-alineados §5): pago único de un mes adeudado. NO es una suscripción —
       // solo marca la deuda pagada (apaga el titileo de la baulera). La suscripción del cliente
       // sigue viva sola; MP cobra el mes corriente el 1° aparte.
       if (/^DEUDA\s+/i.test(extRaw)) {
         const debtId = extRaw.replace(/^DEUDA\s+/i, '').trim();
-        if (paid?.status === 'approved') {
-          await markDebtPaid(debtId, String(eventId));
+        if (paid.status === 'approved') {
           const debt = await getDebt(debtId);
+          // Idempotencia: si ya estaba pagada (reentrega de MP), no re-loguear auditoría.
+          if (debt && debt.status === 'paid') { console.log(`[mp-webhook] DEUDA ${debtId} ya pagada (reentrega) → ignoro`); return; }
+          await markDebtPaid(debtId, String(eventId));
           await logAudit({
             actor: debt?.email || 'cliente', via: 'mercadopago', action: 'deuda_pagada',
             entity: 'debt', entityId: debtId,
@@ -80,7 +90,7 @@ async function processWebhook(body: Record<string, unknown>): Promise<void> {
           invalidateRechazadosCache(); // la baulera deja de titilar (mes pagado) al toque
           console.log(`[mp-webhook] DEUDA ${debtId} PAGADA -> baulera al día`);
         } else {
-          console.warn(`[mp-webhook] pago de DEUDA NO approved (status=${paid?.status ?? '?'}) ref=${extRaw}`);
+          console.warn(`[mp-webhook] pago de DEUDA NO approved (status=${paid.status ?? '?'}) ref=${extRaw}`);
         }
         return;
       }
@@ -185,23 +195,42 @@ async function processWebhook(body: Record<string, unknown>): Promise<void> {
           .where('mpPlanId', '==', det.planId)
           .where('status', '==', 'pending_payment')
           .get();
-        // Con TODAS las ventas nuevas yendo por plan (SPEC Regla A), puede haber más de una
-        // pendiente del mismo plan a la vez → se desambigua por el EMAIL del pagador.
-        let candidatos = pend.docs;
-        if (candidatos.length > 1 && det.payerEmail) {
-          const em = det.payerEmail.trim().toLowerCase();
-          const porMail = candidatos.filter((d) => String((d.data() as Record<string, unknown>)['customerEmail'] || '').toLowerCase().trim() === em);
-          if (porMail.length) candidatos = porMail;
-        }
-        if (candidatos.length === 1) {
+        // Los links de plan se comparten por medida → el preapproval entrante puede ser de OTRO
+        // cliente que usó el mismo link. Se desambigua SIEMPRE por el EMAIL del pagador: si no
+        // matchea ninguna venta pendiente, NO se activa (reconciliar a mano) para no cruzar clientes.
+        const em = (det.payerEmail || '').trim().toLowerCase();
+        let candidatos = em
+          ? pend.docs.filter((d) => String((d.data() as Record<string, unknown>)['customerEmail'] || '').toLowerCase().trim() === em)
+          : pend.docs;
+        // Mismo cliente con >1 baulera de la misma medida (varias pendientes que matchean el email):
+        // tomar la MÁS VIEJA; el próximo evento encontrará la otra (esta ya quedó estampada/activa).
+        candidatos = candidatos.slice().sort((a, b) => {
+          const ta = (a.data() as Record<string, { toMillis?: () => number }>)['createdAt']?.toMillis?.() || 0;
+          const tb = (b.data() as Record<string, { toMillis?: () => number }>)['createdAt']?.toMillis?.() || 0;
+          return ta - tb;
+        });
+        if (candidatos.length >= 1) {
           const r = candidatos[0].data() as Reservation;
-          await updateReservation(r.id, { mpPreapprovalId: preapprovalId } as any);
+          const activar = det.status === 'authorized' || det.status === 'pending';
+          // IDEMPOTENCIA: estampar preapprovalId (+ pasar a active) en UNA transacción, SOLO si sigue
+          // pending_payment. Si otra entrega concurrente ya lo hizo, saltamos (no re-activa, no
+          // re-manda mail ni duplica auditoría).
+          const yaProcesada = await db.runTransaction(async (tx) => {
+            const s = await tx.get(db.collection('reservations').doc(r.id));
+            const cur = s.data() as Record<string, unknown> | undefined;
+            if (!cur || cur['status'] !== 'pending_payment') return true;
+            tx.update(s.ref, {
+              mpPreapprovalId: preapprovalId,
+              ...(activar ? { status: 'active', mpSubscriptionStatus: (det.status === 'authorized' ? 'authorized' : 'pending') } : {}),
+            });
+            return false;
+          });
+          if (yaProcesada) { console.log(`[mp-webhook] sub de PLAN ${preapprovalId} ya procesada → ignoro`); return; }
           if (r.bauleraCodigo) {
             const stamped = await setPreapprovalExternalReference(preapprovalId, `MiContainer Baulera ${r.bauleraCodigo}`);
-            console.log(`[mp-webhook] sub de PLAN ${preapprovalId} -> venta ${r.id} (baulera ${r.bauleraCodigo}); external_reference ${stamped ? 'estampado' : 'NO estampado (matchea por preapprovalId igual)'}`);
+            console.log(`[mp-webhook] sub de PLAN ${preapprovalId} → venta ${r.id} (baulera ${r.bauleraCodigo}); external_reference ${stamped ? 'estampado' : 'NO'}`);
           }
-          if (det.status === 'authorized' || det.status === 'pending') {
-            await updateReservation(r.id, { status: 'active', mpSubscriptionStatus: (det.status === 'authorized' ? 'authorized' : 'pending') } as any);
+          if (activar) {
             const assignedRoom = await assignRoomForReservation({ ...r, status: 'active' } as any, r.storageRoomId);
             await logAudit({
               actor: r.customerEmail || r.userUid || 'cliente',
@@ -216,7 +245,7 @@ async function processWebhook(body: Record<string, unknown>): Promise<void> {
             }
           }
         } else {
-          console.warn(`[mp-webhook] sub ${preapprovalId} del plan ${det.planId}: ${pend.size} ventas pendientes de ese plan → reconciliar a mano (find-sub)`);
+          console.warn(`[mp-webhook] sub ${preapprovalId} del plan ${det.planId}: ningún candidato matchea el email del pagador (${pend.size} pendientes) → reconciliar a mano (find-sub)`);
         }
       }
       return;

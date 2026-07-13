@@ -349,10 +349,13 @@ adminReservationsRouter.post('/sell-plan', requireAuth, async (req, res: Respons
     // (≈ cuándo autoriza el cliente); un desfasaje de días se afina con una prueba real (SPEC §4).
     let gapInitPoint: string | null = null, gapPreferenceId: string | null = null, gapDays = 0, gapAmount = 0;
     {
-      const hoy = new Date();
+      const hoy = new Date(); hoy.setHours(0, 0, 0, 0); // a medianoche: comparación por fecha, no por hora
       const freeEnd = new Date(hoy);
       if (freeUnit === 'days') freeEnd.setDate(freeEnd.getDate() + freeQty);
       else freeEnd.setMonth(freeEnd.getMonth() + freeQty);
+      // align = primer día 1° >= freeEnd. Con freeEnd a medianoche, si freeEnd YA es un 1° el align
+      // queda igual → gap 0. (Antes freeEnd arrastraba la hora → en el borde saltaba al mes siguiente
+      // y sobrecobraba un mes entero como si fuera "alineación".)
       const align = new Date(freeEnd.getFullYear(), freeEnd.getMonth(), 1);
       if (align.getTime() < freeEnd.getTime()) align.setMonth(align.getMonth() + 1);
       gapDays = Math.max(0, Math.round((align.getTime() - freeEnd.getTime()) / 86400000));
@@ -701,6 +704,15 @@ adminReservationsRouter.post('/deuda', requireAuth, async (req, res: Response) =
 // de /pricing-engine/cobros-rechazados). Cubre subs legacy SIN reserva en nuestra base: se les
 // crea una reserva mínima anexada a su baulera (matcheable por el webhook de ahí en más).
 adminReservationsRouter.post('/rebill', requireAuth, async (req, res: Response) => {
+  // DESHABILITADO (SPEC cobros-alineados): el recobro ya NO crea una suscripción nueva ni cancela
+  // la del cliente. Las deudas se cobran con PAGO ÚNICO (POST /admin/reservations/deuda). Neutralizada
+  // para que ningún bundle viejo pueda crear una suscripción por error. (El flag typed 'boolean' evita
+  // el error "unreachable code": el cuerpo viejo queda type-check-eable pero MUERTO en runtime.)
+  const REBILL_DISABLED: boolean = true;
+  if (REBILL_DISABLED) {
+    res.status(410).json({ error: 'Ruta discontinuada. Usá POST /admin/reservations/deuda (pago único).' });
+    return;
+  }
   try {
     const { subId, baulera, amount, email, cliente } = (req.body || {}) as Record<string, string | number | undefined>;
     // subId es OPCIONAL (caso MANUAL: MP muestra el rechazo pero la web no lo detectó —
