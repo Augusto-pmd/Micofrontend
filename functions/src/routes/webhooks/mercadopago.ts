@@ -147,8 +147,16 @@ async function processWebhook(body: Record<string, unknown>): Promise<void> {
           .where('mpPlanId', '==', det.planId)
           .where('status', '==', 'pending_payment')
           .get();
-        if (pend.size === 1) {
-          const r = pend.docs[0].data() as Reservation;
+        // Con TODAS las ventas nuevas yendo por plan (SPEC Regla A), puede haber más de una
+        // pendiente del mismo plan a la vez → se desambigua por el EMAIL del pagador.
+        let candidatos = pend.docs;
+        if (candidatos.length > 1 && det.payerEmail) {
+          const em = det.payerEmail.trim().toLowerCase();
+          const porMail = candidatos.filter((d) => String((d.data() as Record<string, unknown>)['customerEmail'] || '').toLowerCase().trim() === em);
+          if (porMail.length) candidatos = porMail;
+        }
+        if (candidatos.length === 1) {
+          const r = candidatos[0].data() as Reservation;
           await updateReservation(r.id, { mpPreapprovalId: preapprovalId } as any);
           if (r.bauleraCodigo) {
             const stamped = await setPreapprovalExternalReference(preapprovalId, `MiContainer Baulera ${r.bauleraCodigo}`);

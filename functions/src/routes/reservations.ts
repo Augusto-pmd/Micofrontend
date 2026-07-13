@@ -1,7 +1,8 @@
 import { Router, Response } from 'express';
 import { requireAuth, optionalAuth, AuthenticatedRequest } from '../middleware/requireAuth';
 import { createReservation, getUserReservations, getReservation, updateReservation } from '../models/reservation.model';
-import { createSubscription, cancelSubscription } from '../services/mercadopago.service';
+import { cancelSubscription } from '../services/mercadopago.service';
+import { getOrCreateAlignedPlan } from '../services/planCatalog.service';
 import { holdRoomForReservation } from '../services/assignment.service';
 import { getPricingByM2, recurringFor } from '../services/pricing.service';
 import { db } from '../config/firebase';
@@ -13,7 +14,7 @@ export const reservationsRouter = Router();
 
 const REQUIRED_FIELDS = ['sucursalId', 'category', 'm2', 'monthly', 'firstMonth', 'startDate', 'duration'];
 
-const BACK_URL = 'https://micontainer.com/#/portal';
+// (BACK_URL se removió: la venta web ahora va por link de plan — SPEC cobros-alineados Regla A)
 
 // POST /reservations — create reservation + start MP subscription
 // Auth is OPTIONAL: logged-in users get linked to their Firebase uid;
@@ -86,22 +87,22 @@ reservationsRouter.post('/', optionalAuth, async (req, res: Response) => {
       return;
     }
 
-    // Create subscription in Mercado Pago (en el emulador local se saltea MP)
-    let preapprovalId: string;
+    // SPEC cobros-alineados (Regla A): la venta web va por LINK DE PLAN con billing_day=1 +
+    // proporcional (el spike 13/07 confirmó que la sub directa IGNORA billing_day). MP cobra el
+    // proporcional de los días hasta el 1° al autorizar, y el mes completo cada 1°.
+    // El webhook (rama planes) casa la sub con esta reserva por planId + email y le estampa el
+    // código de baulera.
+    let planId: string;
     let initPoint: string;
     if (process.env.FUNCTIONS_EMULATOR === 'true') {
-      preapprovalId = `emu-${id}`;
+      planId = `emu-plan-${id}`;
       initPoint = 'http://127.0.0.1:4000/emulator-no-mp';
     } else {
-      ({ preapprovalId, initPoint } = await createSubscription({
-        reservationId: id,
-        categoryLabel: category,
-        m2,
+      ({ planId, initPoint } = await getOrCreateAlignedPlan({
+        m2: Number(m2),
         amount: monthlyNum,
-        email,
-        backUrl: BACK_URL,
-        freeTrialMonths: Number(freeTrialMonths) || 0,
-        bauleraCodigo: hold.bauleraCodigo || undefined,
+        freeQty: Number(freeTrialMonths) || 0,
+        freeUnit: 'months',
       }));
     }
 
@@ -119,13 +120,17 @@ reservationsRouter.post('/', optionalAuth, async (req, res: Response) => {
       addons,
       promosApplied,
       status: 'pending_payment',
-      mpPreapprovalId: preapprovalId,
+      mpPreapprovalId: '',             // se estampa cuando el cliente autoriza (webhook, rama planes)
+      mpPlanId: planId,
+      paymentMode: 'plan',
       mpInitPoint: initPoint,          // guardamos el link para poder retomar el pago
       mpSubscriptionStatus: 'pending',
       faceEnrollStatus: 'not_started',
       faceEnrollAttempts: 0,
       storageRoomId: hold.roomId,
       heldUntil: hold.heldUntil,
+      bauleraCodigo: hold.bauleraCodigo || undefined,
+      source: 'web',
       // Guest contact info (populated from form when not logged in)
       customerName:  name  || undefined,
       customerEmail: email || undefined,

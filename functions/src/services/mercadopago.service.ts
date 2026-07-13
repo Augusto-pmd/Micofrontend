@@ -234,21 +234,32 @@ export async function getLastChargeAttempt(preapprovalId: string): Promise<MpCha
 // sin tokenizacion). Ver docs/referencia/mercadopago-planes.md §1.5.
 export interface MpPlanCreated { planId: string; initPoint: string; }
 export type FreeTrialUnit = 'days' | 'months';
-export async function createPlan(params: { m2: number; amount: number; freeTrialQty: number; freeTrialUnit: FreeTrialUnit }): Promise<MpPlanCreated> {
+// billingDay (SPEC cobros-alineados §4, spike 13/07): el plan cobra ese día fijo del mes y MP
+// PRORRATEA solo el primer cobro (billing_day_proportional) — verificado con prueba real:
+// devuelve transaction_amount_proportional calculado. free_trial + billing_day conviven.
+export async function createPlan(params: { m2: number; amount: number; freeTrialQty?: number; freeTrialUnit?: FreeTrialUnit; billingDay?: number }): Promise<MpPlanCreated> {
   const accessToken = process.env.MP_ACCESS_TOKEN;
   if (!accessToken) throw new Error('MP_ACCESS_TOKEN not configured');
-  const unidad = params.freeTrialUnit === 'days'
-    ? (params.freeTrialQty > 1 ? 'dias' : 'dia')
-    : (params.freeTrialQty > 1 ? 'meses' : 'mes');
+  const q = Number(params.freeTrialQty) || 0;
+  const unit: FreeTrialUnit = params.freeTrialUnit === 'days' ? 'days' : 'months';
+  const unidad = unit === 'days' ? (q > 1 ? 'dias' : 'dia') : (q > 1 ? 'meses' : 'mes');
+  const reason = `Mi Container Baulera ${params.m2}m2` +
+    (q > 0 ? ` (${q} ${unidad} gratis)` : '') +
+    (params.billingDay ? ` - cierra el ${params.billingDay}` : '');
+  const autoRecurring: Record<string, unknown> = {
+    frequency: 1,
+    frequency_type: 'months',
+    transaction_amount: params.amount,
+    currency_id: 'ARS',
+  };
+  if (q > 0) autoRecurring['free_trial'] = { frequency: q, frequency_type: unit };
+  if (params.billingDay) {
+    autoRecurring['billing_day'] = params.billingDay;
+    autoRecurring['billing_day_proportional'] = true;
+  }
   const body = {
-    reason: `Mi Container Baulera ${params.m2}m2 (${params.freeTrialQty} ${unidad} gratis)`,
-    auto_recurring: {
-      frequency: 1,
-      frequency_type: 'months',
-      transaction_amount: params.amount,
-      currency_id: 'ARS',
-      free_trial: { frequency: params.freeTrialQty, frequency_type: params.freeTrialUnit },
-    },
+    reason,
+    auto_recurring: autoRecurring,
     back_url: 'https://micontainer.com/#/portal',
   };
   const res = await fetch(`${MP_API_BASE}/preapproval_plan`, {
@@ -262,6 +273,23 @@ export async function createPlan(params: { m2: number; amount: number; freeTrial
   try { d = JSON.parse(text); } catch { throw new Error(`MP plan invalid JSON: ${text.slice(0, 200)}`); }
   if (!d.id || !d.init_point) throw new Error(`MP plan sin id/init_point: ${text.slice(0, 200)}`);
   return { planId: d.id, initPoint: d.init_point };
+}
+
+// Actualiza monto + alineación al día fijo de un plan (upgrade de planes viejos sin billing_day
+// y reprice de los alineados). Spike 13/07: el PUT de monto solo CONSERVA billing_day; acá lo
+// mandamos explícito igual para poder "subir de nivel" un plan viejo. Fallback: monto solo.
+export async function updatePlanBilling(planId: string, amount: number, billingDay = 1): Promise<void> {
+  const accessToken = process.env.MP_ACCESS_TOKEN;
+  if (!accessToken) throw new Error('MP_ACCESS_TOKEN not configured');
+  const full = await fetch(`${MP_API_BASE}/preapproval_plan/${encodeURIComponent(planId)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
+    body: JSON.stringify({ auto_recurring: { transaction_amount: amount, currency_id: 'ARS', billing_day: billingDay, billing_day_proportional: true } }),
+  });
+  if (full.ok) return;
+  const t = await full.text();
+  console.warn(`[MP] updatePlanBilling full-PUT fallo (${full.status}): ${t.slice(0, 160)} -> reintento solo monto`);
+  await updatePlanAmount(planId, amount);
 }
 
 // Actualiza el monto de un plan (cuando cambia la tarifa de la medida).

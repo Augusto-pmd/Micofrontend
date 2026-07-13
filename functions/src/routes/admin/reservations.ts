@@ -5,7 +5,8 @@ import * as admin from 'firebase-admin';
 import * as crypto from 'crypto';
 import { assignRoomForReservation, holdRoomForReservation } from '../../services/assignment.service';
 import { getReservation, createReservation, updateReservation, getReservationByMpPreapprovalId, getReservationByBauleraCodigo } from '../../models/reservation.model';
-import { createSubscription, createCheckoutPreference, createPlan, updatePlanAmount, cancelSubscription, getSubscriptionStatus, invalidateSubsCache, searchSubscriptionsCached } from '../../services/mercadopago.service';
+import { createSubscription, createCheckoutPreference, cancelSubscription, getSubscriptionStatus, invalidateSubsCache, searchSubscriptionsCached } from '../../services/mercadopago.service';
+import { getOrCreateAlignedPlan } from '../../services/planCatalog.service';
 import { getPricingByM2, recurringFor } from '../../services/pricing.service';
 import { generateReservationId } from '../../utils/generateId';
 import { logAudit } from '../../services/audit.service';
@@ -150,22 +151,20 @@ adminReservationsRouter.post('/sell', requireAuth, async (req, res: Response) =>
       return;
     }
 
-    // Suscripción Mercado Pago (el emulador la saltea)
-    let preapprovalId: string;
+    // SPEC cobros-alineados (Regla A): venta manual por LINK DE PLAN alineado al 1° con
+    // proporcional (la sub directa ignora billing_day — spike 13/07). El webhook (rama planes)
+    // casa la sub por planId + email y estampa el código de baulera.
+    let planId: string;
     let initPoint: string;
     if (process.env.FUNCTIONS_EMULATOR === 'true') {
-      preapprovalId = `emu-${id}`;
+      planId = `emu-plan-${id}`;
       initPoint = `https://www.mercadopago.com.ar/subscriptions/emulator-demo?ref=${id}`;
     } else {
-      ({ preapprovalId, initPoint } = await createSubscription({
-        reservationId: id,
-        categoryLabel: category,
+      ({ planId, initPoint } = await getOrCreateAlignedPlan({
         m2: Number(m2),
         amount: monthlyNum,
-        email: String(email),
-        backUrl: 'https://micontainer.com/#/portal',
-        freeTrialMonths: Number(promoMonths) || 0,
-        bauleraCodigo: hold.bauleraCodigo || bauleraCodigo,
+        freeQty: Number(promoMonths) || 0,
+        freeUnit: 'months',
       }));
     }
 
@@ -182,7 +181,9 @@ adminReservationsRouter.post('/sell', requireAuth, async (req, res: Response) =>
       addons: [],
       promosApplied: [],
       status: 'pending_payment',
-      mpPreapprovalId: preapprovalId,
+      mpPreapprovalId: '',       // se estampa cuando el cliente autoriza (webhook, rama planes)
+      mpPlanId: planId,
+      paymentMode: 'plan',
       mpInitPoint: initPoint,
       mpSubscriptionStatus: 'pending',
       faceEnrollStatus: 'not_started',
@@ -209,7 +210,7 @@ adminReservationsRouter.post('/sell', requireAuth, async (req, res: Response) =>
       branchId: sucursalId,
       detail: { cliente: name, email, baulera: hold.bauleraCodigo, m2: Number(m2), monthly: monthlyNum, heldUntil: hold.heldUntil, promoMonths: Number(promoMonths) || 0, discountPct: disc },
     });
-    res.status(201).json({ reservationId: id, initPoint, preapprovalId, monthly: monthlyNum, duration });
+    res.status(201).json({ reservationId: id, initPoint, planId, preapprovalId: null, monthly: monthlyNum, duration, alineado: 'billing_day=1 + proporcional' });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('POST /admin/reservations/sell error:', err);
@@ -321,26 +322,14 @@ adminReservationsRouter.post('/sell-plan', requireAuth, async (req, res: Respons
     const disc = Number(discountPct) || 0;
     if (disc > 0) monthlyNum = Math.round(monthlyNum * (1 - disc / 100));
 
-    // Plan por medida (+ meses de trial): se crea 1 vez y se reusa; si cambió el precio se actualiza.
+    // Plan por (medida × período gratis), ahora ALINEADO al 1° + proporcional (SPEC Regla A).
+    // El catálogo compartido reusa/upgradea el plan y actualiza el monto si cambió.
     let planId: string; let planLink: string;
     if (process.env.FUNCTIONS_EMULATOR === 'true') {
       planId = `emu-plan-${m2}`; planLink = `https://www.mercadopago.com.ar/subscriptions/emulator-plan?m2=${m2}`;
     } else {
-      // Un plan por (medida × período gratis): m2-9-trial1m, m2-9-trial15d, etc.
-      const planRef = db.collection('mpPlans').doc(`m2-${String(m2)}-trial${freeQty}${freeUnit === 'days' ? 'd' : 'm'}`);
-      const planSnap = await planRef.get();
-      if (planSnap.exists) {
-        const p = planSnap.data() as Record<string, unknown>;
-        planId = String(p['planId']); planLink = String(p['initPoint']);
-        if (Number(p['amount']) !== monthlyNum) {
-          await updatePlanAmount(planId, monthlyNum);
-          await planRef.set({ amount: monthlyNum, updatedAt: new Date().toISOString() }, { merge: true });
-        }
-      } else {
-        const created = await createPlan({ m2: Number(m2), amount: monthlyNum, freeTrialQty: freeQty, freeTrialUnit: freeUnit });
-        planId = created.planId; planLink = created.initPoint;
-        await planRef.set({ m2: Number(m2), amount: monthlyNum, freeTrialQty: freeQty, freeTrialUnit: freeUnit, planId, initPoint: planLink, createdAt: new Date().toISOString() });
-      }
+      const created = await getOrCreateAlignedPlan({ m2: Number(m2), amount: monthlyNum, freeQty, freeUnit });
+      planId = created.planId; planLink = created.initPoint;
     }
 
     const id = generateReservationId();
