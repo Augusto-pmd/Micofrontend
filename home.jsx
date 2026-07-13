@@ -155,11 +155,14 @@ const SUCURSALES = [
   { id: 'vlopez',  name: 'Vicente López', hood: 'GBA Norte', address: 'Av. Maipú 2840',        hours: 'Próximamente',                   availability: null,   scarcity: null, comingSoon: true  },
 ];
 
+// mode: 'handover' = se abona AL ENTREGAR (candado/kit; items físicos, se muestran con precio
+// pero NO se cobran online — la suscripción de MP cobra solo la mensualidad). 'coordinate' = a
+// coordinar sin precio (retiro, según disponibilidad). 'soon' = próximamente (no seleccionable).
 const ADDONS = [
-  { key: 'pickup',   name: 'Retiro a domicilio',  desc: 'Vamos a buscar tus cosas (CABA y GBA).', cost: 32500 },
-  { key: 'pack',     name: 'Kit de embalaje',     desc: 'Cajas, cinta y film stretch para 10 m³.', cost: 14500 },
-  { key: 'lock',     name: 'Candado certificado', desc: 'De acero, anti-corte. Lo dejás vos.',     cost: 9200  },
-  { key: 'insure',   name: 'Seguro extendido',    desc: 'Cobertura hasta $2.000.000 por daños.',   cost: 8900  },
+  { key: 'pickup',   name: 'Retiro a domicilio',  desc: 'Vamos a buscar tus cosas (CABA y GBA).', cost: 32500, mode: 'coordinate' },
+  { key: 'pack',     name: 'Kit de embalaje',     desc: 'Cajas, cinta y film stretch para 10 m³.', cost: 14500, mode: 'handover' },
+  { key: 'lock',     name: 'Candado certificado', desc: 'De acero, anti-corte. Lo dejás vos.',     cost: 9200,  mode: 'handover' },
+  { key: 'insure',   name: 'Seguro extendido',    desc: 'Cobertura hasta $2.000.000 por daños.',   cost: 8900,  mode: 'soon' },
 ];
 
 // ─────────────────────────────────────────────────────────────────
@@ -274,17 +277,20 @@ function promosForPlacement(placement, data = null) {
 
 function computeTotals(data) {
   const monthly = data.option?.monthly ?? fromPrice(data.category);
+  // Add-ons que se ABONAN AL ENTREGAR (candado + kit): se muestran con precio pero NO se cobran
+  // online. Se dejan afuera del pago de hoy (la suscripción de MP cobra solo la mensualidad).
   const addonOneOff = data.addons
-    .filter((k) => k !== 'pickup')
-    .reduce((s, k) => s + ADDONS.find((a) => a.key === k).cost, 0);
-  const pickupCost = data.addons.includes('pickup') ? ADDONS.find((a) => a.key === 'pickup').cost : 0;
+    .reduce((s, k) => { const a = ADDONS.find((x) => x.key === k); return s + (a && a.mode === 'handover' ? a.cost : 0); }, 0);
+  const pickupCost = 0; // retiro = 'a coordinar', sin precio
 
   let t = { monthly, monthlyDiscount: 0, pickupCost, pickupDiscount: 0, addonOneOff, annualPctOff: 0 };
   activePromos(data).forEach((p) => { t = p.apply(t); });
 
   const monthlyEff = Math.max(0, t.monthly - t.monthlyDiscount);
-  const pickupEff = Math.max(0, t.pickupCost - t.pickupDiscount);
-  const firstMonth = monthlyEff + pickupEff + t.addonOneOff;
+  const pickupEff = 0;
+  // Pago ONLINE de hoy = SOLO la mensualidad (lo que MP realmente cobra). Antes 'firstMonth'
+  // sumaba candado/kit/retiro que MP nunca cobraba → se mostraba de más.
+  const firstMonth = monthlyEff;
 
   return { ...t, monthlyEff, pickupEff, firstMonth };
 }
@@ -1381,29 +1387,36 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
               <h2 id="wiz-title">¿Sumás algo más?</h2>
               <p className="lead">Servicios opcionales. Todos los podés agregar más tarde desde el portal.</p>
               {ADDONS.map((a) => {
-                const isFree = a.key === 'pickup' && data.option.m2 >= 10 && data.addons.includes('pickup');
+                const soon = a.mode === 'soon';
+                const selected = data.addons.includes(a.key);
                 return (
                   <button
                     key={a.key}
                     type="button"
-                    className={`mc-wiz-addon ${data.addons.includes(a.key) ? 'selected' : ''}`}
-                    onClick={() => toggleAddon(a.key)}
-                    aria-pressed={data.addons.includes(a.key)}
+                    disabled={soon}
+                    className={`mc-wiz-addon ${selected ? 'selected' : ''}`}
+                    onClick={soon ? undefined : () => toggleAddon(a.key)}
+                    aria-pressed={selected}
+                    style={soon ? { opacity: 0.55, cursor: 'default' } : undefined}
                   >
                     <span className="check">
-                      {data.addons.includes(a.key) && (
+                      {selected && !soon && (
                         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5L20 7" /></svg>
                       )}
                     </span>
                     <span className="body">
                       <b>{a.name}</b>
                       <span>{a.desc}</span>
-                      {a.key === 'pickup' && data.option.m2 >= 10 && (
-                        <span className="mc-promo-badge violet inline">Mudanza gratis +10m²</span>
+                      {a.mode === 'handover' && (
+                        <span style={{ fontSize: '11px', color: 'var(--mc-ink-4)', fontWeight: 600 }}>Se abona al entregar</span>
                       )}
                     </span>
                     <span className="cost">
-                      {isFree ? (<><s>${a.cost.toLocaleString('es-AR')}</s> <b>GRATIS</b></>) : `+$${a.cost.toLocaleString('es-AR')}`}
+                      {soon
+                        ? <b style={{ color: 'var(--mc-ink-4)' }}>Próximamente</b>
+                        : a.mode === 'coordinate'
+                          ? <b style={{ color: 'var(--mc-ink-4)' }}>A coordinar</b>
+                          : `+$${a.cost.toLocaleString('es-AR')}`}
                     </span>
                   </button>
                 );
@@ -1456,17 +1469,6 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
                   <div className="row"><span>Mensualidad</span><b>${totals.monthly.toLocaleString('es-AR')}</b></div>
                 )}
 
-                {data.addons.length > 0 && (
-                  <div className="row">
-                    <span>Add-ons</span>
-                    <b>
-                      {totals.pickupDiscount > 0 && totals.pickupCost > 0
-                        ? <><s style={{ color: 'var(--mc-ink-4)', fontWeight: 500 }}>+${(totals.pickupCost + totals.addonOneOff).toLocaleString('es-AR')}</s> +${totals.addonOneOff.toLocaleString('es-AR')}</>
-                        : `+$${(totals.pickupCost + totals.addonOneOff).toLocaleString('es-AR')}`}
-                    </b>
-                  </div>
-                )}
-
                 {promos.length > 0 && (
                   <div className="mc-wiz-promos-applied">
                     <span className="lbl">Promos aplicadas</span>
@@ -1475,10 +1477,26 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
                 )}
 
                 <div className="total">
-                  <span>Primer pago</span>
+                  <span>Pagás hoy (alquiler)</span>
                   <b>${totals.firstMonth.toLocaleString('es-AR')}</b>
                 </div>
                 <div className="row hint"><span>IVA incluido</span><span></span></div>
+
+                {data.addons.length > 0 && (
+                  <div className="mc-wiz-addons-note" style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid var(--mc-line, #eee)' }}>
+                    <span style={{ fontWeight: 700, display: 'block', marginBottom: '4px', fontSize: '12px', color: 'var(--mc-ink-3, #555)' }}>Se coordina al entregar (no se cobra hoy)</span>
+                    {data.addons.map((k) => {
+                      const a = ADDONS.find((x) => x.key === k);
+                      if (!a || a.mode === 'soon') return null;
+                      return (
+                        <div key={k} className="row" style={{ fontSize: '12px' }}>
+                          <span>{a.name}</span>
+                          <b>{a.mode === 'coordinate' ? 'A coordinar' : `$${a.cost.toLocaleString('es-AR')}`}</b>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {data.clientType === 'persona' ? (
@@ -1539,7 +1557,7 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
               <div className="mc-wiz-pay">
                 {data.mode === 'futuro' && (
                   <>
-                    <button type="button" className="mc-btn mc-btn-violet big" onClick={next} style={{ width: '100%', justifyContent: 'center' }}>
+                    <button type="button" className="mc-btn mc-btn-violet big" onClick={next} disabled={paying} style={{ width: '100%', justifyContent: 'center' }}>
                       <span>Anotarme con prioridad</span><span className="arrow">→</span>
                     </button>
                     <div className="mc-wiz-recurring-note"><span>No se cobra nada ahora. Te avisamos cuando se libere una de {data.option?.m2} m² para tu fecha.</span></div>
@@ -1552,6 +1570,7 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
                   type="button"
                   className="mc-wiz-pay-mp-btn"
                   onClick={next}
+                  disabled={paying}
                   aria-label="Pagar con Mercado Pago"
                 >
                   <div className="mc-wiz-pay-mp-btn__top">
