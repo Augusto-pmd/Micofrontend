@@ -1,11 +1,12 @@
 import { Router, Request, Response } from 'express';
 import { db } from '../config/firebase';
 import { verifyToken } from '../middleware/verifyToken';
+import { requireStaff } from '../middleware/requireStaff';
 
 export const leadsRouter = Router();
 
 // GET /leads?branchId= (admin) — contactos clasificados en clientes / no clientes
-leadsRouter.get('/', verifyToken, async (req: Request, res: Response) => {
+leadsRouter.get('/', verifyToken, requireStaff, async (req: Request, res: Response) => {
   try {
     const branchId = req.query['branchId'] as string | undefined;
     let custQ: FirebaseFirestore.Query = db.collection('customers');

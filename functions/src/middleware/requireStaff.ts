@@ -47,7 +47,15 @@ export function staffEmails(): string[] {
  */
 export function requireStaff(req: Request, res: Response, next: NextFunction): void {
   if (process.env.FUNCTIONS_EMULATOR === 'true') { next(); return; }
-  const email = String((req as AuthenticatedRequest).email || '').toLowerCase();
-  if (isStaffEmail(email)) { next(); return; }
-  res.status(403).json({ error: 'Solo personal autorizado puede cambiar el valor de suscripciones.' });
+  const areq = req as AuthenticatedRequest;
+  const email = String(areq.email || '').toLowerCase();
+  // (1) Allowlist explícita (emails conocidos): pasan sin más. Un atacante NO puede registrar
+  // estos emails en Firebase Auth porque ya existen (unicidad de email en Auth).
+  if (staffSet().has(email)) { next(); return; }
+  // (2) Dominio @micontainer.com: SOLO con el email VERIFICADO. Cierra el agujero de que
+  // alguien se registre un `loquesea@micontainer.com` self-service (no puede verificar una
+  // casilla que no es suya) y caiga como staff. Google Workspace @micontainer.com ya viene
+  // verificado, así que el staff real no se ve afectado.
+  if (email.endsWith('@micontainer.com') && areq.emailVerified === true) { next(); return; }
+  res.status(403).json({ error: 'Solo personal autorizado.' });
 }

@@ -1,0 +1,23 @@
+rules_version = '2';
+
+// Reglas de Firebase Storage — Mi Container.
+//
+// HOY nadie accede a Storage DIRECTO desde el cliente:
+//  - La web pública (home.jsx) no usa Storage.
+//  - El admin no usa el SDK de Storage (sus getStorageRoom* son llamadas REST al backend).
+//  - La ÚNICA escritura es la foto biométrica en face-enroll/{reservationId}/... que la sube
+//    el BACKEND con Admin SDK (POST /my-account/face-enroll), y el Admin SDK BYPASSA estas reglas.
+//
+// Por eso el deny-total es lo correcto y seguro: cierra la lectura de las fotos biométricas
+// desde el lado cliente sin romper nada (el backend sigue leyendo/escribiendo con Admin SDK).
+//
+// Si en el futuro el admin sube fotos de bauleras/edificios DIRECTO desde el browser (feature
+// del chatbot, parkeada), abrir acá SOLO esa ruta para usuarios con custom claim role=='admin',
+// dejando face-enroll/** siempre denegado al cliente.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

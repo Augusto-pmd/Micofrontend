@@ -4,6 +4,10 @@ import { auth } from '../config/firebase';
 export interface AuthenticatedRequest extends Request {
   uid: string;
   email: string;
+  // ¿El email del token está verificado? (Google Workspace @micontainer.com => true.
+  // Un email+password self-service recién creado => false hasta clickear el mail.)
+  // requireStaff lo usa para no dejar entrar a un `loquesea@micontainer.com` falso.
+  emailVerified: boolean;
 }
 
 /**
@@ -20,6 +24,7 @@ export async function optionalAuth(
   if (process.env.FUNCTIONS_EMULATOR === 'true') {
     (req as AuthenticatedRequest).uid = (req as AuthenticatedRequest).uid || 'emulator-user';
     (req as AuthenticatedRequest).email = (req as AuthenticatedRequest).email || 'emulator@local';
+    (req as AuthenticatedRequest).emailVerified = true;
     next();
     return;
   }
@@ -30,6 +35,7 @@ export async function optionalAuth(
       const decoded = await auth.verifyIdToken(token);
       (req as AuthenticatedRequest).uid   = decoded.uid;
       (req as AuthenticatedRequest).email = decoded.email ?? '';
+      (req as AuthenticatedRequest).emailVerified = decoded.email_verified ?? false;
     } catch {
       // token inválido → continuar como guest
     }
@@ -51,6 +57,7 @@ export async function requireAuth(
   if (process.env.FUNCTIONS_EMULATOR === 'true') {
     (req as AuthenticatedRequest).uid = 'emulator-admin';
     (req as AuthenticatedRequest).email = 'admin@local';
+    (req as AuthenticatedRequest).emailVerified = true;
     next();
     return;
   }
@@ -67,6 +74,7 @@ export async function requireAuth(
     const decoded = await auth.verifyIdToken(token);
     (req as AuthenticatedRequest).uid = decoded.uid;
     (req as AuthenticatedRequest).email = decoded.email ?? '';
+    (req as AuthenticatedRequest).emailVerified = decoded.email_verified ?? false;
     next();
   } catch {
     res.status(401).json({ error: 'Invalid or expired token' });

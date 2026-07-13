@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { db } from '../config/firebase';
 import { verifyToken } from '../middleware/verifyToken';
+import { requireStaff } from '../middleware/requireStaff';
 
 // Lista de espera: cuando una medida no tiene stock, el cliente se anota y se
 // lo contacta/notifica cuando se libera una unidad de esa medida.
@@ -37,7 +38,7 @@ waitlistRouter.post('/', async (req: Request, res: Response) => {
 });
 
 // GET /waitlist (ADMIN) — listar anotados.
-waitlistRouter.get('/', verifyToken, async (_req: Request, res: Response) => {
+waitlistRouter.get('/', verifyToken, requireStaff, async (_req: Request, res: Response) => {
   try {
     const snap = await db.collection('waitlist').orderBy('createdAt', 'desc').get();
     res.json({ data: snap.docs.map((d) => ({ id: d.id, ...d.data() })) });
@@ -48,7 +49,7 @@ waitlistRouter.get('/', verifyToken, async (_req: Request, res: Response) => {
 });
 
 // DELETE /waitlist/:id (ADMIN) — eliminar un anotado.
-waitlistRouter.delete('/:id', verifyToken, async (req: Request, res: Response) => {
+waitlistRouter.delete('/:id', verifyToken, requireStaff, async (req: Request, res: Response) => {
   try {
     await db.collection('waitlist').doc(req.params['id']).delete();
     res.json({ ok: true });

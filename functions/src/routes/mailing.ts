@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { verifyToken } from '../middleware/verifyToken';
+import { requireStaff } from '../middleware/requireStaff';
 
 export const mailingRouter = Router();
 
@@ -8,7 +9,7 @@ const RESEND_API = 'https://api.resend.com/emails';
 // POST /mailing/send (admin) — envía un aviso a una lista vía Resend.
 // Body: { to: string[], subject, text, html?, from? }. Manda 1 mail por destinatario
 // (no se exponen direcciones entre sí).
-mailingRouter.post('/send', verifyToken, async (req: Request, res: Response) => {
+mailingRouter.post('/send', verifyToken, requireStaff, async (req: Request, res: Response) => {
   try {
     const apiKey = process.env.RESEND_API_KEY;
     if (!apiKey) {
