@@ -94,6 +94,11 @@ myAccountRouter.get('/payments', requireAuth, async (req, res: Response) => {
     [...mpByEmail.docs, ...(mpByUid as any).docs].forEach((d: any) => {
       const pid = d.data()?.mpPreapprovalId;
       if (pid && !seen.has(pid)) { seen.add(pid); preapprovalIds.push(pid); }
+      // Tras un REENVÍO de link de cobro (rebill) la sub vieja queda cancelada, pero sus
+      // cobros son historia REAL del cliente → se incluye para que el historial del portal
+      // no "pierda" los meses anteriores al reenvío.
+      const prev = d.data()?.rebillPrevPreapprovalId;
+      if (prev && !seen.has(prev)) { seen.add(prev); preapprovalIds.push(prev); }
     });
     const subs = await Promise.all(preapprovalIds.map(async (pid) => ({
       mpPreapprovalId: pid,
