@@ -473,12 +473,14 @@ function planM2(reason: string, local?: Record<string, unknown> | null): number 
   return m ? Number(m[1].replace(',', '.')) : null;
 }
 
-// GET /pricing-engine/planes/:branchId — TODOS los planes (incl. viejos/manuales) con monto real.
+// GET /pricing-engine/planes/:branchId — TODOS los planes (incl. viejos/manuales) con monto real
+// + QUIÉNES están suscriptos vía plan (la sub nace del plan y trae preapproval_plan_id).
 pricingRouter.get('/planes/:branchId', verifyToken, requireStaff, async (req: Request, res: Response) => {
   try {
     const branchId = req.params['branchId'];
-    const [mpPlans, localSnap, byM2] = await Promise.all([
+    const [mpPlans, localSnap, byM2, allSubs, units] = await Promise.all([
       searchPlans(), db.collection('mpPlans').get(), getPricingByM2(branchId),
+      searchSubscriptionsCached(), buildRentedUnits(),
     ]);
     const localByPlanId = new Map<string, Record<string, unknown>>();
     localSnap.forEach((d) => { const p = d.data() as Record<string, unknown>; if (p['planId']) localByPlanId.set(String(p['planId']), p); });
@@ -494,7 +496,36 @@ pricingRouter.get('/planes/:branchId', verifyToken, requireStaff, async (req: Re
         link: p.initPoint || (local ? String(local['initPoint'] || '') : ''),
       };
     });
-    res.json({ total: planes.length, desactualizados: planes.filter((x) => x.desactualizado).length, planes });
+    // Suscriptos VÍA PLAN: nombre/baulera por el mismo matcheo por código que roster/reprice.
+    const canon = (c: string): string => {
+      const s = String(c || '').toUpperCase();
+      const m = s.match(/([A-Z]\d)\D*0*(\d+)/);
+      return m ? m[1] + m[2] : s.replace(/[^A-Z0-9]/g, '');
+    };
+    const codeOf = (ext: string): string => { const m = String(ext || '').match(/[A-Za-z]\d+-\d+|[A-Za-z]\d{3,}/); return m ? canon(m[0]) : ''; };
+    const unitByCode = new Map<string, { code: string; name: string; email: string }>();
+    for (const u of units) unitByCode.set(canon(u.code), { code: u.code, name: u.name || '', email: u.email || '' });
+    const nombrePlan = new Map(planes.map((p) => [p.planId, p.nombre]));
+    const suscriptos = allSubs
+      .filter((s) => (s.status === 'authorized' || s.status === 'pending') && s.planId)
+      .map((s) => {
+        const u = unitByCode.get(codeOf(s.externalReference)) || null;
+        return {
+          baulera: u ? u.code : (s.externalReference || '—'),
+          cliente: u ? u.name : '',
+          email: s.payerEmail || (u ? u.email : ''),
+          monto: s.amount,
+          plan: nombrePlan.get(s.planId || '') || s.planId,
+          estado: s.status,
+        };
+      });
+    res.json({
+      total: planes.length,
+      desactualizados: planes.filter((x) => x.desactualizado).length,
+      planes,
+      suscriptosViaPlan: suscriptos.length,
+      suscriptos,
+    });
   } catch (err) {
     console.error('GET /pricing-engine/planes error:', err);
     res.status(500).json({ error: 'No se pudieron listar los planes' });
