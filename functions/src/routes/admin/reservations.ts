@@ -693,6 +693,9 @@ adminReservationsRouter.post('/rebill', requireAuth, async (req, res: Response) 
     if (reservation) {
       await updateReservation(reservation.id, {
         ...rebillFields,
+        // El link nuevo DEFINE lo que paga: la reserva queda con el monto real (el importe
+        // correcto de lo que debe/paga — pedido Lucas), no con el configurado viejo.
+        monthly: monto,
         // Si MP ya la había dado de baja (3 cuotas rechazadas), vuelve a pending_payment: al
         // pagar el link nuevo el webhook la ACTIVA de nuevo y le reasigna la baulera solo.
         ...(reservation.status === 'cancelled' ? { status: 'pending_payment' as const } : {}),
