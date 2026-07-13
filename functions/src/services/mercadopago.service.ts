@@ -169,6 +169,33 @@ export async function createCheckoutPreference(
   return { preferenceId: d.id, initPoint: d.init_point };
 }
 
+// PAGO ÚNICO de DEUDA (SPEC cobros-alineados §5). Checkout Pro por el monto adeudado, con
+// external_reference "DEUDA <debtId>" para que el webhook sepa qué deuda marcar pagada. NO crea
+// suscripción (la suscripción del cliente sigue viva sola, MP la recobra el mes siguiente).
+export async function createDebtPreference(p: {
+  debtId: string; title: string; amount: number; email: string; backUrl: string;
+}): Promise<{ preferenceId: string; initPoint: string }> {
+  const accessToken = process.env.MP_ACCESS_TOKEN;
+  if (!accessToken) throw new Error('MP_ACCESS_TOKEN not configured');
+  const body = {
+    items: [{ title: p.title, quantity: 1, unit_price: p.amount, currency_id: 'ARS' }],
+    payer: { email: p.email },
+    external_reference: `DEUDA ${p.debtId}`,
+    back_urls: { success: p.backUrl, pending: p.backUrl, failure: p.backUrl },
+    auto_return: 'approved',
+  };
+  const res = await fetch(`${MP_API_BASE}/checkout/preferences`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}`, 'X-Idempotency-Key': p.debtId },
+    body: JSON.stringify(body),
+  });
+  const text = await res.text();
+  if (!res.ok) throw new Error(`MP debt preference ${res.status}: ${text.slice(0, 200)}`);
+  const d = JSON.parse(text) as { id?: string; init_point?: string };
+  if (!d.id || !d.init_point) throw new Error(`MP debt preference sin id/init_point: ${text.slice(0, 200)}`);
+  return { preferenceId: d.id, initPoint: d.init_point };
+}
+
 // (getPaymentExternalReference ELIMINADA 12/07: 0 usos — superada por getPaymentDetail.)
 
 // DETALLE de un pago para el webhook de cobros: monto/estado/fecha REALES + external_reference
@@ -255,7 +282,10 @@ export async function createPlan(params: { m2: number; amount: number; freeTrial
   if (q > 0) autoRecurring['free_trial'] = { frequency: q, frequency_type: unit };
   if (params.billingDay) {
     autoRecurring['billing_day'] = params.billingDay;
-    autoRecurring['billing_day_proportional'] = true;
+    // PROPORCIONAL solo en ENTRADA PAGA (sin trial): cobra los días hasta el 1° al entrar.
+    // Con MES GRATIS NO se prorratea: el trial cubre el arranque y billing_day alinea el primer
+    // cobro real al 1° (queda gratis desde que entra hasta ese 1°, sin un cargo parcial raro).
+    if (q === 0) autoRecurring['billing_day_proportional'] = true;
   }
   const body = {
     reason,

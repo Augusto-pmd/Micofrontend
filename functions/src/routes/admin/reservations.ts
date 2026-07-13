@@ -5,13 +5,14 @@ import * as admin from 'firebase-admin';
 import * as crypto from 'crypto';
 import { assignRoomForReservation, holdRoomForReservation } from '../../services/assignment.service';
 import { getReservation, createReservation, updateReservation, getReservationByMpPreapprovalId, getReservationByBauleraCodigo } from '../../models/reservation.model';
-import { createSubscription, createCheckoutPreference, cancelSubscription, getSubscriptionStatus, invalidateSubsCache, searchSubscriptionsCached } from '../../services/mercadopago.service';
+import { createSubscription, createCheckoutPreference, createDebtPreference, cancelSubscription, getSubscriptionStatus, invalidateSubsCache, searchSubscriptionsCached } from '../../services/mercadopago.service';
 import { getOrCreateAlignedPlan } from '../../services/planCatalog.service';
+import { createDebt, DebtTipo } from '../../services/debts.service';
+import { invalidateRechazadosCache } from './pricing';
 import { getPricingByM2, recurringFor } from '../../services/pricing.service';
 import { generateReservationId } from '../../utils/generateId';
 import { logAudit } from '../../services/audit.service';
 import { sendActivationEmail, sendRebillEmail } from '../../services/customerAuth.service';
-import { invalidateRechazadosCache } from './pricing';
 
 export const adminReservationsRouter = Router();
 
@@ -602,6 +603,54 @@ adminReservationsRouter.post('/:id/cancel', requireAuth, async (req, res: Respon
   } catch (err) {
     console.error('POST /admin/reservations/:id/cancel error:', err);
     res.status(500).json({ error: 'No se pudo dar de baja' });
+  }
+});
+
+// POST /admin/reservations/deuda — SPEC cobros-alineados §5: genera un PAGO ÚNICO por un mes
+// adeudado (o un proporcional). NO crea suscripción (la del cliente sigue viva sola). El webhook
+// marca la deuda pagada cuando el cliente paga → apaga el titileo. Body: { bauleraCodigo, monto,
+// tipo: 'mes_adeudado'|'proporcional', periodo?, desde?, hasta?, email, cliente?, reservationId? }.
+adminReservationsRouter.post('/deuda', requireAuth, async (req, res: Response) => {
+  try {
+    const { bauleraCodigo, reservationId, monto, tipo, periodo, desde, hasta, email, cliente } = (req.body || {}) as Record<string, string | number | undefined>;
+    const code = String(bauleraCodigo || '').trim().toUpperCase();
+    const montoNum = Number(monto);
+    const mail = String(email || '').trim().toLowerCase();
+    if (!code) { res.status(400).json({ error: 'Falta la baulera' }); return; }
+    if (!(montoNum > 0)) { res.status(400).json({ error: 'Poné el monto de la deuda' }); return; }
+    if (!mail) { res.status(400).json({ error: 'Falta el email del cliente para mandarle el link' }); return; }
+
+    const t: DebtTipo = tipo === 'proporcional' ? 'proporcional' : 'mes_adeudado';
+    const per = String(periodo || new Date().toISOString().slice(0, 7));
+    const debtId = `deuda-${code}-${per}-${crypto.randomBytes(4).toString('hex')}`;
+    const rango = `${desde ? String(desde) : ''}${hasta ? ' al ' + String(hasta) : ''}`.trim();
+    const titulo = t === 'proporcional'
+      ? `Mi Container ${code} — proporcional ${rango || per}`
+      : `Mi Container ${code} — mes adeudado ${rango || per}`;
+
+    const { preferenceId, initPoint } = process.env.FUNCTIONS_EMULATOR === 'true'
+      ? { preferenceId: `emu-${debtId}`, initPoint: `https://www.mercadopago.com.ar/checkout/emulator?deuda=${debtId}` }
+      : await createDebtPreference({ debtId, title: titulo, amount: montoNum, email: mail, backUrl: 'https://micontainer.com/#/portal' });
+
+    await createDebt({
+      id: debtId, bauleraCodigo: code, reservationId: reservationId ? String(reservationId) : null,
+      periodo: per, desde: desde ? String(desde) : null, hasta: hasta ? String(hasta) : null,
+      tipo: t, monto: montoNum, sentAt: new Date().toISOString(),
+      sentBy: String((req as unknown as { email?: string }).email || 'admin'),
+      mpPreferenceId: preferenceId, initPoint, email: mail, cliente: cliente ? String(cliente) : null,
+      paidAt: null, mpPaymentId: null,
+    });
+
+    await logAudit({
+      actor: (req as unknown as { email?: string }).email || 'admin', via: 'admin', action: 'deuda_link_generado',
+      entity: 'debt', entityId: debtId, detail: { baulera: code, monto: montoNum, tipo: t, periodo: per, email: mail },
+    });
+    invalidateRechazadosCache(); // la baulera pasa a violeta (deuda con link enviado) al toque
+
+    res.status(201).json({ debtId, initPoint, tipo: t, monto: montoNum, periodo: per, email: mail });
+  } catch (err) {
+    console.error('POST /admin/reservations/deuda error:', err);
+    res.status(500).json({ error: 'No se pudo generar el link de deuda', detail: err instanceof Error ? err.message : String(err) });
   }
 });
 

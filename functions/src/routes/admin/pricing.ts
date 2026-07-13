@@ -5,6 +5,7 @@ import { requireStaff } from '../../middleware/requireStaff';
 import { getPricingByM2, recurringFor } from '../../services/pricing.service';
 import { FieldValue } from 'firebase-admin/firestore';
 import { updateSubscriptionAmount, updatePlanAmount, searchSubscriptions, searchSubscriptionsCached, invalidateSubsCache, getLastChargedMap, getLastChargeAttempt, searchPlans, cancelSubscription, cancelPlan, MpSubscription } from '../../services/mercadopago.service';
+import { debtsByBaulera } from '../../services/debts.service';
 import { logAudit } from '../../services/audit.service';
 
 export const pricingRouter = Router();
@@ -722,10 +723,28 @@ let _rechazadosCache: { at: number; data: Record<string, unknown> } | null = nul
 // El rebill (reenvío de link de cobro) cancela la sub rechazada → el estado cambió: invalidar
 // para que el titileo del inventario/dashboard se limpie sin esperar los 10 min de cache.
 export function invalidateRechazadosCache(): void { _rechazadosCache = null; }
+
+// Cruce con DEUDAS (SPEC §5.5): la parte cara (llamadas a MP) se cachea; las DEUDAS se leen
+// FRESCAS en cada request. Así, apenas se paga un pago único la baulera deja de titilar, y
+// apenas se manda un link la baulera pasa a violeta — sin esperar los 10 min de cache.
+async function responderRechazadosConDeudas(res: Response, rechazadosRaw: Array<Record<string, unknown>>, revisadas: number, sinDato: number, cacheado: boolean): Promise<void> {
+  const deudas = await debtsByBaulera();
+  const keyOf = (b: unknown) => String(b || '').trim().toUpperCase();
+  const rechazados = rechazadosRaw
+    .filter((r) => { const de = deudas.get(keyOf(r['baulera'])); const per = String(r['fechaRechazo'] || '').slice(0, 7); return !(de && per && de.pagadas.has(per)); })
+    .map((r) => ({ ...r, periodo: String(r['fechaRechazo'] || '').slice(0, 7), deudaLinkEnviado: !!deudas.get(keyOf(r['baulera']))?.pendiente }));
+  const deudasPendientes: Array<Record<string, unknown>> = [];
+  deudas.forEach((estado, baulera) => {
+    const p = estado.pendiente;
+    if (p) deudasPendientes.push({ baulera, monto: p.monto, periodo: p.periodo, tipo: p.tipo, desde: p.desde, hasta: p.hasta, sentAt: p.sentAt, sentBy: p.sentBy, initPoint: p.initPoint, cliente: p.cliente, email: p.email });
+  });
+  res.json({ total: rechazados.length, plazoDias: PLAZO_REGULARIZAR_DIAS, revisadas, sinDato, rechazados, deudasPendientes, cacheado });
+}
 pricingRouter.get('/cobros-rechazados/:branchId', verifyToken, requireStaff, async (req: Request, res: Response) => {
   try {
     if (req.query['refresh'] !== '1' && _rechazadosCache && Date.now() - _rechazadosCache.at < 10 * 60_000) {
-      res.json({ ..._rechazadosCache.data, cacheado: true });
+      const c = _rechazadosCache.data as { rechazadosRaw: Array<Record<string, unknown>>; revisadas: number; sinDato: number };
+      await responderRechazadosConDeudas(res, c.rechazadosRaw, c.revisadas, c.sinDato, true);
       return;
     }
     const [allSubs, units, resIdToCode] = await Promise.all([
@@ -783,9 +802,8 @@ pricingRouter.get('/cobros-rechazados/:branchId', verifyToken, requireStaff, asy
       }));
     }
     rechazados.sort((a, b) => String(a['baulera']).localeCompare(String(b['baulera'])));
-    const payload = { total: rechazados.length, plazoDias: PLAZO_REGULARIZAR_DIAS, revisadas: matched.length, sinDato, rechazados };
-    _rechazadosCache = { at: Date.now(), data: payload };
-    res.json(payload);
+    _rechazadosCache = { at: Date.now(), data: { rechazadosRaw: rechazados, revisadas: matched.length, sinDato } };
+    await responderRechazadosConDeudas(res, rechazados, matched.length, sinDato, false);
   } catch (err) {
     console.error('GET /pricing-engine/cobros-rechazados error:', err);
     res.status(500).json({ error: 'No se pudo consultar los cobros rechazados' });

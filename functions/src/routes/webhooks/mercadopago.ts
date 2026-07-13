@@ -8,6 +8,8 @@ import { assignRoomForReservation } from '../../services/assignment.service';
 import { logAudit } from '../../services/audit.service';
 import { sendActivationEmail } from '../../services/customerAuth.service';
 import { getPaymentDetail, getSubscriptionStatus, getPreapprovalDetail, setPreapprovalExternalReference, MpPaymentDetail } from '../../services/mercadopago.service';
+import { markDebtPaid, getDebt } from '../../services/debts.service';
+import { invalidateRechazadosCache } from '../admin/pricing';
 import { Reservation } from '../../models/reservation.model';
 
 export const mpWebhookRouter = Router();
@@ -60,8 +62,31 @@ async function processWebhook(body: Record<string, unknown>): Promise<void> {
     let paid: MpPaymentDetail | null = null;
     if (!reservation) {
       paid = await getPaymentDetail(eventId);
+      const extRaw = (paid?.externalReference || '').trim();
+
+      // DEUDA (SPEC cobros-alineados §5): pago único de un mes adeudado. NO es una suscripción —
+      // solo marca la deuda pagada (apaga el titileo de la baulera). La suscripción del cliente
+      // sigue viva sola; MP cobra el mes corriente el 1° aparte.
+      if (/^DEUDA\s+/i.test(extRaw)) {
+        const debtId = extRaw.replace(/^DEUDA\s+/i, '').trim();
+        if (paid?.status === 'approved') {
+          await markDebtPaid(debtId, String(eventId));
+          const debt = await getDebt(debtId);
+          await logAudit({
+            actor: debt?.email || 'cliente', via: 'mercadopago', action: 'deuda_pagada',
+            entity: 'debt', entityId: debtId,
+            detail: { baulera: debt?.bauleraCodigo || null, periodo: debt?.periodo || null, monto: paid.amount },
+          });
+          invalidateRechazadosCache(); // la baulera deja de titilar (mes pagado) al toque
+          console.log(`[mp-webhook] DEUDA ${debtId} PAGADA -> baulera al día`);
+        } else {
+          console.warn(`[mp-webhook] pago de DEUDA NO approved (status=${paid?.status ?? '?'}) ref=${extRaw}`);
+        }
+        return;
+      }
+
       // El marcador "ONETIME " es de la ruta de pago único — se quita para resolver la reserva.
-      const ext = (paid?.externalReference || '').trim().replace(/^ONETIME\s+/i, '');
+      const ext = extRaw.replace(/^ONETIME\s+/i, '');
       if (ext) {
         if (/^MC-/i.test(ext)) reservation = await getReservation(ext);
         else { const m = ext.match(/[A-Za-z]\d+-?\d+/); if (m) reservation = await getReservationByBauleraCodigo(m[0]); }
