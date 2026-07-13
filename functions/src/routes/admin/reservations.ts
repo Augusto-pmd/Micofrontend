@@ -4,12 +4,13 @@ import { db, storage } from '../../config/firebase';
 import * as admin from 'firebase-admin';
 import * as crypto from 'crypto';
 import { assignRoomForReservation, holdRoomForReservation } from '../../services/assignment.service';
-import { getReservation, createReservation } from '../../models/reservation.model';
-import { createSubscription, createCheckoutPreference, createPlan, updatePlanAmount, cancelSubscription, getSubscriptionStatus } from '../../services/mercadopago.service';
+import { getReservation, createReservation, updateReservation, getReservationByMpPreapprovalId, getReservationByBauleraCodigo } from '../../models/reservation.model';
+import { createSubscription, createCheckoutPreference, createPlan, updatePlanAmount, cancelSubscription, getSubscriptionStatus, invalidateSubsCache } from '../../services/mercadopago.service';
 import { getPricingByM2, recurringFor } from '../../services/pricing.service';
 import { generateReservationId } from '../../utils/generateId';
 import { logAudit } from '../../services/audit.service';
-import { sendActivationEmail } from '../../services/customerAuth.service';
+import { sendActivationEmail, sendRebillEmail } from '../../services/customerAuth.service';
+import { invalidateRechazadosCache } from './pricing';
 
 export const adminReservationsRouter = Router();
 
@@ -611,6 +612,115 @@ adminReservationsRouter.post('/:id/cancel', requireAuth, async (req, res: Respon
   } catch (err) {
     console.error('POST /admin/reservations/:id/cancel error:', err);
     res.status(500).json({ error: 'No se pudo dar de baja' });
+  }
+});
+
+// POST /admin/reservations/rebill — REENVIAR LINK DE COBRO tras un pago rechazado.
+// Flujo (pedido Lucas 13/07): la sub rechazada se CANCELA en MP (deja de reintentar), se crea
+// una sub NUEVA atada a la MISMA reserva/baulera (no se abre nada nuevo), el link se manda al
+// cliente por mail y queda guardado; si lo paga, el webhook lo reactiva solo con toda su info.
+// ORDEN CRÍTICO: crear la nueva → reapuntar la reserva → RECIÉN AHÍ cancelar la vieja. Si se
+// cancelara primero, el evento 'cancelled' del webhook procesaría la BAJA y liberaría la baulera.
+// Body: { subId, baulera?, amount?, email?, cliente? } — subId = preapproval rechazado (viene
+// de /pricing-engine/cobros-rechazados). Cubre subs legacy SIN reserva en nuestra base: se les
+// crea una reserva mínima anexada a su baulera (matcheable por el webhook de ahí en más).
+adminReservationsRouter.post('/rebill', requireAuth, async (req, res: Response) => {
+  try {
+    const { subId, baulera, amount, email, cliente } = (req.body || {}) as Record<string, string | number | undefined>;
+    if (!subId) { res.status(400).json({ error: 'Falta subId (la suscripción rechazada)' }); return; }
+
+    // 1) Reserva existente (por sub, o por código de baulera) — puede NO existir (sub legacy).
+    let reservation = await getReservationByMpPreapprovalId(String(subId));
+    if (!reservation && baulera) reservation = await getReservationByBauleraCodigo(String(baulera));
+
+    // 2) Baulera real (para anexar todo: room + tenant + precio).
+    let room: Record<string, unknown> | null = null;
+    let roomId: string | null = reservation?.storageRoomId || null;
+    const code = String(baulera || reservation?.bauleraCodigo || '');
+    if (code) {
+      const rs = await db.collection('storageRooms').where('space', '==', code).limit(1).get();
+      if (!rs.empty) { room = rs.docs[0].data() as Record<string, unknown>; roomId = rs.docs[0].id; }
+    }
+    if (!room && roomId) {
+      const rd = await db.collection('storageRooms').doc(String(roomId)).get();
+      if (rd.exists) room = rd.data() as Record<string, unknown>;
+    }
+
+    const monto = Number(amount) > 0 ? Number(amount) : (reservation?.monthly || Number(room?.['price']) || 0);
+    const mailCliente = String(email || reservation?.customerEmail || (room?.['tenantEmail'] as string) || '').toLowerCase().trim();
+    const nombre = String(cliente || reservation?.customerName || (room?.['currentTenant'] as string) || '');
+    const m2 = Number(reservation?.m2 || room?.['areaM2']) || 0;
+    if (!(monto > 0)) { res.status(400).json({ error: 'No pude determinar el monto mensual (mandalo en amount)' }); return; }
+    if (!mailCliente) { res.status(400).json({ error: 'Sin email del cliente: cargalo para poder mandarle el link' }); return; }
+
+    // 3) Crear la sub NUEVA (idempotency key propia: con la de la reserva, MP devolvería la vieja).
+    const resId = reservation?.id || generateReservationId();
+    const { preapprovalId: nuevaSubId, initPoint } = await createSubscription({
+      reservationId: resId,
+      categoryLabel: reservation?.category || `Baulera ${m2}m2`,
+      m2, amount: monto, email: mailCliente,
+      backUrl: 'https://micontainer.com/#/portal',
+      bauleraCodigo: code || undefined,
+      idempotencyKey: `rebill-${subId}-${Date.now()}`,
+    });
+
+    // 4) Reapuntar/crear la reserva ANTES de cancelar la vieja (ver ORDEN CRÍTICO arriba).
+    const rebillFields = {
+      mpPreapprovalId: nuevaSubId, mpInitPoint: initPoint, mpSubscriptionStatus: 'pending' as const,
+      rebillAt: new Date().toISOString(),
+      rebillBy: String((req as unknown as { email?: string }).email || 'admin'),
+      rebillPrevPreapprovalId: String(subId),
+    };
+    if (reservation) {
+      await updateReservation(reservation.id, {
+        ...rebillFields,
+        // Si MP ya la había dado de baja (3 cuotas rechazadas), vuelve a pending_payment: al
+        // pagar el link nuevo el webhook la ACTIVA de nuevo y le reasigna la baulera solo.
+        ...(reservation.status === 'cancelled' ? { status: 'pending_payment' as const } : {}),
+      });
+    } else {
+      // Sub legacy sin reserva: crear una mínima anexada a su baulera. status 'active' porque
+      // el cliente YA la ocupa — no se abre ni se asigna nada nuevo.
+      const uid = `manual_${crypto.createHash('sha1').update(mailCliente).digest('hex').slice(0, 16)}`;
+      await createReservation({
+        id: resId, userUid: uid, sucursalId: String(room?.['branchId'] || 'nordelta'),
+        category: `Baulera ${m2}m2`, m2, monthly: monto, firstMonth: monto,
+        startDate: new Date().toISOString().slice(0, 10), duration: 1,
+        addons: [], promosApplied: [], status: 'active',
+        faceEnrollStatus: 'not_started', faceEnrollAttempts: 0,
+        customerName: nombre, customerEmail: mailCliente,
+        storageRoomId: roomId || undefined, bauleraCodigo: code || undefined,
+        source: 'rebill-legacy', paymentMode: 'subscription',
+        ...rebillFields,
+      });
+    }
+
+    // 5) AHORA sí: cancelar la sub vieja en MP (acá paran los reintentos). Si MP falla y no
+    // quedó cancelada, devolvemos el link nuevo igual con aviso (cancelarla desde el panel MP).
+    let viejaCancelada = true;
+    try { await cancelSubscription(String(subId)); }
+    catch {
+      const st = await getSubscriptionStatus(String(subId));
+      viejaCancelada = st === 'cancelled';
+    }
+
+    // 6) Mail al cliente + caches + auditoría.
+    let emailEnviado = false;
+    try { await sendRebillEmail(mailCliente, nombre, initPoint, code || undefined, monto); emailEnviado = true; }
+    catch (e) { console.warn('[rebill] mail fail', e); }
+    invalidateSubsCache();
+    invalidateRechazadosCache();
+    await logAudit({
+      actor: String((req as unknown as { email?: string }).email || 'admin'), via: 'admin', role: 'admin',
+      action: 'reenvio_link_cobro', entity: 'reservation', entityId: resId,
+      branchId: String(room?.['branchId'] || reservation?.sucursalId || 'nordelta'),
+      detail: { baulera: code || null, cliente: nombre, monto, subVieja: String(subId), subNueva: nuevaSubId, viejaCancelada, emailEnviado, legacy: !reservation },
+    });
+
+    res.json({ ok: true, reservationId: resId, initPoint, viejaCancelada, emailEnviado, email: mailCliente });
+  } catch (err) {
+    console.error('POST /admin/reservations/rebill error:', err);
+    res.status(500).json({ error: 'No se pudo generar el nuevo link de cobro', detail: err instanceof Error ? err.message : String(err) });
   }
 });
 

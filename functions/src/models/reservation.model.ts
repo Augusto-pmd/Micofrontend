@@ -42,6 +42,11 @@ export interface Reservation {
   paidMonths?: number;      // pago unico: meses pagados de una (vence en endDate)
   mpPreferenceId?: string;  // pago unico: id de la preferencia Checkout Pro
   mpPlanId?: string;        // plan (mes gratis): preapproval_plan_id
+  // REENVÍO de link de cobro tras pago rechazado (rebill): la sub vieja se cancela en MP y
+  // mpPreapprovalId pasa a apuntar a la nueva. Estos campos dejan la traza del reenvío.
+  rebillAt?: string;                 // cuándo se reenvió (ISO)
+  rebillBy?: string;                 // staff que lo disparó
+  rebillPrevPreapprovalId?: string;  // la sub rechazada que se canceló
 }
 
 export const reservationsCol = () => db.collection('reservations');

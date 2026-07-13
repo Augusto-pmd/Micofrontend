@@ -9,6 +9,9 @@ interface CreateSubscriptionParams {
   backUrl: string;
   freeTrialMonths?: number;
   bauleraCodigo?: string;
+  // Por defecto la idempotency key es el reservationId. Para REENVIAR un link de cobro sobre
+  // la MISMA reserva (rebill) hay que pasar una key distinta, o MP devolvería la sub vieja.
+  idempotencyKey?: string;
 }
 
 interface CreateSubscriptionResult {
@@ -55,7 +58,7 @@ export async function createSubscription(
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${accessToken}`,
-      'X-Idempotency-Key': params.reservationId,
+      'X-Idempotency-Key': params.idempotencyKey || params.reservationId,
     },
     body: JSON.stringify(body),
   });

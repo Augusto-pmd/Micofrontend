@@ -60,6 +60,28 @@ export async function sendPasswordRecoveryEmail(email: string, name?: string): P
   await sendEmail(e, 'Recuperá tu contraseña — Mi Container', html);
 }
 
+// Mail con el NUEVO link de cobro tras un pago rechazado (reenvío desde el panel): la sub
+// anterior queda cancelada en MP y este link crea la nueva. NO es el mail de activación.
+export async function sendRebillEmail(email: string, name: string | undefined, initPoint: string, baulera?: string, monto?: number): Promise<void> {
+  const e = email.trim().toLowerCase();
+  const saludo = name ? `, ${name}` : '';
+  const cual = baulera ? ` de tu baulera <b>${baulera}</b>` : '';
+  const cuanto = monto ? ` de <b>$${Number(monto).toLocaleString('es-AR')}/mes</b>` : '';
+  const html = `
+    <div style="font-family:Arial,sans-serif;font-size:15px;color:#222;max-width:520px;margin:auto">
+      <img src="https://micontainer.com/assets/logo.png" alt="Mi Container" width="150" style="display:block;margin:0 0 18px" />
+      <h2 style="color:#3D3083;margin-bottom:6px">Regularizá tu pago</h2>
+      <p>Hola${saludo}. El débito mensual${cual} fue rechazado por tu medio de pago.</p>
+      <p>Te generamos un <b>nuevo link de pago</b>${cuanto}. Al completarlo, tu suscripción queda al día y no perdés tu espacio:</p>
+      <p style="margin:22px 0">
+        <a href="${initPoint}" style="background:#5ECA00;color:#fff;padding:13px 24px;border-radius:10px;text-decoration:none;font-weight:bold;display:inline-block">Pagar y regularizar</a>
+      </p>
+      <p style="color:#666;font-size:13px">El débito anterior quedó cancelado: no se te va a cobrar dos veces.</p>
+      <p style="color:#999;font-size:12px;margin-top:24px">¿Dudas? Escribinos a comercial@micontainer.com</p>
+    </div>`;
+  await sendEmail(e, 'Regularizá tu pago — Mi Container', html);
+}
+
 // Crea (si no existe) la cuenta de Firebase Auth del cliente, con email SIN verificar.
 export async function ensureAuthUser(email: string, displayName?: string): Promise<string> {
   const e = email.trim().toLowerCase();

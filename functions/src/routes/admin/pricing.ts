@@ -4,7 +4,7 @@ import { verifyToken } from '../../middleware/verifyToken';
 import { requireStaff } from '../../middleware/requireStaff';
 import { getPricingByM2 } from '../../services/pricing.service';
 import { FieldValue } from 'firebase-admin/firestore';
-import { updateSubscriptionAmount, searchSubscriptions, searchSubscriptionsCached, invalidateSubsCache, getLastChargedMap, getLastChargeAttempt, searchPlans, MpSubscription } from '../../services/mercadopago.service';
+import { updateSubscriptionAmount, updatePlanAmount, searchSubscriptions, searchSubscriptionsCached, invalidateSubsCache, getLastChargedMap, getLastChargeAttempt, searchPlans, MpSubscription } from '../../services/mercadopago.service';
 import { logAudit } from '../../services/audit.service';
 
 export const pricingRouter = Router();
@@ -329,6 +329,26 @@ async function runTargets(targets: Target[], notify: boolean): Promise<{ actuali
   return { actualizados, errores };
 }
 
+// Los PLANES de MP (mes gratis, preapproval_plan) tienen su PROPIO monto: cambiar las
+// suscripciones NO los toca. Sin esto, un link de plan viejo sigue vendiendo al precio
+// anterior (hallazgo Lucas 13/07). Actualiza los planes guardados (mpPlans) de esa medida
+// en MP y en la base local.
+async function repricePlans(m2n: number, newAmount: number): Promise<{ planesActualizados: number; planesErrores: Array<{ id: string; error: string }> }> {
+  const snap = await db.collection('mpPlans').where('m2', '==', m2n).get();
+  let planesActualizados = 0;
+  const planesErrores: Array<{ id: string; error: string }> = [];
+  for (const d of snap.docs) {
+    const p = d.data() as Record<string, unknown>;
+    if (Number(p['amount']) === newAmount) continue; // ya está en el precio nuevo
+    try {
+      await updatePlanAmount(String(p['planId']), newAmount);
+      await d.ref.set({ amount: newAmount, updatedAt: new Date().toISOString() }, { merge: true });
+      planesActualizados++;
+    } catch (e) { planesErrores.push({ id: String(p['planId']), error: String(e).slice(0, 200) }); }
+  }
+  return { planesActualizados, planesErrores };
+}
+
 // POST /pricing-engine/reprice/:branchId  (una medida)
 // body: { m2, newAmount, dryRun (default true), notify }
 pricingRouter.post('/reprice/:branchId', verifyToken, requireStaff, async (req: Request, res: Response) => {
@@ -373,13 +393,15 @@ pricingRouter.post('/reprice/:branchId', verifyToken, requireStaff, async (req: 
       return;
     }
     const { actualizados, errores } = await runTargets(targets.filter((t) => t.configurado !== t.nuevo), notify);
+    // También los PLANES de esa medida (los links de "mes gratis" venden al precio del plan).
+    const { planesActualizados, planesErrores } = await repricePlans(m2n, newAmount);
     invalidateSubsCache(); // el apply cambió montos → refrescar snapshot en el próximo preview
     await logAudit({
       actor: (req as unknown as { email?: string }).email || 'admin',
       action: 'cambio_valor_suscripciones', entity: 'pricing', entityId: branchId,
-      detail: { m2: m2n, newAmount, actualizados: actualizados.length, errores: errores.length, notify },
+      detail: { m2: m2n, newAmount, actualizados: actualizados.length, errores: errores.length, planesActualizados, planesErrores: planesErrores.length, notify },
     });
-    res.json({ dryRun: false, m2: m2n, newAmount, actualizados: actualizados.length, errores });
+    res.json({ dryRun: false, m2: m2n, newAmount, actualizados: actualizados.length, errores, planesActualizados, planesErrores });
   } catch (err) {
     console.error('POST /pricing-engine/reprice error:', err);
     res.status(500).json({ error: 'No se pudo actualizar las suscripciones' });
@@ -416,13 +438,22 @@ pricingRouter.post('/reprice-all/:branchId', verifyToken, requireStaff, async (r
 
     if (dryRun) { res.json({ dryRun: true, total: targets.length, afectados: targets, sinMatch: noMatch.length, noMatch }); return; }
     const { actualizados, errores } = await runTargets(targets.filter((t) => t.configurado !== t.nuevo), notify);
+    // También los PLANES de cada medida cambiada (los links de "mes gratis" venden al precio del plan).
+    let planesActualizados = 0;
+    const planesErrores: Array<{ id: string; error: string }> = [];
+    for (const it of items) {
+      const m2n = Number(it.m2); const nn = Number(it.newAmount);
+      if (!m2n || !(nn > 0)) continue;
+      const rp = await repricePlans(m2n, nn);
+      planesActualizados += rp.planesActualizados; planesErrores.push(...rp.planesErrores);
+    }
     invalidateSubsCache(); // el apply cambió montos → refrescar snapshot en el próximo preview
     await logAudit({
       actor: (req as unknown as { email?: string }).email || 'admin',
       action: 'cambio_valor_suscripciones_masivo', entity: 'pricing', entityId: branchId,
-      detail: { medidas: items.length, actualizados: actualizados.length, errores: errores.length, notify },
+      detail: { medidas: items.length, actualizados: actualizados.length, errores: errores.length, planesActualizados, planesErrores: planesErrores.length, notify },
     });
-    res.json({ dryRun: false, total: targets.length, actualizados: actualizados.length, errores });
+    res.json({ dryRun: false, total: targets.length, actualizados: actualizados.length, errores, planesActualizados, planesErrores });
   } catch (err) {
     console.error('POST /pricing-engine/reprice-all error:', err);
     res.status(500).json({ error: 'No se pudo actualizar las suscripciones' });
@@ -520,6 +551,9 @@ const PLAZO_REGULARIZAR_DIAS = 10;
 // Cache 10 min: la consulta hace ~77 llamadas a MP (~30s). El estado "rechazado" no cambia
 // minuto a minuto; asi el menu/inventario cargan al toque. ?refresh=1 fuerza recalcular.
 let _rechazadosCache: { at: number; data: Record<string, unknown> } | null = null;
+// El rebill (reenvío de link de cobro) cancela la sub rechazada → el estado cambió: invalidar
+// para que el titileo del inventario/dashboard se limpie sin esperar los 10 min de cache.
+export function invalidateRechazadosCache(): void { _rechazadosCache = null; }
 pricingRouter.get('/cobros-rechazados/:branchId', verifyToken, requireStaff, async (req: Request, res: Response) => {
   try {
     if (req.query['refresh'] !== '1' && _rechazadosCache && Date.now() - _rechazadosCache.at < 10 * 60_000) {
