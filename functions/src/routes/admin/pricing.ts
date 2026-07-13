@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { db } from '../../config/firebase';
 import { verifyToken } from '../../middleware/verifyToken';
 import { requireStaff } from '../../middleware/requireStaff';
-import { getPricingByM2 } from '../../services/pricing.service';
+import { getPricingByM2, recurringFor } from '../../services/pricing.service';
 import { FieldValue } from 'firebase-admin/firestore';
 import { updateSubscriptionAmount, updatePlanAmount, searchSubscriptions, searchSubscriptionsCached, invalidateSubsCache, getLastChargedMap, getLastChargeAttempt, searchPlans, MpSubscription } from '../../services/mercadopago.service';
 import { logAudit } from '../../services/audit.service';
@@ -457,6 +457,85 @@ pricingRouter.post('/reprice-all/:branchId', verifyToken, requireStaff, async (r
   } catch (err) {
     console.error('POST /pricing-engine/reprice-all error:', err);
     res.status(500).json({ error: 'No se pudo actualizar las suscripciones' });
+  }
+});
+
+// ── PLANES DE MP (mes gratis) ────────────────────────────────────────────────
+// Los planes (preapproval_plan) tienen su PROPIO monto y su link se comparte a clientes: si la
+// tarifa cambió y el plan no, un link viejo vende al precio anterior. El reprice solo los toca
+// cuando alguna suscripción cambia ("ya aplicado" bloquea el reintento — hallazgo Lucas 13/07).
+// Estos endpoints NO dependen del reprice: VER todos los planes de la cuenta (montos reales de
+// MP vs tarifa vigente) y SINCRONIZARLOS de un click. No borra ni cancela ninguno.
+
+function planM2(reason: string, local?: Record<string, unknown> | null): number | null {
+  if (local && Number(local['m2']) > 0) return Number(local['m2']);
+  const m = String(reason || '').match(/(\d+(?:[.,]\d+)?)\s*m2/i);
+  return m ? Number(m[1].replace(',', '.')) : null;
+}
+
+// GET /pricing-engine/planes/:branchId — TODOS los planes (incl. viejos/manuales) con monto real.
+pricingRouter.get('/planes/:branchId', verifyToken, requireStaff, async (req: Request, res: Response) => {
+  try {
+    const branchId = req.params['branchId'];
+    const [mpPlans, localSnap, byM2] = await Promise.all([
+      searchPlans(), db.collection('mpPlans').get(), getPricingByM2(branchId),
+    ]);
+    const localByPlanId = new Map<string, Record<string, unknown>>();
+    localSnap.forEach((d) => { const p = d.data() as Record<string, unknown>; if (p['planId']) localByPlanId.set(String(p['planId']), p); });
+    const planes = mpPlans.map((p) => {
+      const local = localByPlanId.get(p.id) || null;
+      const m2 = planM2(p.reason, local);
+      const tarifa = m2 != null ? recurringFor(byM2, m2, 1) : null;
+      return {
+        planId: p.id, nombre: p.reason, estado: p.status, m2, trial: p.trial,
+        montoMP: p.amount, tarifa,
+        desactualizado: p.status === 'active' && tarifa != null && tarifa > 0 && p.amount !== tarifa,
+        registrado: !!local, // true = lo creó el sistema (mpPlans); false = plan viejo/manual
+        link: p.initPoint || (local ? String(local['initPoint'] || '') : ''),
+      };
+    });
+    res.json({ total: planes.length, desactualizados: planes.filter((x) => x.desactualizado).length, planes });
+  } catch (err) {
+    console.error('GET /pricing-engine/planes error:', err);
+    res.status(500).json({ error: 'No se pudieron listar los planes' });
+  }
+});
+
+// POST /pricing-engine/planes/:branchId/sync — pone TODOS los planes activos al precio de la
+// tarifa vigente de su medida (en MP y en el doc local si existe).
+pricingRouter.post('/planes/:branchId/sync', verifyToken, requireStaff, async (req: Request, res: Response) => {
+  try {
+    const branchId = req.params['branchId'];
+    const [mpPlans, localSnap, byM2] = await Promise.all([
+      searchPlans(), db.collection('mpPlans').get(), getPricingByM2(branchId),
+    ]);
+    const localDocByPlanId = new Map<string, FirebaseFirestore.QueryDocumentSnapshot>();
+    localSnap.forEach((d) => { const p = d.data() as Record<string, unknown>; if (p['planId']) localDocByPlanId.set(String(p['planId']), d); });
+    const actualizados: Array<{ planId: string; nombre: string; de: number; a: number }> = [];
+    const errores: Array<{ planId: string; error: string }> = [];
+    let sinMedida = 0, yaEnPrecio = 0;
+    for (const p of mpPlans) {
+      if (p.status !== 'active') continue;
+      const localDoc = localDocByPlanId.get(p.id) || null;
+      const m2 = planM2(p.reason, localDoc ? (localDoc.data() as Record<string, unknown>) : null);
+      const tarifa = m2 != null ? recurringFor(byM2, m2, 1) : null;
+      if (tarifa == null || !(tarifa > 0)) { sinMedida++; continue; }
+      if (p.amount === tarifa) { yaEnPrecio++; continue; }
+      try {
+        await updatePlanAmount(p.id, tarifa);
+        if (localDoc) await localDoc.ref.set({ amount: tarifa, updatedAt: new Date().toISOString() }, { merge: true });
+        actualizados.push({ planId: p.id, nombre: p.reason, de: p.amount, a: tarifa });
+      } catch (e) { errores.push({ planId: p.id, error: String(e).slice(0, 200) }); }
+    }
+    await logAudit({
+      actor: (req as unknown as { email?: string }).email || 'admin',
+      action: 'sync_planes_mp', entity: 'pricing', entityId: branchId,
+      detail: { actualizados: actualizados.length, yaEnPrecio, sinMedida, errores: errores.length },
+    });
+    res.json({ actualizados, yaEnPrecio, sinMedida, errores });
+  } catch (err) {
+    console.error('POST /pricing-engine/planes/sync error:', err);
+    res.status(500).json({ error: 'No se pudieron sincronizar los planes' });
   }
 });
 

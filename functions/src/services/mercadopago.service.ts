@@ -458,9 +458,10 @@ export async function searchSubscriptionsCached(ttlMs = 120000): Promise<MpSubsc
   return unique;
 }
 
-export interface MpPlan { id: string; reason: string; status: string; }
+export interface MpPlan { id: string; reason: string; status: string; amount: number; trial: string; initPoint: string; }
 
-// Lista los planes de suscripcion (preapproval_plan) de la cuenta.
+// Lista los planes de suscripcion (preapproval_plan) de la cuenta, con su MONTO REAL
+// (auto_recurring.transaction_amount) para poder compararlo contra la tarifa vigente.
 export async function searchPlans(): Promise<MpPlan[]> {
   const accessToken = process.env.MP_ACCESS_TOKEN;
   if (!accessToken) throw new Error('MP_ACCESS_TOKEN not configured');
@@ -470,10 +471,17 @@ export async function searchPlans(): Promise<MpPlan[]> {
     });
     if (!res.ok) return [];
     const data = await res.json() as { results?: Array<Record<string, unknown>> };
-    return (data.results || []).map((r) => ({
-      id: String(r['id'] ?? ''),
-      reason: String(r['reason'] ?? ''),
-      status: String(r['status'] ?? ''),
-    }));
+    return (data.results || []).map((r) => {
+      const ar = (r['auto_recurring'] as Record<string, unknown>) || {};
+      const ft = ar['free_trial'] as Record<string, unknown> | undefined;
+      return {
+        id: String(r['id'] ?? ''),
+        reason: String(r['reason'] ?? ''),
+        status: String(r['status'] ?? ''),
+        amount: Number(ar['transaction_amount']) || 0,
+        trial: ft ? `${Number(ft['frequency']) || ''} ${String(ft['frequency_type'] || '')}`.trim() : '',
+        initPoint: String(r['init_point'] ?? ''),
+      };
+    });
   } catch { return []; }
 }
