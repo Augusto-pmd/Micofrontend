@@ -1015,6 +1015,7 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
     sucursal: initialSucursal || SUCURSALES[0],
     category: initialCategory || CATEGORIES[0],
     option: (initialCategory || CATEGORIES[0]).options[0],
+    optionPicked: false,  // true = la medida la eligió el cliente A MANO (no auto-saltar aunque esté sin stock)
     startDate: '',
     duration: 3,
     mode: 'ahora',   // 'ahora' | 'futuro' (reserva diferida con prioridad)
@@ -1037,12 +1038,16 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
   useEffect(() => {
     fetch(`${MC_API}/availability`).then((r) => r.json()).then((d) => setAvailByM2(d.byM2 || {})).catch(() => {});
   }, []);
-  // si la medida elegida quedo sin stock, saltar a la primera disponible de la categoria
+  // si la medida elegida quedo sin stock, saltar a la primera disponible de la categoria —
+  // SALVO que el cliente la haya elegido A MANO (optionPicked): una medida sin stock se puede
+  // seleccionar igual para anotarse en la LISTA DE ESPERA de ESA medida (antes el salto
+  // automático pisaba la elección y la waitlist guardaba la medida equivocada).
   useEffect(() => {
+    if (data.optionPicked) return;
     const cur = data.option?.m2;
     if (cur != null && (availByM2[String(cur)] ?? 0) > 0) return;
     const firstAvail = data.category?.options?.find((o) => (availByM2[String(o.m2)] ?? 0) > 0);
-    if (firstAvail) setOption(firstAvail);
+    if (firstAvail) setData((d) => ({ ...d, option: firstAvail }));
   }, [availByM2, data.category]);
 
   // Exit-intent: si está intentando cerrar entre steps 1-3 (después de empezar a elegir)
@@ -1090,12 +1095,22 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
   const totals = useMemo(() => computeTotals(data), [data, unlockTick]);
   const promos = useMemo(() => activePromos(data), [data, unlockTick]);
 
+  // Medida seleccionada SIN stock → el wizard sigue como LISTA DE ESPERA de esa medida:
+  // no hay pago; al final se anota en /waitlist con la m2 que el cliente ELIGIÓ.
+  const sinStockSel = !!data.option && (availByM2[String(data.option.m2)] ?? 0) === 0
+    && Object.keys(availByM2).length > 0;
+  useEffect(() => {
+    if (sinStockSel && data.mode === 'ahora') {
+      setData((d) => { const nx = { ...d, mode: 'futuro' }; if (d.startDate && d.startDate < minFuturo) nx.startDate = ''; return nx; });
+    }
+  }, [sinStockSel, data.mode, minFuturo]);
+
   const toggleAddon = (k) => setData((d) => ({
     ...d, addons: d.addons.includes(k) ? d.addons.filter((x) => x !== k) : [...d.addons, k],
   }));
 
-  const setCategory = (c) => setData((d) => ({ ...d, category: c, option: c.options[0] }));
-  const setOption   = (o) => setData((d) => ({ ...d, option: o }));
+  const setCategory = (c) => setData((d) => ({ ...d, category: c, option: c.options[0], optionPicked: false }));
+  const setOption   = (o) => setData((d) => ({ ...d, option: o, optionPicked: true }));
 
   const validateData = () => {
     const e = {};
@@ -1133,7 +1148,7 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
         fetch(`${MC_API}/waitlist`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            type: 'futuro', email: data.email?.trim().toLowerCase(), name: data.name?.trim(),
+            type: sinStockSel ? 'sin_stock' : 'futuro', email: data.email?.trim().toLowerCase(), name: data.name?.trim(),
             phone: data.phone?.trim(), m2: data.option?.m2, category: data.category?.label,
             branchId: data.sucursal?.id || 'nordelta', desiredDate: data.startDate, duration: data.duration,
           }),
@@ -1293,32 +1308,37 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
                   <div className="opts-grid">
                     {data.category.options.map((o) => {
                       const stock = availByM2[String(o.m2)] ?? 0;
-                      const agotado = stock === 0;
+                      const agotado = stock === 0 && Object.keys(availByM2).length > 0;
+                      // Sin stock TAMBIÉN se puede seleccionar: el flujo sigue como lista de
+                      // espera de ESA medida (antes estaba disabled y no sabíamos cuál quería).
                       return (
                       <button
                         key={o.m2}
                         type="button"
-                        disabled={agotado}
                         className={`mc-wiz-opt ${data.option.m2 === o.m2 ? 'selected' : ''}`}
-                        onClick={() => !agotado && setOption(o)}
-                        style={agotado ? { opacity: 0.45, cursor: 'not-allowed' } : undefined}
-                        title={agotado ? 'Sin disponibilidad' : `${stock} disponible(s)`}
+                        onClick={() => setOption(o)}
+                        style={agotado ? { opacity: 0.7 } : undefined}
+                        title={agotado ? 'Sin stock — podés anotarte en la lista de espera' : `${stock} disponible(s)`}
                       >
                         <b>{formatM2(o.m2)} m²</b>
                         <span>${o.monthly.toLocaleString('es-AR')} <small>/ mes</small></span>
-                        {agotado && <span style={{ display: 'block', fontSize: '0.7em', color: '#b00020', fontWeight: 700, marginTop: 2 }}>Sin stock</span>}
+                        {agotado && <span style={{ display: 'block', fontSize: '0.7em', color: '#b00020', fontWeight: 700, marginTop: 2 }}>Sin stock · lista de espera</span>}
                       </button>
                       );
                     })}
                   </div>
                   <span className="hint">Precios finales con IVA · Sucursal {data.sucursal.name}</span>
-                  {data.category.options.some((o) => (availByM2[String(o.m2)] ?? 0) === 0) && (
+                  {data.category.options.some((o) => (availByM2[String(o.m2)] ?? 0) === 0) && Object.keys(availByM2).length > 0 && (
                     <div style={{ marginTop: 14, padding: 12, background: "rgba(61,48,131,0.06)", borderRadius: 10 }}>
                       {wlSent ? (
                         <span style={{ color: "#2e7d00", fontWeight: 600 }}>Listo! Te avisamos cuando se libere una baulera de esa medida.</span>
                       ) : (
                         <>
-                          <span style={{ display: "block", fontSize: "0.85em", marginBottom: 6 }}>Hay medidas sin stock. Dejanos tu email y te avisamos cuando se libere una.</span>
+                          <span style={{ display: "block", fontSize: "0.85em", marginBottom: 6 }}>
+                            {sinStockSel
+                              ? <>Elegiste <b>{formatM2(data.option.m2)} m²</b> y está sin stock: tocá <b>Continuar</b> para anotarte en la lista de espera de esa medida, o dejá tu email y te avisamos.</>
+                              : 'Hay medidas sin stock. Seleccioná la que querés para anotarte en su lista de espera, o dejá tu email y te avisamos.'}
+                          </span>
                           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                             <input type="email" value={wlEmail} onChange={(e) => setWlEmail(e.target.value)} placeholder="vos@email.com" style={{ flex: 1, minWidth: 180, padding: "8px 10px", borderRadius: 8, border: "1px solid #ccc" }} />
                             <button type="button" className="mc-btn mc-btn-violet" disabled={!wlEmail} onClick={() => {
@@ -1339,15 +1359,19 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
               <h2 id="wiz-title">¿Cuándo querés empezar?</h2>
               <p className="lead">Reservás la fecha y el espacio queda apartado a tu nombre.</p>
               <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
-                {[['ahora', 'Ingreso ahora', 'En los próximos 5 a 10 días'], ['futuro', 'Reservar a futuro', 'Para más adelante, con prioridad']].map(([m, t, sub]) => (
-                  <button key={m} type="button" onClick={() => setData((d) => { const nx = { ...d, mode: m }; if (m === 'ahora' && (!d.startDate || d.startDate > maxAhora)) nx.startDate = today; if (m === 'futuro' && d.startDate && d.startDate < minFuturo) nx.startDate = ''; return nx; })}
-                    style={{ flex: 1, textAlign: 'left', padding: '12px 14px', borderRadius: 12, cursor: 'pointer',
+                {[['ahora', 'Ingreso ahora', 'En los próximos 5 a 10 días'], ['futuro', sinStockSel ? 'Lista de espera' : 'Reservar a futuro', sinStockSel ? 'Te avisamos cuando se libere' : 'Para más adelante, con prioridad']].map(([m, t, sub]) => {
+                  const noStockAhora = m === 'ahora' && sinStockSel; // sin stock no hay "ingreso ahora"
+                  return (
+                  <button key={m} type="button" disabled={noStockAhora}
+                    onClick={() => !noStockAhora && setData((d) => { const nx = { ...d, mode: m }; if (m === 'ahora' && (!d.startDate || d.startDate > maxAhora)) nx.startDate = today; if (m === 'futuro' && d.startDate && d.startDate < minFuturo) nx.startDate = ''; return nx; })}
+                    style={{ flex: 1, textAlign: 'left', padding: '12px 14px', borderRadius: 12, cursor: noStockAhora ? 'not-allowed' : 'pointer', opacity: noStockAhora ? 0.5 : 1,
                       border: (data.mode || 'ahora') === m ? '2px solid #5ECA00' : '1px solid #ddd',
                       background: (data.mode || 'ahora') === m ? '#f3fbe9' : '#fff' }}>
                     <b style={{ display: 'block', fontSize: 14 }}>{t}</b>
-                    <span style={{ fontSize: 12, color: '#777' }}>{sub}</span>
+                    <span style={{ fontSize: 12, color: '#777' }}>{noStockAhora ? 'Sin stock de esta medida' : sub}</span>
                   </button>
-                ))}
+                  );
+                })}
               </div>
               <div className="mc-wiz-row2">
                 <div className="mc-wiz-field">
@@ -1685,7 +1709,7 @@ function Wizard({ initialCategory, initialSucursal, user, onClose }) {
             ) : <span />}
             <button className="mc-btn mc-btn-green" onClick={next} style={step === 4 ? {display:'none'} : {}}>
               {step !== 4 && (
-                <><span>Continuar</span><span className="arrow">→</span></>
+                <><span>{sinStockSel && step >= 1 ? 'Continuar · lista de espera' : 'Continuar'}</span><span className="arrow">→</span></>
               )}
             </button>
           </div>
