@@ -314,9 +314,11 @@ export async function createPlan(params: { m2: number; amount: number; freeTrial
   if (params.billingDay) {
     autoRecurring['billing_day'] = params.billingDay;
     // PROPORCIONAL solo en ENTRADA PAGA (sin trial): cobra los días hasta el 1° al entrar.
-    // Con MES GRATIS NO se prorratea: el trial cubre el arranque y billing_day alinea el primer
-    // cobro real al 1° (queda gratis desde que entra hasta ese 1°, sin un cargo parcial raro).
-    if (q === 0) autoRecurring['billing_day_proportional'] = true;
+    // Con MES GRATIS va FALSE EXPLÍCITO — no alcanza con omitirlo: verificado en PROD (14/07,
+    // plan d45bbc07...) que MP lo AUTO-SETEA true por default cuando mandás billing_day. Si
+    // quedara true, MP prorratearía el primer cobro tras el trial Y nuestro link 2 (gap)
+    // cobraría esos mismos días = gap POR DUPLICADO al cliente.
+    autoRecurring['billing_day_proportional'] = q === 0;
   }
   const body = {
     reason,
@@ -342,11 +344,10 @@ export async function createPlan(params: { m2: number; amount: number; freeTrial
 export async function updatePlanBilling(planId: string, amount: number, billingDay = 1, proportional = true): Promise<void> {
   const accessToken = process.env.MP_ACCESS_TOKEN;
   if (!accessToken) throw new Error('MP_ACCESS_TOKEN not configured');
-  // proportional SOLO en entrada paga (sin trial). Con MES GRATIS no se prorratea (mismo guard
-  // que createPlan). BUG que arreglaba: antes mandaba proportional:true SIEMPRE, y al reprice de
-  // un plan de mes gratis reintroducía el prorrateo → MP cobraba un parcial en vez de $0.
-  const ar: Record<string, unknown> = { transaction_amount: amount, currency_id: 'ARS', billing_day: billingDay };
-  if (proportional) ar['billing_day_proportional'] = true;
+  // proportional SOLO en entrada paga (sin trial). Con MES GRATIS va FALSE EXPLÍCITO: MP lo
+  // auto-setea true por default cuando hay billing_day (verificado en prod 14/07) — omitirlo
+  // no alcanza, y si queda true el gap se cobraría por duplicado (MP prorratea + nuestro link 2).
+  const ar: Record<string, unknown> = { transaction_amount: amount, currency_id: 'ARS', billing_day: billingDay, billing_day_proportional: proportional };
   const full = await fetch(`${MP_API_BASE}/preapproval_plan/${encodeURIComponent(planId)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
