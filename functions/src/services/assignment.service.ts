@@ -140,11 +140,16 @@ export async function assignRoomForReservation(reservation: Reservation, targetR
       }
       const room = (pick.data() || {}) as Record<string, unknown>;
 
-      // 1) ocupar la baulera (y limpiar el hold)
+      // 1) ocupar la baulera (y limpiar el hold). contractNumber va a NULL: si la baulera es
+      // legacy (seed) conserva el contrato del inquilino ANTERIOR, y la ficha del inventario
+      // prioriza contractNumber sobre customerId → mostraba al viejo (caso real: A0-002 se
+      // revendió a Hernan y la ficha seguía mostrando a Blum, 14/07). Sin contrato, la ficha
+      // resuelve por customerId = el ocupante real.
       tx.update(pick.ref, {
         status: 'occupied',
         customerId: custId,
         currentTenant: tenant,
+        contractNumber: null,
         assignedAt: now,
         reservationId: reservation.id,
         heldUntil: null,

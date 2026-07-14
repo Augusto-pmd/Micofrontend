@@ -327,6 +327,7 @@ async function processWebhook(body: Record<string, unknown>): Promise<void> {
         status: 'available',
         customerId: null,
         currentTenant: null,
+        contractNumber: null, // limpiar el contrato legacy: si no, la ficha muestra al inquilino viejo al revender
         reservationId: null,
         heldUntil: null,
         heldByReservationId: null,

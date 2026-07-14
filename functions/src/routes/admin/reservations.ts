@@ -468,7 +468,7 @@ adminReservationsRouter.post('/:id/assign-room', requireAuth, async (req, res: R
     // si ya tenia baulera asignada, liberarla antes de reasignar
     if (reservation.storageRoomId) {
       await db.collection('storageRooms').doc(reservation.storageRoomId).set({
-        status: 'available', customerId: null, currentTenant: null,
+        status: 'available', customerId: null, currentTenant: null, contractNumber: null,
         reservationId: null, updatedAt: new Date().toISOString(),
       }, { merge: true });
     }
@@ -648,7 +648,7 @@ adminReservationsRouter.post('/:id/cancel', requireAuth, async (req, res: Respon
     // 3) Liberar la baulera
     if (r.storageRoomId) {
       await db.collection('storageRooms').doc(String(r.storageRoomId)).set({
-        status: 'available', customerId: null, currentTenant: null,
+        status: 'available', customerId: null, currentTenant: null, contractNumber: null,
         reservationId: null, heldUntil: null, heldByReservationId: null,
         updatedAt: new Date().toISOString(),
       }, { merge: true });
