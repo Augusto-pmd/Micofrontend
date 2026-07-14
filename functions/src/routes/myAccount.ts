@@ -212,7 +212,14 @@ myAccountRouter.get('/', requireAuth, async (req, res: Response) => {
     const enrichedOrders = orders.map((o: any) => ({ ...o, storageRoom: roomsMap[o.storageRoomId] || null }));
 
     // 5. Respuesta
-    const allContracts = [...enrichedOrders, ...mpReservations];
+    // DEDUPE (bug 14/07, caso Aluzzo A2-040): la activación de una venta online crea la reserva
+    // MP *y* su orden espejo 'order-online-<reservationId>' (assignment.service:111, para el
+    // inventario interno). El portal mostraba LAS DOS → el cliente veía su baulera y sus pagos
+    // duplicados y totalMonthly sumaba el doble. Se muestra SOLO la reserva MP (tiene el estado
+    // vivo, el link de pago y la biometría); la orden espejo sigue existiendo para el inventario.
+    const espejosMp = new Set(mpReservations.map((r: any) => `order-online-${r.id}`));
+    const ordersSinEspejo = enrichedOrders.filter((o: any) => !espejosMp.has(String(o.id)));
+    const allContracts = [...ordersSinEspejo, ...mpReservations];
     const activeContracts = allContracts.filter((c: any) =>
       c.status === 'CONFIRMED' || c.status === 'active' || c.status === 'authorized'
     );
