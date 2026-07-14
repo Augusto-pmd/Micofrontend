@@ -8,6 +8,7 @@ import { Router, Response } from 'express';
 import { requireAuth, AuthenticatedRequest } from '../middleware/requireAuth';
 import { db, auth, storage } from '../config/firebase';
 import { getChargeHistory } from '../services/mercadopago.service';
+import { collectClientReservationDocs } from '../services/customerMatch.service';
 import { logAudit } from '../services/audit.service';
 
 const FACE_BUCKET = 'mc-nordelta-2026.firebasestorage.app';
@@ -85,13 +86,10 @@ myAccountRouter.get('/payments', requireAuth, async (req, res: Response) => {
   if (!email) { res.status(401).json({ error: 'No autenticado' }); return; }
   if (!(await emailVerificadoOk(authReq, res))) return;
   try {
-    const [mpByEmail, mpByUid] = await Promise.all([
-      db.collection('reservations').where('customerEmail', '==', email).get(),
-      authReq.uid ? db.collection('reservations').where('userUid', '==', authReq.uid).get() : Promise.resolve({ docs: [] as any[] }),
-    ]);
+    const mpDocs = await collectClientReservationDocs(email, authReq.uid);
     const seen = new Set<string>();
     const preapprovalIds: string[] = [];
-    [...mpByEmail.docs, ...(mpByUid as any).docs].forEach((d: any) => {
+    mpDocs.forEach((d: any) => {
       const pid = d.data()?.mpPreapprovalId;
       if (pid && !seen.has(pid)) { seen.add(pid); preapprovalIds.push(pid); }
       // Tras un REENVÍO de link de cobro (rebill) la sub vieja queda cancelada, pero sus
@@ -164,17 +162,9 @@ myAccountRouter.get('/', requireAuth, async (req, res: Response) => {
       };
     });
 
-    // 3. Reservas online (MP) por email o userUid
-    const [mpByEmail, mpByUid] = await Promise.all([
-      db.collection('reservations').where('customerEmail', '==', email).get(),
-      authReq.uid
-        ? db.collection('reservations').where('userUid', '==', authReq.uid).get()
-        : Promise.resolve({ docs: [] as any[] }),
-    ]);
-
-    const mpDocs = [...mpByEmail.docs];
-    const seenIds = new Set(mpDocs.map(d => d.id));
-    (mpByUid as any).docs.forEach((d: any) => { if (!seenIds.has(d.id)) mpDocs.push(d); });
+    // 3. Reservas online (MP) por email/uid + DNI/teléfono (macheo reforzado: junta las bauleras
+    //    del cliente aunque alguna se haya cargado con otro mail). Ver customerMatch.service.
+    const mpDocs = await collectClientReservationDocs(email, authReq.uid);
 
     const mpReservations = mpDocs.map(d => {
       const r = { id: d.id, ...d.data() } as any;

@@ -31,6 +31,12 @@ export interface Reservation {
   customerEmail?: string;
   customerPhone?: string;
   customerDni?: string;
+  // Versiones NORMALIZADas (solo dígitos / minúsculas) para el macheo reforzado de cliente
+  // (unir sus bauleras aunque el mail venga distinto). Ver services/customerMatch.service.ts.
+  customerEmailNorm?: string | null;
+  customerDniNorm?: string | null;
+  customerPhoneNorm?: string | null;
+  customerMpPayerId?: string;   // id de la cuenta MP del pagador (señal extra de macheo del webhook)
   storageRoomId?: string;   // baulera puntual asignada al pagar
   heldUntil?: string;       // hold de 20 min al generar el link
   bauleraCodigo?: string;

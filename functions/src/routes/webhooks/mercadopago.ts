@@ -237,6 +237,7 @@ async function processWebhook(body: Record<string, unknown>): Promise<void> {
             if (!cur || cur['status'] !== 'pending_payment') return true;
             tx.update(s.ref, {
               mpPreapprovalId: preapprovalId,
+              ...(det.payerId ? { customerMpPayerId: det.payerId } : {}), // id de la cuenta MP (reconciliación)
               ...(activar ? { status: 'active', mpSubscriptionStatus: (det.status === 'authorized' ? 'authorized' : 'pending') } : {}),
             });
             return false;

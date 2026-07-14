@@ -7,6 +7,7 @@ import { assignRoomForReservation, holdRoomForReservation } from '../../services
 import { getReservation, createReservation, updateReservation, getReservationByMpPreapprovalId, getReservationByBauleraCodigo } from '../../models/reservation.model';
 import { createSubscription, createCheckoutPreference, createDebtPreference, createGapPreference, cancelSubscription, getSubscriptionStatus, invalidateSubsCache, searchSubscriptionsCached } from '../../services/mercadopago.service';
 import { getOrCreateAlignedPlan } from '../../services/planCatalog.service';
+import { resolveSaleUid, customerNormFields } from '../../services/customerMatch.service';
 import { createDebt, DebtTipo } from '../../services/debts.service';
 import { invalidateRechazadosCache } from './pricing';
 import { getPricingByM2, recurringFor } from '../../services/pricing.service';
@@ -67,13 +68,20 @@ adminReservationsRouter.get('/', requireAuth, async (req, res: Response) => {
       };
     });
 
-    // Filtro de búsqueda en memoria (nombre, email, id)
+    // Filtro de búsqueda en memoria (nombre, email, id, DNI, teléfono). El DNI/teléfono se comparan
+    // también SOLO por dígitos → "12345678" encuentra "12.345.678" y un teléfono con/sin prefijo.
     if (search) {
+      const searchDigits = search.replace(/\D/g, '');
       docs = docs.filter(r =>
         r.id.toLowerCase().includes(search) ||
         r.customerName.toLowerCase().includes(search) ||
         r.customerEmail.toLowerCase().includes(search) ||
-        r.customerDni.toLowerCase().includes(search)
+        r.customerDni.toLowerCase().includes(search) ||
+        r.customerPhone.toLowerCase().includes(search) ||
+        (searchDigits.length >= 3 && (
+          String(r.customerDni).replace(/\D/g, '').includes(searchDigits) ||
+          String(r.customerPhone).replace(/\D/g, '').includes(searchDigits)
+        ))
       );
     }
 
@@ -143,7 +151,8 @@ adminReservationsRouter.post('/sell', requireAuth, async (req, res: Response) =>
     if (disc > 0) monthlyNum = Math.round(monthlyNum * (1 - disc / 100));
 
     const id = generateReservationId();
-    const uid = `manual_${crypto.createHash('sha1').update(String(email).toLowerCase()).digest('hex').slice(0, 16)}`;
+    // MACHEO REFORZADO: reusa la identidad del cliente si ya existe (DNI→email→tel); si no, fallback por mail.
+    const uid = await resolveSaleUid({ dni, email, phone });
 
     // Reservar (hold) la baulera 20 min antes de cobrar (evita doble venta y asegura la correcta)
     const hold = await holdRoomForReservation({ reservationId: id, branchId: sucursalId, m2: Number(m2), targetRoomId: storageRoomId || undefined });
@@ -193,6 +202,7 @@ adminReservationsRouter.post('/sell', requireAuth, async (req, res: Response) =>
       customerEmail: email || undefined,
       customerPhone: phone || undefined,
       customerDni: dni || undefined,
+      ...customerNormFields({ email, dni, phone }),
       storageRoomId: hold.roomId,
       // extras (se persisten por spread)
       bauleraCodigo: hold.bauleraCodigo || bauleraCodigo || undefined,
@@ -241,7 +251,8 @@ adminReservationsRouter.post('/sell-onetime', requireAuth, async (req, res: Resp
     const total = monthlyNum * months;
 
     const id = generateReservationId();
-    const uid = `manual_${crypto.createHash('sha1').update(String(email).toLowerCase()).digest('hex').slice(0, 16)}`;
+    // MACHEO REFORZADO: reusa la identidad del cliente si ya existe (DNI→email→tel); si no, fallback por mail.
+    const uid = await resolveSaleUid({ dni, email, phone });
 
     const hold = await holdRoomForReservation({ reservationId: id, branchId: sucursalId, m2: Number(m2), targetRoomId: storageRoomId || undefined });
     if (!hold.ok) {
@@ -278,6 +289,7 @@ adminReservationsRouter.post('/sell-onetime', requireAuth, async (req, res: Resp
       faceEnrollStatus: 'not_started', faceEnrollAttempts: 0,
       customerName: name || undefined, customerEmail: email || undefined,
       customerPhone: phone || undefined, customerDni: dni || undefined,
+      ...customerNormFields({ email, dni, phone }),
       storageRoomId: hold.roomId,
       bauleraCodigo: codigo || undefined,
       endDate: end,
@@ -334,7 +346,8 @@ adminReservationsRouter.post('/sell-plan', requireAuth, async (req, res: Respons
     }
 
     const id = generateReservationId();
-    const uid = `manual_${crypto.createHash('sha1').update(String(email).toLowerCase()).digest('hex').slice(0, 16)}`;
+    // MACHEO REFORZADO: reusa la identidad del cliente si ya existe (DNI→email→tel); si no, fallback por mail.
+    const uid = await resolveSaleUid({ dni, email, phone });
 
     const hold = await holdRoomForReservation({ reservationId: id, branchId: sucursalId, m2: Number(m2), targetRoomId: storageRoomId || undefined });
     if (!hold.ok) {
@@ -395,6 +408,7 @@ adminReservationsRouter.post('/sell-plan', requireAuth, async (req, res: Respons
       faceEnrollStatus: 'not_started', faceEnrollAttempts: 0,
       customerName: name || undefined, customerEmail: email || undefined,
       customerPhone: phone || undefined, customerDni: dni || undefined,
+      ...customerNormFields({ email, dni, phone }),
       storageRoomId: hold.roomId,
       bauleraCodigo: hold.bauleraCodigo || bauleraCodigo || undefined,
       promoMonths: freeUnit === 'months' ? freeQty : 0,

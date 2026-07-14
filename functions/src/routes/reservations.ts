@@ -3,6 +3,7 @@ import { requireAuth, optionalAuth, AuthenticatedRequest } from '../middleware/r
 import { createReservation, getUserReservations, getReservation, updateReservation } from '../models/reservation.model';
 import { cancelSubscription } from '../services/mercadopago.service';
 import { getOrCreateAlignedPlan } from '../services/planCatalog.service';
+import { resolveExistingCustomer, customerNormFields } from '../services/customerMatch.service';
 import { holdRoomForReservation } from '../services/assignment.service';
 import { getPricingByM2, recurringFor } from '../services/pricing.service';
 import { db } from '../config/firebase';
@@ -24,7 +25,7 @@ reservationsRouter.post('/', optionalAuth, async (req, res: Response) => {
 
   // Resolve uid and email: prefer auth token, fall back to form body
   const bodyEmail: string = (req.body.email ?? '').trim().toLowerCase();
-  const uid: string  = authReq.uid   || `guest_${crypto.createHash('sha1').update(bodyEmail).digest('hex').slice(0, 16)}`;
+  let uid: string  = authReq.uid   || `guest_${crypto.createHash('sha1').update(bodyEmail).digest('hex').slice(0, 16)}`;
   const email: string = authReq.email || bodyEmail;
 
   if (!email) {
@@ -44,6 +45,16 @@ reservationsRouter.post('/', optionalAuth, async (req, res: Response) => {
     startDate, duration, addons = [], promosApplied = [],
     name = '', phone = '', dni = '', freeTrialMonths = 0,
   } = req.body;
+
+  // MACHEO REFORZADO: si NO está logueado, buscamos un cliente existente por DNI→email→teléfono y
+  // reusamos su identidad (userUid) para que sus bauleras se unifiquen aunque el mail venga distinto.
+  // Si está logueado, su uid de Firebase manda. Best-effort: si falla, sigue el uid derivado del mail.
+  if (!authReq.uid) {
+    try {
+      const found = await resolveExistingCustomer({ dni, email });
+      if (found?.userUid) uid = found.userUid;
+    } catch (e) { console.warn('[reservations] resolveExistingCustomer falló (sigo con uid por email):', e); }
+  }
 
   // Precio server-side: la fuente de verdad es la tabla por medida (admin),
   // no lo que manda el cliente. Asi, si cambias el precio, aplica a toda venta nueva.
@@ -136,6 +147,7 @@ reservationsRouter.post('/', optionalAuth, async (req, res: Response) => {
       customerEmail: email || undefined,
       customerPhone: phone || undefined,
       customerDni:   dni   || undefined,
+      ...customerNormFields({ email, dni, phone }),
     });
 
     res.status(201).json({ reservationId: id, initPoint });

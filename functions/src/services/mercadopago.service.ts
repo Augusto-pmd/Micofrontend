@@ -384,7 +384,7 @@ export async function cancelPlan(planId: string): Promise<void> {
 }
 
 // Detalle de un preapproval — para CASAR una sub creada via LINK de plan con su venta pendiente.
-export interface MpPreapprovalDetail { status: string; planId: string; externalReference: string; payerEmail: string; }
+export interface MpPreapprovalDetail { status: string; planId: string; externalReference: string; payerEmail: string; payerId: string; }
 export async function getPreapprovalDetail(preapprovalId: string): Promise<MpPreapprovalDetail | null> {
   const accessToken = process.env.MP_ACCESS_TOKEN;
   if (!accessToken) return null;
@@ -399,6 +399,7 @@ export async function getPreapprovalDetail(preapprovalId: string): Promise<MpPre
       planId: String(d['preapproval_plan_id'] || ''),
       externalReference: String(d['external_reference'] || ''),
       payerEmail: String(d['payer_email'] || ''),
+      payerId: String(d['payer_id'] || ''),
     };
   } catch { return null; }
 }
