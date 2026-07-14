@@ -58,11 +58,15 @@ export interface Reservation {
   promoQty?: number;
   promoUnit?: 'days' | 'months';
   discountPct?: number;
-  // GAP del mes gratis (SPEC §4): 2° link (pago único de alineación al 1°). Pre-carga en Inventario.
+  // GAP del mes gratis (modelo 14/07): 2° link = pago único del PROPORCIONAL DE ENTRADA (los días
+  // del mes actual, hoy → 1° próximo). Pre-carga el botón Proporcional de Inventario si se difiere.
   gapPreferenceId?: string | null;
   gapAmount?: number;
   gapInitPoint?: string | null;
   gapDays?: number;
+  gapDesde?: string | null;  // 'YYYY-MM-DD' — inicio del período que cubre el proporcional
+  gapHasta?: string | null;  // 'YYYY-MM-DD' — el 1° próximo
+  trialDays?: number;        // días totales del cupón/trial en MP (proporcional + período gratis)
   gapPaidAt?: string;       // gap del mes gratis cobrado (idempotencia del webhook GAP): ISO
 }
 
