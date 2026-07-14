@@ -861,10 +861,20 @@ adminReservationsRouter.post('/rebill', requireAuth, async (req, res: Response) 
   }
 });
 
-// DELETE /admin/reservations/:id — eliminar una solicitud/reserva (ej. pendiente sin pagar)
+// DELETE /admin/reservations/:id — eliminar una solicitud/reserva (ej. pendiente sin pagar).
+// Deja AUDITORÍA con una copia de los datos (14/07: se borró la reserva activa de A3-037 sin
+// rastro de quién/cuándo — el snapshot en audit_log permite reconstruirla si fue un error).
 adminReservationsRouter.delete('/:id', requireAuth, async (req, res: Response) => {
   try {
-    await db.collection('reservations').doc(req.params.id).delete();
+    const ref = db.collection('reservations').doc(req.params.id);
+    const snap = await ref.get();
+    const datos = snap.exists ? (snap.data() as Record<string, unknown>) : null;
+    await ref.delete();
+    await logAudit({
+      actor: (req as unknown as { email?: string }).email || (req as unknown as { uid?: string }).uid || 'admin',
+      via: 'admin', action: 'reserva_eliminada', entity: 'reservation', entityId: req.params.id,
+      detail: { baulera: (datos?.['bauleraCodigo'] as string) || null, status: (datos?.['status'] as string) || null, copia: datos || null },
+    });
     res.json({ message: 'Deleted' });
   } catch (err) {
     console.error('DELETE /admin/reservations/:id error:', err);

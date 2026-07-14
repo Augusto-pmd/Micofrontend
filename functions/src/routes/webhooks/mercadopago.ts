@@ -286,6 +286,22 @@ async function processWebhook(body: Record<string, unknown>): Promise<void> {
       return;
     }
 
+    // GUARD (bug real A3-037, 14/07): una sub cancelada que NUNCA estuvo autorizada (quedó
+    // 'pending' — el cliente jamás pagó por ese link) NO es una baja del cliente: es un link
+    // viejo/abandonado (rebill viejo, prueba, hold vencido). Procesarla como baja mataba reservas
+    // ACTIVAS: a la reserva de PAGO ÚNICO de A3-037 (vigente y pagada) el rebill viejo le había
+    // colgado una sub pendiente; al cancelarse esa sub, la "baja" liberó la baulera de un cliente
+    // al día. Ídem paymentMode 'onetime' en general: vive por endDate, nunca por una sub.
+    if (reservation.status === 'active' && (reservation.paymentMode === 'onetime' || reservation.mpSubscriptionStatus === 'pending')) {
+      console.warn(`[mp-webhook] sub ${preapprovalId} cancelada pero la reserva ${reservation.id} está ACTIVA (${reservation.paymentMode || 'subscription'}; sub nunca autorizada) → NO se da de baja; revisar a mano si corresponde`);
+      await logAudit({
+        actor: 'sistema', via: 'mercadopago', action: 'baja_ignorada_sub_pendiente',
+        entity: 'reservation', entityId: reservation.id,
+        detail: { preapprovalId, paymentMode: reservation.paymentMode || 'subscription', mpSubscriptionStatus: reservation.mpSubscriptionStatus, baulera: reservation.bauleraCodigo || reservation.storageRoomId || null },
+      });
+      return;
+    }
+
     // #6 IDEMPOTENCIA: si la reserva YA está cancelada, este evento es una RE-ENTREGA de MP
     // (reenvía el mismo aviso) o llega DESPUÉS de una baja desde el panel (que ya cortó MP,
     // liberó la baulera y marcó bajaGestionada). NO reprocesar:
