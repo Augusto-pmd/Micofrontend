@@ -3,6 +3,7 @@ import { db } from '../../config/firebase';
 import { verifyToken } from '../../middleware/verifyToken';
 import { paginate } from '../../utils/pagination';
 import { getBuildingMap } from '../../utils/buildingCache';
+import { logAudit } from '../../services/audit.service';
 
 export const storageRoomsRouter = Router();
 
@@ -200,6 +201,47 @@ storageRoomsRouter.get('/:id', verifyToken, async (req: Request, res: Response) 
   } catch (err) {
     console.error('GET /storage-room/:id error:', err);
     res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+// POST /storage-room/:id/tenant — COMPLETAR/CORREGIR los datos del inquilino desde la ficha
+// (caso real 15/07: A3-012 de Débora, legacy sin mail en NINGÚN registro → el staff los carga
+// una vez acá y quedan guardados; sirve para todas las bauleras de las 54 originales con datos
+// incompletos). Upsert sobre el customer real de la baulera (customerId → por contrato → nuevo).
+storageRoomsRouter.post('/:id/tenant', verifyToken, async (req: Request, res: Response) => {
+  try {
+    const { nombre, email, telefono, dni } = (req.body || {}) as Record<string, string | undefined>;
+    if (!nombre && !email && !telefono && !dni) { res.status(400).json({ error: 'Mandá al menos un dato para completar' }); return; }
+    const doc = await db.collection('storageRooms').doc(req.params['id']).get();
+    if (!doc.exists) { res.status(404).json({ error: 'Baulera no encontrada' }); return; }
+    const room = doc.data() as Record<string, unknown>;
+    const now = new Date().toISOString();
+    // Cliente destino: el ya vinculado → el del contrato legacy → uno nuevo atado a la baulera.
+    let custId = room['customerId'] ? String(room['customerId']) : '';
+    if (!custId && room['contractNumber']) {
+      const s = await db.collection('customers').where('contractNumber', '==', room['contractNumber']).limit(1).get();
+      if (!s.empty) custId = s.docs[0].id;
+    }
+    if (!custId) custId = `cust-manual-${doc.id}`;
+    const nom = String(nombre || '').trim();
+    await db.collection('customers').doc(custId).set({
+      ...(nom ? { fullName: nom, firstName: nom.split(' ')[0], lastName: nom.split(' ').slice(1).join(' ') } : {}),
+      ...(email ? { email: String(email).trim().toLowerCase() } : {}),
+      ...(telefono ? { phone: String(telefono).trim() } : {}),
+      ...(dni ? { dni: String(dni).trim() } : {}),
+      bauleraCodigo: room['space'] || null, storageRoomId: doc.id,
+      branchId: room['branchId'] || 'nordelta', isActive: true, updatedAt: now,
+    }, { merge: true });
+    await doc.ref.set({ customerId: custId, ...(nom ? { currentTenant: nom } : {}), updatedAt: now }, { merge: true });
+    await logAudit({
+      actor: (req as unknown as { email?: string }).email || 'admin', via: 'admin',
+      action: 'inquilino_datos_completados', entity: 'storageRoom', entityId: doc.id,
+      detail: { baulera: room['space'] || null, customerId: custId, email: email || null, telefono: telefono || null, dni: dni || null, nombre: nom || null },
+    });
+    res.json({ ok: true, customerId: custId });
+  } catch (err) {
+    console.error('POST /storage-room/:id/tenant error:', err);
+    res.status(500).json({ error: 'No se pudieron guardar los datos del inquilino' });
   }
 });
 
