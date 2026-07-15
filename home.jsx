@@ -2469,18 +2469,15 @@ function TuEspacio({ reservation, m2Label, catLabel }) {
 }
 
 function Gestionar({ reservation, onUpdate, onOpenResize, cancelStep, setCancelStep, onReserve }) {
-  const cancelDate = addDays(7);
   const isActive = reservation.status === 'active';
-  const isCancelScheduled = reservation.status === 'cancellation_scheduled';
 
-  const handleConfirmCancel = () => {
-    onUpdate(reservation.id, {
-      status: 'cancellation_scheduled',
-      cancelEffectiveDate: cancelDate,
-      cancelledAt: new Date().toISOString(),
-    });
-    setCancelStep(2);
-  };
+  // BAJA REAL por WhatsApp (fix auditoría v3 C1, 15/07): el flujo viejo solo escribía en el
+  // localStorage del navegador y MENTÍA ("no se cobra más", "recibís un email") — la suscripción
+  // en MP seguía cobrando y al recargar la "cancelación" desaparecía. La baja de verdad la hace
+  // el staff desde el panel (Dar de baja: corta MP + libera la baulera), así que el portal ahora
+  // la PIDE por WhatsApp con el mensaje armado — una persona la confirma y la ejecuta.
+  const codBaja = reservation.bauleraCodigo || reservation.storageRoomId || reservation.id;
+  const waBaja = `${WHATSAPP}?text=${encodeURIComponent(`Hola! Quiero dar de baja mi baulera ${codBaja}. ¿Me confirman los pasos? Gracias.`)}`;
 
   return (
     <div className="mc-portal-block mc-gestionar">
@@ -2502,33 +2499,20 @@ function Gestionar({ reservation, onUpdate, onOpenResize, cancelStep, setCancelS
         )}
         {cancelStep === 1 && (
           <div className="mc-cancel-confirm">
-            <p><strong>¿Cancelar esta reserva?</strong></p>
-            <div className="date">Fecha efectiva: {cancelDate}</div>
+            <p><strong>¿Querés dar de baja tu baulera?</strong></p>
             <p style={{ marginBottom: 14, color: 'var(--mc-ink-2)' }}>
-              Tu acceso se desactiva en esa fecha. No se cobra más a partir del próximo ciclo.
+              La baja se gestiona con nosotros por WhatsApp: te responde una persona, coordinamos el
+              retiro de tus cosas y ahí se corta el cobro. Sin vueltas.
             </p>
             <div className="mc-cancel-confirm-actions">
-              <button className="mc-btn mc-btn-ghost" style={{ background: '#fee2e2', borderColor: '#fca5a5', color: '#991b1b' }} onClick={handleConfirmCancel}>
-                <span>Cancelar definitivamente</span>
-              </button>
+              <a className="mc-btn mc-btn-green" href={waBaja} target="_blank" rel="noreferrer" onClick={() => setCancelStep(0)}>
+                <span>Pedir la baja por WhatsApp</span>
+              </a>
               <button className="mc-btn mc-btn-ghost" onClick={() => setCancelStep(0)}>
                 <span>Volver</span>
               </button>
             </div>
           </div>
-        )}
-        {cancelStep === 2 && (
-          <div style={{ padding: '12px 0', textAlign: 'center' }}>
-            <p style={{ fontSize: 14, color: 'var(--mc-ink-2)' }}>
-              Cancelación programada para el <strong>{cancelDate}</strong>.<br />
-              Recibís un email de confirmación.
-            </p>
-          </div>
-        )}
-        {isCancelScheduled && cancelStep === 0 && (
-          <p style={{ fontSize: 14, color: 'var(--mc-ink-3)' }}>
-            Tu reserva se cancela el <strong>{reservation.cancelEffectiveDate}</strong>.
-          </p>
         )}
       </div>
     </div>
