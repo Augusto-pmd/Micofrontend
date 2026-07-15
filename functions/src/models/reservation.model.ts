@@ -67,6 +67,7 @@ export interface Reservation {
   gapDesde?: string | null;  // 'YYYY-MM-DD' — inicio del período que cubre el proporcional
   gapHasta?: string | null;  // 'YYYY-MM-DD' — el 1° próximo
   gapPaidAt?: string;        // ISO — cuándo se pagó el gap (por link 2 o por deuda proporcional); también idempotencia del webhook GAP
+  gapModo?: 'a_cobrar' | 'regalado'; // 'regalado' = la entrada va gratis: no hay proporcional, nunca
   gapRecordarDesde?: string | null; // 'YYYY-MM-DD' — Inventario marca el gap sin cobrar desde acá
   trialDays?: number;        // días totales del cupón/trial en MP (proporcional + período gratis)
 }

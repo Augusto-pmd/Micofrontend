@@ -346,15 +346,38 @@ adminReservationsRouter.post('/sell-plan', requireAuth, async (req, res: Respons
     const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
     // Si HOY ya es un 1°, no hay proporcional (entra alineado): gratis desde hoy mismo.
     const prox1 = hoy.getDate() === 1 ? new Date(hoy) : new Date(hoy.getFullYear(), hoy.getMonth() + 1, 1);
-    const gapDays = Math.round((prox1.getTime() - hoy.getTime()) / 86400000);
-    const gapAmount = gapDays > 0 ? Math.round(monthlyNum * gapDays / 30) : 0;
-    const finGratis = new Date(prox1);
-    if (freeUnit === 'days') finGratis.setDate(finGratis.getDate() + freeQty);
-    else finGratis.setMonth(finGratis.getMonth() + freeQty); // desde un día 1 nunca desborda
+
+    // MODO DEL GAP (Lucas 15/07): 'cobrar' (default) = los días de entrada se DEBEN (link 2, ahora
+    // o después) y la promo corre desde el 1°. 'regalar' = REGALO LIMPIO: la promo corre DESDE HOY,
+    // los días de entrada van gratis, y NO existe link 2 ni proporcional ni recordatorio, nunca.
+    // Ej regalado: venta 17/07 + "15 días gratis" → gratis 17/07→01/08 (justo 15) → primer débito
+    // completo el 1/08. Si el fin no cae en un 1°, MP corre el débito al 1° siguiente (yapa gratis).
+    const regalarGap = req.body?.gapModo === 'regalar';
+    let gapDays = 0, gapAmount = 0;
+    let finGratis: Date;
+    if (regalarGap) {
+      finGratis = new Date(hoy);
+      if (freeUnit === 'days') {
+        finGratis.setDate(finGratis.getDate() + freeQty);
+      } else {
+        // sumar meses desde HOY con clamp de fin de mes (31/07 + 1 mes → 31/08, no 01/09 corrido)
+        const d0 = finGratis.getDate();
+        finGratis.setDate(1);
+        finGratis.setMonth(finGratis.getMonth() + freeQty);
+        const ult = new Date(finGratis.getFullYear(), finGratis.getMonth() + 1, 0).getDate();
+        finGratis.setDate(Math.min(d0, ult));
+      }
+    } else {
+      gapDays = Math.round((prox1.getTime() - hoy.getTime()) / 86400000);
+      gapAmount = gapDays > 0 ? Math.round(monthlyNum * gapDays / 30) : 0;
+      finGratis = new Date(prox1);
+      if (freeUnit === 'days') finGratis.setDate(finGratis.getDate() + freeQty);
+      else finGratis.setMonth(finGratis.getMonth() + freeQty); // desde un día 1 nunca desborda
+    }
     const trialDays = Math.round((finGratis.getTime() - hoy.getTime()) / 86400000);
-    // Primer débito real = el 1° >= finGratis. Con promo en MESES es exacto (finGratis ES un 1°);
-    // con promo en DÍAS sueltos puede caer a mitad de mes → MP corre el débito al 1° siguiente
-    // (días de más que quedan gratis, o se cobran aparte con el botón Proporcional de Inventario).
+    // Primer débito real = el 1° >= finGratis. Si finGratis ES un 1°, cobra ese mismo día;
+    // si cae a mitad de mes, MP corre el débito al 1° siguiente (en modo regalado la yapa va
+    // gratis; en modo cobrar esos días se cobran aparte con el botón Proporcional de Inventario).
     const primerDebito = new Date(finGratis.getFullYear(), finGratis.getMonth(), 1);
     if (primerDebito.getTime() < finGratis.getTime()) primerDebito.setMonth(primerDebito.getMonth() + 1);
     const iso = (d: Date) => d.toISOString().slice(0, 10);
@@ -410,11 +433,13 @@ adminReservationsRouter.post('/sell-plan', requireAuth, async (req, res: Respons
       promoQty: freeQty, promoUnit: freeUnit,
       paymentMode: 'plan', mpPlanId: planId,
       gapPreferenceId, gapAmount, gapInitPoint, gapDays,
-      gapDesde: iso(hoy), gapHasta: iso(prox1), // período que cubre el proporcional (pre-carga Inventario)
+      // 'regalado' = la entrada va gratis: NO hay proporcional que cobrar (ni ahora ni nunca).
+      gapModo: regalarGap ? 'regalado' : 'a_cobrar',
+      gapDesde: regalarGap ? null : iso(hoy), gapHasta: regalarGap ? null : iso(prox1),
       // Recordatorio del gap diferido: Inventario lo marca "sin cobrar" recién desde esta fecha
       // (si no viene, se marca de una — la plata del proporcional no debe depender de la memoria).
-      gapRecordarDesde: req.body?.recordarGapDesde ? String(req.body.recordarGapDesde) : null,
-      trialDays, // días totales del cupón/trial en MP (proporcional + gratis)
+      gapRecordarDesde: !regalarGap && req.body?.recordarGapDesde ? String(req.body.recordarGapDesde) : null,
+      trialDays, // días totales del cupón/trial en MP
       discountPct: disc,
       source: 'manual_admin',
     } as any);
@@ -432,7 +457,8 @@ adminReservationsRouter.post('/sell-plan', requireAuth, async (req, res: Respons
       reservationId: id,
       initPoint: planLink, suscripcionLink: planLink,
       gapLink: gapInitPoint, gapAmount, gapDays,
-      gapDesde: iso(hoy), gapHasta: iso(prox1),
+      gapModo: regalarGap ? 'regalado' : 'a_cobrar',
+      gapDesde: regalarGap ? null : iso(hoy), gapHasta: regalarGap ? null : iso(prox1),
       finGratis: iso(finGratis), primerDebito: iso(primerDebito), trialDays,
       monthly: monthlyNum, duration: Number(durationMonths) || 1, paymentMode: 'plan', planId,
       gratis: `${freeQty} ${freeUnit === 'days' ? 'día(s)' : 'mes(es)'}`,
