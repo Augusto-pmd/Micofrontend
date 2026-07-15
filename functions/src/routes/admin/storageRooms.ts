@@ -147,6 +147,54 @@ storageRoomsRouter.get('/:id', verifyToken, async (req: Request, res: Response) 
       const custDoc = await db.collection('customers').doc(String(raw.customerId)).get();
       if (custDoc.exists) tenant = { id: custDoc.id, ...custDoc.data() };
     }
+    // FALLBACKS (bug real 14/07, A3-012 de Débora — 2 bauleras, la 2ª sin datos/mail en la ficha →
+    // el cobro de deuda se bloquea porque exige email): si el contrato/customer no aparecen o vienen
+    // SIN email, completar desde (1) la reserva de la baulera y (2) el customer por código de baulera.
+    // Nunca pisa datos que ya están: solo llena los huecos.
+    if (!tenant || !tenant.email) {
+      try {
+        let r: any = null;
+        if (raw.reservationId) {
+          const rs = await db.collection('reservations').doc(String(raw.reservationId)).get();
+          if (rs.exists) r = rs.data();
+        }
+        if (!r) {
+          const rs = await db.collection('reservations')
+            .where('storageRoomId', '==', doc.id).where('status', '==', 'active').limit(1).get();
+          if (!rs.empty) r = rs.docs[0].data();
+        }
+        if (!r && raw.space) {
+          const rs = await db.collection('reservations')
+            .where('bauleraCodigo', '==', String(raw.space)).where('status', '==', 'active').limit(1).get();
+          if (!rs.empty) r = rs.docs[0].data();
+        }
+        if (r) {
+          tenant = {
+            ...(tenant || {}),
+            fullName: tenant?.fullName || r.customerName || raw.currentTenant || null,
+            email: tenant?.email || r.customerEmail || null,
+            phone: tenant?.phone || r.customerPhone || null,
+            dni: tenant?.dni || r.customerDni || null,
+            fuente: tenant ? (tenant.fuente || 'customer+reserva') : 'reserva',
+          };
+        }
+        if ((!tenant || !tenant.email) && raw.space) {
+          const cs = await db.collection('customers')
+            .where('bauleraCodigo', '==', String(raw.space)).limit(1).get();
+          if (!cs.empty) {
+            const c = cs.docs[0].data() as any;
+            tenant = {
+              ...(tenant || {}),
+              fullName: tenant?.fullName || c.fullName || raw.currentTenant || null,
+              email: tenant?.email || c.email || null,
+              phone: tenant?.phone || c.phone || null,
+              dni: tenant?.dni || c.dni || null,
+              fuente: 'customer-por-baulera',
+            };
+          }
+        }
+      } catch (e) { console.warn('[storage-room detail] fallback tenant falló (sigo con lo que hay):', e); }
+    }
     const result = { ...raw, building: buildings[raw.buildingId] || null, tenant };
     res.json(result);
   } catch (err) {
