@@ -84,6 +84,16 @@ async function processWebhook(body: Record<string, unknown>): Promise<void> {
           // Idempotencia: si ya estaba pagada (reentrega de MP), no re-loguear auditoría.
           if (debt && debt.status === 'paid') { console.log(`[mp-webhook] DEUDA ${debtId} ya pagada (reentrega) → ignoro`); return; }
           await markDebtPaid(debtId, String(eventId));
+          // Si esta deuda es el PROPORCIONAL de una venta (gap diferido), asentarlo en la reserva:
+          // sin esto, Inventario volvía a ofrecer el gap como pendiente meses después (doble cobro).
+          if (debt?.tipo === 'proporcional' && debt?.reservationId) {
+            try {
+              const rDeuda = await getReservation(String(debt.reservationId));
+              if (rDeuda && !(rDeuda as { gapPaidAt?: string }).gapPaidAt) {
+                await updateReservation(String(debt.reservationId), { gapPaidAt: new Date().toISOString() } as never);
+              }
+            } catch (e) { console.warn('[mp-webhook] no se pudo estampar gapPaidAt tras la deuda proporcional', e); }
+          }
           await logAudit({
             actor: debt?.email || 'cliente', via: 'mercadopago', action: 'deuda_pagada',
             entity: 'debt', entityId: debtId,

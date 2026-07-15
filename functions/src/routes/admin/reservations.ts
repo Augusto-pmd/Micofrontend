@@ -8,7 +8,7 @@ import { getReservation, createReservation, updateReservation, getReservationByM
 import { createSubscription, createCheckoutPreference, createDebtPreference, createGapPreference, cancelSubscription, getSubscriptionStatus, invalidateSubsCache, searchSubscriptionsCached } from '../../services/mercadopago.service';
 import { getOrCreateAlignedPlan } from '../../services/planCatalog.service';
 import { resolveSaleUid, customerNormFields } from '../../services/customerMatch.service';
-import { createDebt, DebtTipo } from '../../services/debts.service';
+import { createDebt, DebtTipo, getPendingDebtByBaulera } from '../../services/debts.service';
 import { invalidateRechazadosCache } from './pricing';
 import { getPricingByM2, recurringFor } from '../../services/pricing.service';
 import { generateReservationId } from '../../utils/generateId';
@@ -411,6 +411,9 @@ adminReservationsRouter.post('/sell-plan', requireAuth, async (req, res: Respons
       paymentMode: 'plan', mpPlanId: planId,
       gapPreferenceId, gapAmount, gapInitPoint, gapDays,
       gapDesde: iso(hoy), gapHasta: iso(prox1), // período que cubre el proporcional (pre-carga Inventario)
+      // Recordatorio del gap diferido: Inventario lo marca "sin cobrar" recién desde esta fecha
+      // (si no viene, se marca de una — la plata del proporcional no debe depender de la memoria).
+      gapRecordarDesde: req.body?.recordarGapDesde ? String(req.body.recordarGapDesde) : null,
       trialDays, // días totales del cupón/trial en MP (proporcional + gratis)
       discountPct: disc,
       source: 'manual_admin',
@@ -683,6 +686,19 @@ adminReservationsRouter.post('/deuda', requireAuth, async (req, res: Response) =
     if (!code) { res.status(400).json({ error: 'Falta la baulera' }); return; }
     if (!(montoNum > 0)) { res.status(400).json({ error: 'Poné el monto de la deuda' }); return; }
     if (!mail) { res.status(400).json({ error: 'Falta el email del cliente para mandarle el link' }); return; }
+
+    // GUARD anti-doble-link EN EL SERVER (auditoría v3 C1): el guard del front depende de una
+    // pantalla fresca — con 2 operadores (o una pestaña vieja) se generaban 2 links vivos para el
+    // mismo mes → el cliente podía pagar dos veces. Si ya hay una deuda pendiente para esta
+    // baulera, NO se crea otra: 409 con el link vigente (el front lo muestra para reenviar).
+    const viva = await getPendingDebtByBaulera(code);
+    if (viva) {
+      res.status(409).json({
+        error: `Ya hay un link de deuda VIVO para ${code} ($${viva.monto.toLocaleString('es-AR')}, ${viva.tipo}, enviado el ${String(viva.sentAt).slice(0, 10)}). Reenviale ese — no se genera otro.`,
+        debtId: viva.id, initPoint: viva.initPoint, monto: viva.monto, periodo: viva.periodo, tipo: viva.tipo, email: viva.email, sentAt: viva.sentAt,
+      });
+      return;
+    }
 
     const t: DebtTipo = tipo === 'proporcional' ? 'proporcional' : 'mes_adeudado';
     const per = String(periodo || new Date().toISOString().slice(0, 7));

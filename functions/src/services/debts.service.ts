@@ -42,8 +42,11 @@ export async function markDebtPaid(id: string, mpPaymentId: string): Promise<voi
 
 // Estado de deuda por baulera (para cruzar con el titileo de Inventario):
 //  - pagadas: set de períodos 'YYYY-MM' ya saldados por pago único → NO deben titilar naranja.
+//  - pagadasDetalle: las deudas PAGADAS con su detalle (monto/fecha/tipo), más recientes primero —
+//    la ficha las muestra ("✓ Pagó deuda") para que quede ASENTADO qué se cobró (pedido Lucas 15/07:
+//    Débora pagó el mes adeudado de A1-006 y no quedaba rastro visible en ningún lado).
 //  - pendiente: la deuda con link enviado y aún sin pagar (la más reciente) → titila VIOLETA.
-export interface DebtEstado { pendiente: Debt | null; pagadas: Set<string> }
+export interface DebtEstado { pendiente: Debt | null; pagadas: Set<string>; pagadasDetalle: Debt[] }
 export async function debtsByBaulera(): Promise<Map<string, DebtEstado>> {
   const snap = await col().get();
   const m = new Map<string, DebtEstado>();
@@ -51,13 +54,30 @@ export async function debtsByBaulera(): Promise<Map<string, DebtEstado>> {
     const d = { id: doc.id, ...(doc.data() as Record<string, unknown>) } as Debt;
     const key = canon(d.bauleraCodigo);
     if (!key) return;
-    if (!m.has(key)) m.set(key, { pendiente: null, pagadas: new Set<string>() });
+    if (!m.has(key)) m.set(key, { pendiente: null, pagadas: new Set<string>(), pagadasDetalle: [] });
     const e = m.get(key)!;
-    if (d.status === 'paid') { e.pagadas.add(d.periodo); }
+    if (d.status === 'paid') { e.pagadas.add(d.periodo); e.pagadasDetalle.push(d); }
     else if (d.status === 'pending') {
       // el pendiente más reciente gana (por si se regeneró el link)
       if (!e.pendiente || String(d.sentAt) > String(e.pendiente.sentAt)) e.pendiente = d;
     }
   });
+  // más recientes primero, y con tope (la ficha no necesita el historial completo de años)
+  for (const e of m.values()) {
+    e.pagadasDetalle.sort((a, b) => String(b.paidAt || '').localeCompare(String(a.paidAt || '')));
+    e.pagadasDetalle = e.pagadasDetalle.slice(0, 6);
+  }
   return m;
+}
+
+// ¿Hay una deuda con link VIVO (pendiente) para esta baulera? — guard anti-doble-link del server.
+export async function getPendingDebtByBaulera(bauleraCodigo: string): Promise<Debt | null> {
+  const snap = await col()
+    .where('bauleraCodigo', '==', canon(bauleraCodigo))
+    .where('status', '==', 'pending')
+    .get();
+  if (snap.empty) return null;
+  const debts = snap.docs.map((x) => ({ id: x.id, ...(x.data() as Record<string, unknown>) }) as Debt);
+  debts.sort((a, b) => String(b.sentAt).localeCompare(String(a.sentAt)));
+  return debts[0];
 }

@@ -760,11 +760,39 @@ async function responderRechazadosConDeudas(res: Response, rechazadosRaw: Array<
     .filter((r) => { const de = deudas.get(keyOf(r['baulera'])); const per = String(r['fechaRechazo'] || '').slice(0, 7); return !(de && per && de.pagadas.has(per)); })
     .map((r) => ({ ...r, periodo: String(r['fechaRechazo'] || '').slice(0, 7), deudaLinkEnviado: !!deudas.get(keyOf(r['baulera']))?.pendiente }));
   const deudasPendientes: Array<Record<string, unknown>> = [];
+  const deudasPagadas: Array<Record<string, unknown>> = [];
   deudas.forEach((estado, baulera) => {
     const p = estado.pendiente;
     if (p) deudasPendientes.push({ baulera, monto: p.monto, periodo: p.periodo, tipo: p.tipo, desde: p.desde, hasta: p.hasta, sentAt: p.sentAt, sentBy: p.sentBy, initPoint: p.initPoint, cliente: p.cliente, email: p.email });
+    // Deudas PAGADAS: quedan ASENTADAS en la ficha ("✓ Pagó deuda") — antes no había rastro visible.
+    for (const d of estado.pagadasDetalle) {
+      deudasPagadas.push({ baulera, monto: d.monto, periodo: d.periodo, tipo: d.tipo, desde: d.desde, hasta: d.hasta, paidAt: d.paidAt, cliente: d.cliente });
+    }
   });
-  res.json({ total: rechazados.length, plazoDias: PLAZO_REGULARIZAR_DIAS, revisadas, sinDato, rechazados, deudasPendientes, cacheado });
+  // GAPS del mes gratis SIN cobrar (proporcional diferido): sin esto, el gap solo se veía si
+  // alguien abría la baulera y tocaba "Proporcional" — si nadie se acordaba, esa plata se perdía.
+  // Se listan las ventas por plan ACTIVAS con gap calculado, sin link generado y sin pagar
+  // (y si tienen fecha de recordatorio, recién desde esa fecha).
+  const gapsPendientes: Array<Record<string, unknown>> = [];
+  try {
+    const hoyIso = new Date().toISOString().slice(0, 10);
+    const snap = await db.collection('reservations')
+      .where('paymentMode', '==', 'plan').where('status', '==', 'active').get();
+    snap.forEach((doc) => {
+      const r = doc.data() as Record<string, unknown>;
+      if (!(Number(r['gapAmount']) > 0)) return;
+      if (r['gapInitPoint'] || r['gapPaidAt']) return; // ya hay link vivo o ya se pagó
+      const desde = String(r['gapRecordarDesde'] || '');
+      if (desde && hoyIso < desde) return; // recordatorio programado a futuro
+      gapsPendientes.push({
+        baulera: String(r['bauleraCodigo'] || ''), reservationId: doc.id,
+        gapDays: Number(r['gapDays']) || 0, gapAmount: Number(r['gapAmount']) || 0,
+        gapDesde: r['gapDesde'] || null, gapHasta: r['gapHasta'] || null,
+        cliente: r['customerName'] || null, email: r['customerEmail'] || null,
+      });
+    });
+  } catch (e) { console.warn('[cobros-rechazados] gapsPendientes falló (sigo sin ellos):', e); }
+  res.json({ total: rechazados.length, plazoDias: PLAZO_REGULARIZAR_DIAS, revisadas, sinDato, rechazados, deudasPendientes, deudasPagadas, gapsPendientes, cacheado });
 }
 pricingRouter.get('/cobros-rechazados/:branchId', verifyToken, requireStaff, async (req: Request, res: Response) => {
   try {
