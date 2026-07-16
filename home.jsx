@@ -159,7 +159,7 @@ const SUCURSALES = [
 // pero NO se cobran online — la suscripción de MP cobra solo la mensualidad). 'coordinate' = a
 // coordinar sin precio (retiro, según disponibilidad). 'soon' = próximamente (no seleccionable).
 const ADDONS = [
-  { key: 'pickup',   name: 'Retiro a domicilio',  desc: 'Vamos a buscar tus cosas (CABA y GBA).', cost: 32500, mode: 'coordinate' },
+  { key: 'pickup',   name: 'Retiro a domicilio',  desc: 'Consultanos por contactos de fleteros de la zona.', cost: 32500, mode: 'coordinate' },
   { key: 'pack',     name: 'Kit de embalaje',     desc: 'Cajas, cinta y film stretch para 10 m³.', cost: 14500, mode: 'handover' },
   { key: 'lock',     name: 'Candado certificado', desc: 'De acero, anti-corte. Lo dejás vos.',     cost: 9200,  mode: 'handover' },
   { key: 'insure',   name: 'Seguro extendido',    desc: 'Cobertura hasta $2.000.000 por daños.',   cost: 8900,  mode: 'soon' },
