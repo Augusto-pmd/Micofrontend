@@ -5,7 +5,7 @@ import * as admin from 'firebase-admin';
 import * as crypto from 'crypto';
 import { assignRoomForReservation, holdRoomForReservation } from '../../services/assignment.service';
 import { getReservation, createReservation, updateReservation, getReservationByMpPreapprovalId, getReservationByBauleraCodigo } from '../../models/reservation.model';
-import { createSubscription, createCheckoutPreference, createDebtPreference, createGapPreference, cancelSubscription, getSubscriptionStatus, invalidateSubsCache, searchSubscriptionsCached } from '../../services/mercadopago.service';
+import { createSubscription, createCheckoutPreference, createDebtPreference, createGapPreference, cancelSubscription, getSubscriptionStatus, invalidateSubsCache, searchSubscriptionsCached, getPreapprovalDetail, setPreapprovalExternalReference } from '../../services/mercadopago.service';
 import { getOrCreateAlignedPlan } from '../../services/planCatalog.service';
 import { resolveSaleUid, customerNormFields } from '../../services/customerMatch.service';
 import { createDebt, DebtTipo, getPendingDebtByBaulera } from '../../services/debts.service';
@@ -900,6 +900,81 @@ adminReservationsRouter.post('/rebill', requireAuth, async (req, res: Response) 
   } catch (err) {
     console.error('POST /admin/reservations/rebill error:', err);
     res.status(500).json({ error: 'No se pudo generar el nuevo link de cobro', detail: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// GET /admin/reservations/:id/mp-candidates — para VINCULAR una suscripción de MP a esta reserva.
+// Caso real (15/07, Rivas): alta MANUAL o cliente que pagó con OTRA cuenta de MP → la sub quedó
+// "suelta" (sin código de baulera, sin linkear) → los cobros/rechazos futuros no se detectan.
+// Busca subs MP vivas candidatas (mismo email del cliente, o monto cercano ±30%) para que el
+// operador ELIJA (la identidad la confirma el humano — nunca se ata sola, igual que el anti-cruce).
+adminReservationsRouter.get('/:id/mp-candidates', requireAuth, async (req, res: Response) => {
+  try {
+    const r = await getReservation(req.params.id);
+    if (!r) { res.status(404).json({ error: 'Reserva no encontrada' }); return; }
+    const code = String(r.bauleraCodigo || '').trim().toUpperCase();
+    const email = String(r.customerEmail || '').trim().toLowerCase();
+    const monthly = Number(r.monthly) || 0;
+    const all = await searchSubscriptionsCached();
+    const cand = all
+      .filter((s) => s.status === 'authorized' || s.status === 'pending')
+      .map((s) => {
+        const refUp = String(s.externalReference || '').toUpperCase();
+        const mismoEmail = !!email && String(s.payerEmail || '').toLowerCase() === email;
+        const yaEstaBaulera = !!code && refUp.includes(code);
+        const yaOtraBaulera = /BAULERA/.test(refUp) && !yaEstaBaulera;
+        const cerca = monthly > 0 ? Math.abs(s.amount - monthly) / monthly : 1;
+        return { id: s.id, amount: s.amount, status: s.status, payerEmail: s.payerEmail || '', ref: s.externalReference || '', mismoEmail, yaEstaBaulera, yaOtraBaulera, cerca };
+      })
+      .filter((c) => c.mismoEmail || c.yaEstaBaulera || c.cerca <= 0.30)
+      .sort((a, b) => (Number(b.mismoEmail) - Number(a.mismoEmail)) || (Number(a.yaOtraBaulera) - Number(b.yaOtraBaulera)) || (a.cerca - b.cerca))
+      .slice(0, 20);
+    res.json({ baulera: code, email, monthly, candidatos: cand });
+  } catch (err) {
+    console.error('GET /admin/reservations/:id/mp-candidates error:', err);
+    res.status(500).json({ error: 'No se pudieron buscar suscripciones' });
+  }
+});
+
+// POST /admin/reservations/:id/vincular-mp  { subId, forzar? } — ATA una suscripción de MP a la
+// reserva: (1) estampa el CÓDIGO DE BAULERA en la referencia externa de la sub (así los cobros y
+// rechazos futuros SÍ se detectan/titilan y el ticket de MP muestra la baulera), (2) guarda el
+// preapprovalId en la reserva, (3) la activa + asigna la baulera si estaba pendiente. Cierra el
+// cabo suelto del alta manual. Guard: si la sub ya nombra OTRA baulera, no la pisa sin `forzar`.
+adminReservationsRouter.post('/:id/vincular-mp', requireAuth, async (req, res: Response) => {
+  try {
+    const subId = String((req.body || {}).subId || '').trim();
+    if (!subId) { res.status(400).json({ error: 'Elegí la suscripción a vincular' }); return; }
+    const r = await getReservation(req.params.id);
+    if (!r) { res.status(404).json({ error: 'Reserva no encontrada' }); return; }
+    const code = String(r.bauleraCodigo || '').trim().toUpperCase();
+    const det = await getPreapprovalDetail(subId);
+    if (!det) { res.status(404).json({ error: 'La suscripción no existe en MP' }); return; }
+    const refUp = String(det.externalReference || '').toUpperCase();
+    if (/BAULERA/.test(refUp) && code && !refUp.includes(code) && (req.body || {}).forzar !== true) {
+      res.status(409).json({ error: `Esa suscripción ya figura vinculada a otra baulera (${det.externalReference}). Revisá antes de reasignarla.`, refActual: det.externalReference });
+      return;
+    }
+    const stamped = code ? await setPreapprovalExternalReference(subId, `MiContainer Baulera ${r.bauleraCodigo}`) : false;
+    const activar = r.status === 'pending_payment' && (det.status === 'authorized' || det.status === 'pending');
+    await updateReservation(r.id, {
+      mpPreapprovalId: subId,
+      mpSubscriptionStatus: det.status === 'authorized' ? 'authorized' : 'pending',
+      ...(activar ? { status: 'active' } : {}),
+    } as never);
+    let assignedRoom: string | null = null;
+    if (activar) assignedRoom = await assignRoomForReservation({ ...r, status: 'active', mpPreapprovalId: subId } as never, r.storageRoomId);
+    invalidateSubsCache();
+    invalidateRechazadosCache();
+    await logAudit({
+      actor: (req as unknown as { email?: string }).email || 'admin', via: 'admin',
+      action: 'sub_vinculada', entity: 'reservation', entityId: r.id,
+      detail: { baulera: code || null, subId, refEstampada: stamped, activada: activar, room: assignedRoom, payerEmail: det.payerEmail || null },
+    });
+    res.json({ ok: true, subId, refEstampada: stamped, activada: activar, baulera: code, room: assignedRoom });
+  } catch (err) {
+    console.error('POST /admin/reservations/:id/vincular-mp error:', err);
+    res.status(500).json({ error: 'No se pudo vincular la suscripción', detail: err instanceof Error ? err.message : String(err) });
   }
 });
 
