@@ -333,7 +333,19 @@ async function processWebhook(body: Record<string, unknown>): Promise<void> {
 
     // Liberar la baulera para que vuelva a estar disponible.
     if (reservation.storageRoomId) {
-      await db.collection('storageRooms').doc(reservation.storageRoomId).set({
+      const roomRef = db.collection('storageRooms').doc(reservation.storageRoomId);
+      // Desanexar TAMBIÉN el puntero del CLIENTE a esta baulera (auditoría integridad 16/07):
+      // customers.bauleraCodigo quedaba apuntando para siempre → tras revender, el fallback de
+      // la ficha podía traer los datos (¡y el mail de cobro!) del inquilino ANTERIOR.
+      try {
+        const rs = await roomRef.get();
+        const custId = rs.exists ? String((rs.data() as Record<string, unknown>)['customerId'] || '') : '';
+        if (custId) {
+          await db.collection('customers').doc(custId).set(
+            { bauleraCodigo: null, storageRoomId: null, updatedAt: new Date().toISOString() }, { merge: true });
+        }
+      } catch (e) { console.warn('[mp-webhook] no se pudo desanexar el customer de la baulera', e); }
+      await roomRef.set({
         status: 'available',
         customerId: null,
         currentTenant: null,

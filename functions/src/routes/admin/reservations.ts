@@ -674,9 +674,20 @@ adminReservationsRouter.post('/:id/cancel', requireAuth, async (req, res: Respon
       bajaGestionada: true,
     });
 
-    // 3) Liberar la baulera
+    // 3) Liberar la baulera — y DESANEXAR el puntero del cliente (auditoría integridad 16/07:
+    // customers.bauleraCodigo quedaba vivo tras la baja → el fallback de la ficha podía traer los
+    // datos del inquilino anterior al revender).
     if (r.storageRoomId) {
-      await db.collection('storageRooms').doc(String(r.storageRoomId)).set({
+      const roomRef = db.collection('storageRooms').doc(String(r.storageRoomId));
+      try {
+        const rs = await roomRef.get();
+        const custId = rs.exists ? String((rs.data() as Record<string, unknown>)['customerId'] || '') : '';
+        if (custId) {
+          await db.collection('customers').doc(custId).set(
+            { bauleraCodigo: null, storageRoomId: null, updatedAt: new Date().toISOString() }, { merge: true });
+        }
+      } catch (e) { console.warn('[cancel] no se pudo desanexar el customer de la baulera', e); }
+      await roomRef.set({
         status: 'available', customerId: null, currentTenant: null, contractNumber: null,
         reservationId: null, heldUntil: null, heldByReservationId: null,
         updatedAt: new Date().toISOString(),

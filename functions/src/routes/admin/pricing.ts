@@ -124,6 +124,7 @@ interface Target {
   origen: 'sistema' | 'mp';
   reservationId: string | null;
   m2: number;
+  code?: string;           // codigo de baulera (space) — para sincronizar storageRooms.price
 }
 interface NoMatch { name: string; email: string; dni: string; monthly: number; motivo: string; }
 
@@ -295,7 +296,7 @@ function computeMeasure(
     if (codeCands.length) {
       const pick = codeCands[0];
       usedSub.add(pick.id);
-      targets.push({ id: pick.id, cliente: u.name || u.code, email: u.email || pick.payerEmail, actual: realAmount(pick), sinCobro: noCharge(pick), configurado: pick.amount, desde: pick.lastModified || '', nuevo: newAmount, origen: 'mp', reservationId: null, m2 });
+      targets.push({ id: pick.id, cliente: u.name || u.code, email: u.email || pick.payerEmail, actual: realAmount(pick), sinCobro: noCharge(pick), configurado: pick.amount, desde: pick.lastModified || '', nuevo: newAmount, origen: 'mp', reservationId: null, m2, code: u.code });
       continue;
     }
     // b) fallback por email
@@ -305,7 +306,7 @@ function computeMeasure(
     if (!cands.length) { noMatch.push({ name: u.name || u.code, email: e, dni: u.dni, monthly: u.monthly, motivo: `sin suscripcion MP (baulera ${u.code || '?'})` }); continue; }
     const pick = (u.monthly > 0 && cands.find((s) => s.amount === u.monthly)) || cands[0];
     usedSub.add(pick.id);
-    targets.push({ id: pick.id, cliente: u.name, email: e, actual: realAmount(pick), sinCobro: noCharge(pick), configurado: pick.amount, desde: pick.lastModified || '', nuevo: newAmount, origen: 'mp', reservationId: null, m2 });
+    targets.push({ id: pick.id, cliente: u.name, email: e, actual: realAmount(pick), sinCobro: noCharge(pick), configurado: pick.amount, desde: pick.lastModified || '', nuevo: newAmount, origen: 'mp', reservationId: null, m2, code: u.code });
   }
   return { targets, noMatch };
 }
@@ -318,6 +319,22 @@ async function applyTarget(t: Target, notify: boolean): Promise<void> {
     const orderSnap = await orderRef.get();
     if (orderSnap.exists) await orderRef.set({ monthlyPrice: t.nuevo, updatedAt: new Date().toISOString() }, { merge: true });
   }
+  // Sincronizar TAMBIÉN storageRooms.price (auditoría integridad 16/07): la ficha de Inventario
+  // y el default del cobro manual leen room.price — sin esto quedaban con el precio viejo tras
+  // un reprice y el operador podía generar un link de deuda con importe desactualizado.
+  try {
+    let roomRef: FirebaseFirestore.DocumentReference | null = null;
+    if (t.reservationId) {
+      const r = await db.collection('reservations').doc(t.reservationId).get();
+      const srid = r.exists ? String((r.data() as Record<string, unknown>)['storageRoomId'] || '') : '';
+      if (srid) roomRef = db.collection('storageRooms').doc(srid);
+    }
+    if (!roomRef && t.code) {
+      const rs = await db.collection('storageRooms').where('space', '==', t.code).limit(1).get();
+      if (!rs.empty) roomRef = rs.docs[0].ref;
+    }
+    if (roomRef) await roomRef.set({ price: t.nuevo, updatedAt: new Date().toISOString() }, { merge: true });
+  } catch (e) { console.warn('[reprice] no se pudo sincronizar storageRooms.price:', e); }
   if (notify) await notifyPriceChange(t.email, t.cliente, t.actual, t.nuevo);
 }
 

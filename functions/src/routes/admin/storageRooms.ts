@@ -180,18 +180,36 @@ storageRoomsRouter.get('/:id', verifyToken, async (req: Request, res: Response) 
           };
         }
         if ((!tenant || !tenant.email) && raw.space) {
+          // GUARD ANTI-INQUILINO-VIEJO (auditoría integridad 16/07): el bauleraCodigo del customer
+          // NO se limpiaba al dar de baja → tras revender, dos customers comparten el código y este
+          // fallback podía traer el mail del inquilino ANTERIOR (→ link de cobro a la persona
+          // equivocada). Defensa doble: (1) si la baulera tiene inquilino actual con nombre
+          // (currentTenant), el candidato debe COINCIDIR en nombre — si no, se descarta;
+          // (2) entre varios candidatos se prefiere el más recientemente actualizado.
           const cs = await db.collection('customers')
-            .where('bauleraCodigo', '==', String(raw.space)).limit(1).get();
+            .where('bauleraCodigo', '==', String(raw.space)).limit(5).get();
           if (!cs.empty) {
-            const c = cs.docs[0].data() as any;
-            tenant = {
-              ...(tenant || {}),
-              fullName: tenant?.fullName || c.fullName || raw.currentTenant || null,
-              email: tenant?.email || c.email || null,
-              phone: tenant?.phone || c.phone || null,
-              dni: tenant?.dni || c.dni || null,
-              fuente: 'customer-por-baulera',
-            };
+            const sane = (s: unknown) => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+            const actual = sane(tenant?.fullName || raw.currentTenant);
+            const docs = cs.docs.slice().sort((a, b) =>
+              String((b.data() as any).updatedAt || '').localeCompare(String((a.data() as any).updatedAt || '')));
+            const elegido = docs.find((d) => {
+              if (!actual) return true; // sin nombre actual no hay base para rechazar
+              const n = sane((d.data() as any).fullName);
+              return !!n && (n === actual || n.includes(actual) || actual.includes(n));
+            });
+            if (elegido) {
+              const c = elegido.data() as any;
+              tenant = {
+                ...(tenant || {}),
+                id: tenant?.id || elegido.id, // .id habilita guardar la deuda manual (antes faltaba)
+                fullName: tenant?.fullName || c.fullName || raw.currentTenant || null,
+                email: tenant?.email || c.email || null,
+                phone: tenant?.phone || c.phone || null,
+                dni: tenant?.dni || c.dni || null,
+                fuente: 'customer-por-baulera',
+              };
+            }
           }
         }
       } catch (e) { console.warn('[storage-room detail] fallback tenant falló (sigo con lo que hay):', e); }
@@ -210,8 +228,8 @@ storageRoomsRouter.get('/:id', verifyToken, async (req: Request, res: Response) 
 // incompletos). Upsert sobre el customer real de la baulera (customerId → por contrato → nuevo).
 storageRoomsRouter.post('/:id/tenant', verifyToken, async (req: Request, res: Response) => {
   try {
-    const { nombre, email, telefono, dni } = (req.body || {}) as Record<string, string | undefined>;
-    if (!nombre && !email && !telefono && !dni) { res.status(400).json({ error: 'Mandá al menos un dato para completar' }); return; }
+    const { nombre, email, telefono, dni, manualDebt, debtNote } = (req.body || {}) as Record<string, string | boolean | undefined>;
+    if (!nombre && !email && !telefono && !dni && manualDebt === undefined) { res.status(400).json({ error: 'Mandá al menos un dato para completar' }); return; }
     const doc = await db.collection('storageRooms').doc(req.params['id']).get();
     if (!doc.exists) { res.status(404).json({ error: 'Baulera no encontrada' }); return; }
     const room = doc.data() as Record<string, unknown>;
@@ -229,6 +247,9 @@ storageRoomsRouter.post('/:id/tenant', verifyToken, async (req: Request, res: Re
       ...(email ? { email: String(email).trim().toLowerCase() } : {}),
       ...(telefono ? { phone: String(telefono).trim() } : {}),
       ...(dni ? { dni: String(dni).trim() } : {}),
+      // Deuda MANUAL (auditoría 16/07): en bauleras legacy sin customer, "marcar como debe" del
+      // modal no tenía dónde guardar → ahora entra por acá y crea/actualiza el customer real.
+      ...(manualDebt !== undefined ? { manualDebt: manualDebt === true, debtNote: String(debtNote || ''), debtUpdatedAt: now } : {}),
       bauleraCodigo: room['space'] || null, storageRoomId: doc.id,
       branchId: room['branchId'] || 'nordelta', isActive: true, updatedAt: now,
     }, { merge: true });
