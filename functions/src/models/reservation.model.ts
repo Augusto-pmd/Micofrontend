@@ -110,10 +110,22 @@ export async function getReservationByMpPreapprovalId(mpPreapprovalId: string): 
 
 // Ubica la reserva por el CODIGO de baulera (para el webhook de cobros: el external_reference del
 // pago trae "MiContainer Baulera A2-010" -> A2-010, y asi se resuelve la reserva sin el preapprovalId).
+// AUDITORÍA VENTAS 16/07 (M4): tras una reventa conviven la reserva CANCELADA vieja y la nueva con
+// el MISMO código — el limit(1) sin orden podía devolver la vieja y registrar el pago (o activar)
+// en el cliente equivocado. Ahora se prefiere: activa > pendiente > (última por fecha).
 export async function getReservationByBauleraCodigo(bauleraCodigo: string): Promise<Reservation | null> {
   const snap = await reservationsCol()
     .where('bauleraCodigo', '==', bauleraCodigo)
-    .limit(1)
     .get();
-  return snap.empty ? null : (snap.docs[0].data() as Reservation);
+  if (snap.empty) return null;
+  const docs = snap.docs.map((d) => d.data() as Reservation);
+  const peso = (r: Reservation) => (r.status === 'active' ? 0 : r.status === 'pending_payment' ? 1 : 2);
+  docs.sort((a, b) => {
+    const p = peso(a) - peso(b);
+    if (p !== 0) return p;
+    const ta = (a.createdAt as { toMillis?: () => number })?.toMillis?.() || 0;
+    const tb = (b.createdAt as { toMillis?: () => number })?.toMillis?.() || 0;
+    return tb - ta; // más nueva primero
+  });
+  return docs[0];
 }

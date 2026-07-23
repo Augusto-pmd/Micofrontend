@@ -494,19 +494,25 @@ adminReservationsRouter.post('/:id/assign-room', requireAuth, async (req, res: R
     const reservation = await getReservation(req.params.id);
     if (!reservation) { res.status(404).json({ error: 'Reservation not found' }); return; }
 
-    // si ya tenia baulera asignada, liberarla antes de reasignar
-    if (reservation.storageRoomId) {
-      await db.collection('storageRooms').doc(reservation.storageRoomId).set({
-        status: 'available', customerId: null, currentTenant: null, contractNumber: null,
-        reservationId: null, updatedAt: new Date().toISOString(),
-      }, { merge: true });
-    }
-
+    // ORDEN SEGURO (auditoría ventas 16/07 — C1): ASIGNAR PRIMERO, liberar la vieja DESPUÉS.
+    // Antes se liberaba la baulera actual ANTES de intentar la asignación: si la asignación
+    // fallaba (elegida ocupada / sin libres), la baulera del cliente quedaba 'available' con sus
+    // cosas adentro → Vender la ofrecía como stock = doble venta posible.
+    const oldRoomId = reservation.storageRoomId || null;
     const targetRoomId = (req.body?.storageRoomId as string) || undefined;
     const roomId = await assignRoomForReservation(reservation, targetRoomId);
     if (!roomId) {
+      // Nada cambió: la baulera vieja sigue ocupada por el cliente. Estado consistente.
       res.status(409).json({ error: `Sin baulera libre de ${reservation.m2}m2` });
       return;
+    }
+    // Éxito: liberar la ANTERIOR (si había y es distinta). El customer ya quedó apuntando a la
+    // nueva (lo re-escribe assignRoomForReservation), así que acá solo se limpia el room viejo.
+    if (oldRoomId && oldRoomId !== roomId) {
+      await db.collection('storageRooms').doc(oldRoomId).set({
+        status: 'available', customerId: null, currentTenant: null, contractNumber: null,
+        reservationId: null, updatedAt: new Date().toISOString(),
+      }, { merge: true });
     }
     await logAudit({
       actor: (req as any).email || (req as any).uid || 'admin',
@@ -702,6 +708,12 @@ adminReservationsRouter.post('/:id/cancel', requireAuth, async (req, res: Respon
       entity: 'reservation', entityId: req.params.id, branchId: r.sucursalId,
       detail: { cliente: r.customerName || '', baulera: r.bauleraCodigo || r.storageRoomId || null, dadaDeBajaPor: 'admin', teniaSubMP: !!r.mpPreapprovalId, paymentMode: r.paymentMode || 'subscription' },
     });
+
+    // Invalidar cachés (auditoría ventas 16/07 — C2): sin esto, la sub recién cancelada seguía
+    // figurando "viva" en el snapshot → aparecía como candidata en "Vincular MP" y podía atarse
+    // a OTRA baulera; y el titileo de rechazados quedaba con el estado viejo.
+    invalidateSubsCache();
+    invalidateRechazadosCache();
 
     res.json({ message: 'Dada de baja', mpCancelled: !!r.mpPreapprovalId, roomFreed: !!r.storageRoomId });
   } catch (err) {

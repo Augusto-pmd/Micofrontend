@@ -7,7 +7,7 @@ import { verifyMpWebhookSignature } from '../../utils/hmac';
 import { assignRoomForReservation } from '../../services/assignment.service';
 import { logAudit } from '../../services/audit.service';
 import { sendActivationEmail } from '../../services/customerAuth.service';
-import { getPaymentDetail, getSubscriptionStatus, getPreapprovalDetail, setPreapprovalExternalReference, MpPaymentDetail } from '../../services/mercadopago.service';
+import { getPaymentDetail, getSubscriptionStatus, getPreapprovalDetail, setPreapprovalExternalReference, invalidateSubsCache, MpPaymentDetail } from '../../services/mercadopago.service';
 import { markDebtPaid, getDebt } from '../../services/debts.service';
 import { invalidateRechazadosCache } from '../admin/pricing';
 import { Reservation } from '../../models/reservation.model';
@@ -156,7 +156,16 @@ async function processWebhook(body: Record<string, unknown>): Promise<void> {
       if (assignedRoom) {
         console.log(`[mp-webhook] Reservation ${reservation.id} -> baulera ${assignedRoom}`);
       } else {
+        // ALTA SIN BAULERA (auditoría ventas 16/07 — A3/A4): el cliente PAGÓ pero la asignación
+        // falló (sin stock o error transitorio). Antes esto era solo un console.warn invisible →
+        // venta a medias silenciosa. Ahora queda GRITANDO en la auditoría para resolver a mano
+        // (asignar desde Ventas → Reasignar).
         console.warn(`[mp-webhook] sin baulera libre de ${reservation.m2}m2 para ${reservation.id}`);
+        await logAudit({
+          actor: 'sistema', via: 'mercadopago', action: 'ALTA_SIN_BAULERA',
+          entity: 'reservation', entityId: reservation.id, branchId: reservation.sucursalId,
+          detail: { cliente: reservation.customerName || reservation.customerEmail || '', m2: reservation.m2, monto: paid?.amount || reservation.monthly, accion: 'PAGÓ pero quedó sin baulera asignada — asignar a mano desde Ventas → Reasignar' },
+        });
       }
       // Auditoría: alta efectiva tras el pago
       await logAudit({
@@ -256,9 +265,20 @@ async function processWebhook(body: Record<string, unknown>): Promise<void> {
           if (r.bauleraCodigo) {
             const stamped = await setPreapprovalExternalReference(preapprovalId, `MiContainer Baulera ${r.bauleraCodigo}`);
             console.log(`[mp-webhook] sub de PLAN ${preapprovalId} → venta ${r.id} (baulera ${r.bauleraCodigo}); external_reference ${stamped ? 'estampado' : 'NO'}`);
+            invalidateSubsCache(); // el snapshot cacheado tenía la sub sin referencia (auditoría M1)
           }
           if (activar) {
-            const assignedRoom = await assignRoomForReservation({ ...r, status: 'active' } as any, r.storageRoomId);
+            // A1 (auditoría ventas 16/07): pasar el preapprovalId RECIÉN estampado — `r` es la foto
+            // de ANTES de la transacción, y sin esto la orden espejo quedaba con mpPreapprovalId
+            // null para siempre (conciliación por contrato ciega).
+            const assignedRoom = await assignRoomForReservation({ ...r, status: 'active', mpPreapprovalId: preapprovalId } as any, r.storageRoomId);
+            if (!assignedRoom) {
+              await logAudit({
+                actor: 'sistema', via: 'mercadopago', action: 'ALTA_SIN_BAULERA',
+                entity: 'reservation', entityId: r.id, branchId: r.sucursalId,
+                detail: { cliente: r.customerName || r.customerEmail || '', m2: r.m2, accion: 'AUTORIZÓ la suscripción pero quedó sin baulera asignada — asignar a mano desde Ventas → Reasignar' },
+              });
+            }
             await logAudit({
               actor: r.customerEmail || r.userUid || 'cliente',
               via: 'mercadopago',
@@ -373,6 +393,11 @@ async function processWebhook(body: Record<string, unknown>): Promise<void> {
         mpStatus: rawStatus,
       },
     });
+
+    // Invalidar cachés (auditoría ventas 16/07 — M1): la sub cancelada no debe seguir figurando
+    // "viva" en candidatas de Vincular MP ni en el titileo de rechazados.
+    invalidateSubsCache();
+    invalidateRechazadosCache();
 
     console.log(`[mp-webhook] Reservation ${reservation.id} -> cancelled (por ${cancelledBy})`);
   }

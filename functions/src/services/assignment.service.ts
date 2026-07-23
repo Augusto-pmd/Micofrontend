@@ -140,6 +140,12 @@ export async function assignRoomForReservation(reservation: Reservation, targetR
       }
       const room = (pick.data() || {}) as Record<string, unknown>;
 
+      // NO pisar createdAt en re-asignaciones (auditoría ventas 16/07 — M3): antes cada reasignación
+      // reescribía la fecha de alta del cliente y de la orden → se perdía la antigüedad real.
+      const custRef = db.collection('customers').doc(custId);
+      const orderRef = db.collection('reservationOrders').doc(orderId);
+      const [custSnap, orderSnap] = await Promise.all([tx.get(custRef), tx.get(orderRef)]);
+
       // 1) ocupar la baulera (y limpiar el hold). contractNumber va a NULL: si la baulera es
       // legacy (seed) conserva el contrato del inquilino ANTERIOR, y la ficha del inventario
       // prioriza contractNumber sobre customerId → mostraba al viejo (caso real: A0-002 se
@@ -159,7 +165,7 @@ export async function assignRoomForReservation(reservation: Reservation, targetR
 
       // 2) upsert cliente
       const parts = String(tenant).split(' ');
-      tx.set(db.collection('customers').doc(custId), {
+      tx.set(custRef, {
         firstName: parts[0] || tenant,
         lastName: parts.slice(1).join(' '),
         fullName: tenant,
@@ -176,11 +182,11 @@ export async function assignRoomForReservation(reservation: Reservation, targetR
         source: 'mp_webhook',
         userUid: reservation.userUid,
         updatedAt: now,
-        createdAt: now,
+        ...(custSnap.exists ? {} : { createdAt: now }), // solo en el ALTA: no pisar la antigüedad
       }, { merge: true });
 
       // 3) crear orden de venta (contrato implicito)
-      tx.set(db.collection('reservationOrders').doc(orderId), {
+      tx.set(orderRef, {
         contractNumber: orderId,
         customerId: custId,
         customerName: tenant,
@@ -197,7 +203,7 @@ export async function assignRoomForReservation(reservation: Reservation, targetR
         reservationId: reservation.id,
         mpPreapprovalId: reservation.mpPreapprovalId || null,
         updatedAt: now,
-        createdAt: now,
+        ...(orderSnap.exists ? {} : { createdAt: now }), // solo en el ALTA: no pisar la antigüedad
       }, { merge: true });
 
       // 4) vincular la reserva a la baulera

@@ -1,14 +1,13 @@
 import { Router, Response } from 'express';
 import { requireAuth, optionalAuth, AuthenticatedRequest } from '../middleware/requireAuth';
-import { createReservation, getUserReservations, getReservation, updateReservation } from '../models/reservation.model';
-import { cancelSubscription } from '../services/mercadopago.service';
+import { createReservation, getUserReservations, getReservation } from '../models/reservation.model';
+// (cancelSubscription ya no se importa: el self-cancel del portal quedó deshabilitado → 410)
 import { getOrCreateAlignedPlan } from '../services/planCatalog.service';
 import { resolveExistingCustomer, customerNormFields } from '../services/customerMatch.service';
 import { holdRoomForReservation } from '../services/assignment.service';
 import { getPricingByM2, recurringFor } from '../services/pricing.service';
 import { db } from '../config/firebase';
 import { generateReservationId } from '../utils/generateId';
-import * as admin from 'firebase-admin';
 import * as crypto from 'crypto';
 
 export const reservationsRouter = Router();
@@ -189,35 +188,18 @@ reservationsRouter.get('/:id', requireAuth, async (req, res: Response) => {
 });
 
 // POST /reservations/:id/cancel — cancel reservation
+// DESHABILITADO (auditoría ventas 16/07 — A2): la baja del cliente se gestiona por WhatsApp y la
+// ejecuta el staff con el "Dar de baja" del panel (que corta MP + libera la baulera + desanexa al
+// cliente). Este self-cancel hacía una baja A MEDIAS: cortaba MP y marcaba cancelled pero NUNCA
+// liberaba la baulera ni desanexaba nada → baulera ocupada para siempre. El portal ya no lo llama
+// (el botón deriva a WhatsApp desde el 15/07); queda 410 por si alguien le pega directo a la API.
 reservationsRouter.post('/:id/cancel', requireAuth, async (req, res: Response) => {
   const { uid } = req as AuthenticatedRequest;
-  try {
-    const reservation = await getReservation(req.params.id);
-    if (!reservation) {
-      res.status(404).json({ error: 'Reservation not found' });
-      return;
-    }
-    if (reservation.userUid !== uid) {
-      res.status(403).json({ error: 'Forbidden' });
-      return;
-    }
-    if (reservation.status === 'cancelled') {
-      res.status(409).json({ error: 'Already cancelled' });
-      return;
-    }
-
-    // Cancel in MP
-    if (reservation.mpPreapprovalId) {
-      await cancelSubscription(reservation.mpPreapprovalId);
-    }
-
-    await updateReservation(req.params.id, {
-      status: 'cancelled',
-      cancelledAt: admin.firestore.Timestamp.now(),
-    });
-
-    res.json({ message: 'Reservation cancelled' });
-  } catch (err: unknown) {
-    res.status(500).json({ error: 'Could not cancel reservation' });
-  }
+  const reservation = await getReservation(req.params.id);
+  if (!reservation) { res.status(404).json({ error: 'Reservation not found' }); return; }
+  if (reservation.userUid !== uid) { res.status(403).json({ error: 'Forbidden' }); return; }
+  res.status(410).json({
+    error: 'La baja se gestiona por WhatsApp: escribinos y una persona coordina el retiro y corta el cobro.',
+    whatsapp: 'https://wa.me/5491136207989',
+  });
 });
