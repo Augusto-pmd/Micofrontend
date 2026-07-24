@@ -735,6 +735,87 @@ adminReservationsRouter.post('/:id/cancel', requireAuth, async (req, res: Respon
   }
 });
 
+// POST /admin/reservations/liberar-baulera — LIBERAR una baulera OCUPADA desde Inventario, incluso
+// las LEGACY (vendidas antes de la web, sin reserva → no aparecen en Ventas). Body: { roomId,
+// cortarSub? }. SIEMPRE: marca la baulera disponible, desanexa al cliente y cancela la reserva si
+// hay. cortarSub=true: además busca la suscripción viva de esa baulera en MP (por preapprovalId de
+// la reserva, o por código de baulera en el external_reference) y la CANCELA (corta el cobro).
+adminReservationsRouter.post('/liberar-baulera', requireAuth, async (req, res: Response) => {
+  try {
+    const roomId = String(req.body?.roomId || '');
+    const cortarSub = req.body?.cortarSub === true;
+    if (!roomId) { res.status(400).json({ error: 'Falta roomId' }); return; }
+    const roomRef = db.collection('storageRooms').doc(roomId);
+    const roomSnap = await roomRef.get();
+    if (!roomSnap.exists) { res.status(404).json({ error: 'Baulera no encontrada' }); return; }
+    const room = roomSnap.data() as Record<string, unknown>;
+    const code = String(room['space'] || room['name'] || '');
+    const canon = (s: string) => s.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+
+    // Reserva vinculada (si la baulera es de la web/Vender). Legacy puede no tener.
+    let reserva: { id: string; mpPreapprovalId?: string } | null = null;
+    if (room['reservationId']) {
+      const rs = await db.collection('reservations').doc(String(room['reservationId'])).get();
+      if (rs.exists) { const d = rs.data() as Record<string, unknown>; reserva = { id: rs.id, mpPreapprovalId: d['mpPreapprovalId'] ? String(d['mpPreapprovalId']) : undefined }; }
+    }
+    if (!reserva) {
+      const rs = await db.collection('reservations').where('storageRoomId', '==', roomId).where('status', '==', 'active').limit(1).get();
+      if (!rs.empty) { const d = rs.docs[0].data() as Record<string, unknown>; reserva = { id: rs.docs[0].id, mpPreapprovalId: d['mpPreapprovalId'] ? String(d['mpPreapprovalId']) : undefined }; }
+    }
+
+    // Determinar la sub a cancelar (para el aviso y/o el corte).
+    let subId = reserva?.mpPreapprovalId || '';
+    if (!subId && code) {
+      try {
+        const subs = await searchSubscriptionsCached();
+        const hit = subs.find((s) => (s.status === 'authorized' || s.status === 'pending') && canon(s.externalReference).includes(canon(code)));
+        if (hit) subId = hit.id;
+      } catch (e) { console.warn('[liberar] no se pudo buscar la sub por código', e); }
+    }
+
+    let subCancelada = false;
+    if (cortarSub && subId) {
+      try { await cancelSubscription(subId); subCancelada = true; }
+      catch (e) {
+        const st = await getSubscriptionStatus(subId);
+        if (st !== 'cancelled') { res.status(502).json({ error: 'MP no aceptó cancelar la suscripción. Cancelala desde el panel de MP y reintentá.' }); return; }
+        subCancelada = true;
+      }
+    }
+
+    // Cancelar la reserva si existe (para que no quede activa colgando).
+    if (reserva) {
+      await db.collection('reservations').doc(reserva.id).update({
+        status: 'cancelled', mpSubscriptionStatus: 'cancelled',
+        cancelledAt: admin.firestore.Timestamp.now(), cancelledBy: 'admin', bajaGestionada: true,
+      });
+    }
+    // Desanexar al cliente pegado (adiós fichas fantasma).
+    const custId = String(room['customerId'] || '');
+    if (custId) {
+      await db.collection('customers').doc(custId).set({ bauleraCodigo: null, storageRoomId: null, updatedAt: new Date().toISOString() }, { merge: true });
+    }
+    // Liberar la baulera.
+    await roomRef.set({
+      status: 'available', customerId: null, currentTenant: null, contractNumber: null,
+      reservationId: null, heldUntil: null, heldByReservationId: null, updatedAt: new Date().toISOString(),
+    }, { merge: true });
+
+    await logAudit({
+      actor: (req as unknown as { email?: string }).email || 'admin', via: 'admin', action: 'liberar_baulera',
+      entity: 'storageRoom', entityId: roomId,
+      detail: { baulera: code, cortarSub, subId: subId || null, subCancelada, teniaReserva: !!reserva, ocupanteAnterior: room['currentTenant'] || null },
+    });
+    invalidateSubsCache();
+    invalidateRechazadosCache();
+
+    res.json({ liberada: true, baulera: code, subEncontrada: !!subId, subCancelada, subId: subId || null });
+  } catch (err) {
+    console.error('POST /admin/reservations/liberar-baulera error:', err);
+    res.status(500).json({ error: 'No se pudo liberar la baulera' });
+  }
+});
+
 // POST /admin/reservations/deuda — SPEC cobros-alineados §5: genera un PAGO ÚNICO por un mes
 // adeudado (o un proporcional). NO crea suscripción (la del cliente sigue viva sola). El webhook
 // marca la deuda pagada cuando el cliente paga → apaga el titileo. Body: { bauleraCodigo, monto,
