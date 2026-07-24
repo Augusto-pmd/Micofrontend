@@ -120,7 +120,11 @@ export async function assignRoomForReservation(reservation: Reservation, targetR
         if (!doc.exists) return null;
         const r = (doc.data() || {}) as Record<string, unknown>;
         const heldByThis = r.status === 'reserved' && r.heldByReservationId === reservation.id;
-        if (r.status !== 'available' && !heldByThis) return null;   // ocupada por otro
+        // Reasignar a la MISMA baulera que ya ocupa esta reserva = REFRESCAR (fix 16/07): permite
+        // corregir la etiqueta/MP de una reserva desalineada (caso Rivas: sigue en A0-008 pero la
+        // etiqueta decía A0-011) sin moverla físicamente. Sin esto, la ve "ocupada por otro" y fallaba.
+        const isMine = r.reservationId === reservation.id;
+        if (r.status !== 'available' && !heldByThis && !isMine) return null;   // ocupada por OTRO
         if (Number(r.areaM2) !== m2) return null;                  // medida distinta
         pick = doc;
       } else {
@@ -206,9 +210,12 @@ export async function assignRoomForReservation(reservation: Reservation, targetR
         ...(orderSnap.exists ? {} : { createdAt: now }), // solo en el ALTA: no pisar la antigüedad
       }, { merge: true });
 
-      // 4) vincular la reserva a la baulera
+      // 4) vincular la reserva a la baulera — también la ETIQUETA bauleraCodigo (fix reasignar
+      // 16/07): antes solo se actualizaba storageRoomId → al reasignar quedaba la etiqueta vieja
+      // (caso Rivas: reserva en A0-008 pero bauleraCodigo decía A0-011, la baulera de otra clienta).
       tx.update(db.collection('reservations').doc(reservation.id), {
         storageRoomId: pick.id,
+        bauleraCodigo: room.space || null,
       });
 
       return pick.id;

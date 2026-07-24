@@ -3,6 +3,7 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import express from 'express';
 import cors from 'cors';
 import { limpiarPendientesVencidos } from './jobs/cleanup';
+import { diagRouter } from './routes/diag';
 import { reservationsRouter } from './routes/reservations';
 import { mpWebhookRouter } from './routes/webhooks/mercadopago';
 import { availabilityRouter } from './routes/availability';
@@ -80,6 +81,9 @@ app.use((req, _res, next) => {
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', version: '2.0.0' });
 });
+
+// ── Diagnóstico SOLO LECTURA (guard por token en header, ver routes/diag.ts) ────
+app.use('/diag', diagRouter);
 
 // ── Existing public/customer routes ──────────────────────────────────────────
 app.use('/reservations', reservationsRouter);

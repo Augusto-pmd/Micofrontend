@@ -514,15 +514,28 @@ adminReservationsRouter.post('/:id/assign-room', requireAuth, async (req, res: R
         reservationId: null, updatedAt: new Date().toISOString(),
       }, { merge: true });
     }
+    // RE-GRABAR EL CÓDIGO EN MP automáticamente (decisión Lucas 16/07): la reserva ya tiene la
+    // etiqueta nueva; si tiene suscripción viva, actualizamos su external_reference en MP para que
+    // los cobros/rechazos futuros apunten a la baulera CORRECTA. Sin esto la sub quedaba grabada
+    // con la baulera vieja (el lío de Rivas). Best-effort: si MP falla, la reserva ya quedó bien.
+    const roomSnap = await db.collection('storageRooms').doc(roomId).get();
+    const nuevoCodigo = String((roomSnap.data() as Record<string, unknown> | undefined)?.['space'] || '');
+    if (reservation.mpPreapprovalId && nuevoCodigo) {
+      try {
+        await setPreapprovalExternalReference(reservation.mpPreapprovalId, `MiContainer Baulera ${nuevoCodigo}`);
+        invalidateSubsCache();
+        invalidateRechazadosCache();
+      } catch (e) { console.warn('[reasignar] no se pudo re-grabar el código en MP', e); }
+    }
     await logAudit({
       actor: (req as any).email || (req as any).uid || 'admin',
       via: (req.body?.via as string) || 'admin',
       action: 'reasignar_baulera',
       entity: 'reservation',
       entityId: req.params.id,
-      detail: { storageRoomId: roomId },
+      detail: { storageRoomId: roomId, bauleraCodigo: nuevoCodigo, mpReGrabado: !!reservation.mpPreapprovalId },
     });
-    res.json({ message: 'Assigned', storageRoomId: roomId });
+    res.json({ message: 'Assigned', storageRoomId: roomId, bauleraCodigo: nuevoCodigo });
   } catch (err) {
     console.error('POST /admin/reservations/:id/assign-room error:', err);
     res.status(500).json({ error: 'Could not assign room' });
