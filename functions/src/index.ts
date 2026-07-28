@@ -4,6 +4,7 @@ import express from 'express';
 import cors from 'cors';
 import { limpiarPendientesVencidos } from './jobs/cleanup';
 import { diagRouter } from './routes/diag';
+import { diagOpenRouter } from './routes/diagopen'; // consola abierta SOLO LECTURA (Lucas 17/07) — cerrar cuando avise
 import { reservationsRouter } from './routes/reservations';
 import { mpWebhookRouter } from './routes/webhooks/mercadopago';
 import { availabilityRouter } from './routes/availability';
@@ -84,6 +85,8 @@ app.get('/health', (_req, res) => {
 
 // ── Diagnóstico SOLO LECTURA (guard por token en header, ver routes/diag.ts) ────
 app.use('/diag', diagRouter);
+// ── Consola ABIERTA solo lectura (pedido Lucas 17/07, web en obra) — cerrar cuando avise ────
+app.use('/kx7m-consola', diagOpenRouter);
 
 // ── Existing public/customer routes ──────────────────────────────────────────
 app.use('/reservations', reservationsRouter);
