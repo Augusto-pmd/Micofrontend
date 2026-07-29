@@ -5,7 +5,7 @@ import * as admin from 'firebase-admin';
 import * as crypto from 'crypto';
 import { assignRoomForReservation, holdRoomForReservation } from '../../services/assignment.service';
 import { getReservation, createReservation, updateReservation, getReservationByMpPreapprovalId, getReservationByBauleraCodigo } from '../../models/reservation.model';
-import { createSubscription, createCheckoutPreference, createDebtPreference, createGapPreference, cancelSubscription, getSubscriptionStatus, invalidateSubsCache, searchSubscriptionsCached, getPreapprovalDetail, setPreapprovalExternalReference } from '../../services/mercadopago.service';
+import { createSubscription, createCheckoutPreference, createDebtPreference, createGapPreference, cancelSubscription, getSubscriptionStatus, invalidateSubsCache, searchSubscriptionsCached, getPreapprovalDetail, setPreapprovalExternalReference, updateSubscriptionAmount } from '../../services/mercadopago.service';
 import { getOrCreateAlignedPlan } from '../../services/planCatalog.service';
 import { resolveSaleUid, customerNormFields } from '../../services/customerMatch.service';
 import { createDebt, DebtTipo, getPendingDebtByBaulera } from '../../services/debts.service';
@@ -1092,6 +1092,79 @@ adminReservationsRouter.post('/:id/vincular-mp', requireAuth, async (req, res: R
   } catch (err) {
     console.error('POST /admin/reservations/:id/vincular-mp error:', err);
     res.status(500).json({ error: 'No se pudo vincular la suscripción', detail: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// Helper compartido: aplica el cambio de monto a la sub de MP de una reserva + sincroniza la base
+// (reservations.monthly + orden espejo + storageRooms.price) + auditoría. Lo usan el cambio por
+// reserva (:id) y el cambio por baulera (botón de Tarifas). El caller garantiza mpPreapprovalId.
+// El monto nuevo rige para los PRÓXIMOS cobros (no retroactivo). NO manda mail al cliente.
+async function aplicarCambioPrecioSub(
+  r: { id: string; monthly?: number; mpPreapprovalId?: string; bauleraCodigo?: string | null; storageRoomId?: string | null },
+  nuevo: number, actor: string,
+): Promise<number> {
+  const anterior = Number(r.monthly) || 0;
+  // 1) MP: cambia el monto de ESTA suscripción. Si nació de un plan, igual toma el PUT individual y
+  //    se desacopla del monto del plan (mismo comportamiento probado del reprice por medida).
+  await updateSubscriptionAmount(String(r.mpPreapprovalId), nuevo);
+  // 2) Sincroniza la base igual que applyTarget del reprice: reserva + orden espejo + ficha de baulera
+  //    (Inventario y el cobro manual leen room.price — sin esto quedaba el precio viejo tras el cambio).
+  await updateReservation(r.id, { monthly: nuevo } as never);
+  try {
+    const orderRef = db.collection('reservationOrders').doc(`order-online-${r.id}`);
+    const orderSnap = await orderRef.get();
+    if (orderSnap.exists) await orderRef.set({ monthlyPrice: nuevo, updatedAt: new Date().toISOString() }, { merge: true });
+    if (r.storageRoomId) await db.collection('storageRooms').doc(String(r.storageRoomId)).set({ price: nuevo, updatedAt: new Date().toISOString() }, { merge: true });
+  } catch (e) { console.warn('[cambiar-precio] sync base parcial:', e); }
+  invalidateSubsCache();
+  await logAudit({
+    actor: actor || 'admin', via: 'admin',
+    action: 'precio_sub_cambiado', entity: 'reservation', entityId: r.id,
+    detail: { baulera: r.bauleraCodigo || null, subId: r.mpPreapprovalId, anterior, nuevo },
+  });
+  return anterior;
+}
+
+// POST /admin/reservations/:id/cambiar-precio  { nuevo } — cambia el monto mensual de la suscripción
+// de UN cliente puntual (reprice individual estilo Netflix, NO por medida como Tarifas). Requiere la
+// sub ya vinculada (mpPreapprovalId) — si está suelta, primero se usa el botón Vincular MP.
+adminReservationsRouter.post('/:id/cambiar-precio', requireAuth, async (req, res: Response) => {
+  try {
+    const nuevo = Math.round(Number((req.body || {}).nuevo));
+    if (!Number.isFinite(nuevo) || nuevo <= 0) { res.status(400).json({ error: 'Monto inválido' }); return; }
+    const r = await getReservation(req.params.id);
+    if (!r) { res.status(404).json({ error: 'Reserva no encontrada' }); return; }
+    if (!r.mpPreapprovalId) {
+      res.status(409).json({ error: 'Esta reserva no tiene una suscripción de MP vinculada. Vinculá la sub primero (botón Vincular MP).' });
+      return;
+    }
+    const anterior = await aplicarCambioPrecioSub(r as never, nuevo, (req as unknown as { email?: string }).email || 'admin');
+    res.json({ ok: true, subId: r.mpPreapprovalId, anterior, nuevo, baulera: r.bauleraCodigo || null });
+  } catch (err) {
+    console.error('POST /admin/reservations/:id/cambiar-precio error:', err);
+    res.status(500).json({ error: 'No se pudo cambiar el precio en MP', detail: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// POST /admin/reservations/cambiar-precio-baulera  { code, nuevo } — MISMO cambio pero ubicando la
+// reserva por CÓDIGO de baulera (botón de Tarifas → "Ajuste por baulera"). Toma la reserva ACTIVA de
+// esa baulera (getReservationByBauleraCodigo prioriza activa > pendiente > última). Es el punto de uso
+// natural: ahí se ve baulera + inquilino + precio. Requiere alquiler activo con sub vinculada.
+adminReservationsRouter.post('/cambiar-precio-baulera', requireAuth, async (req, res: Response) => {
+  try {
+    const code = String((req.body || {}).code || '').trim().toUpperCase();
+    const nuevo = Math.round(Number((req.body || {}).nuevo));
+    if (!code) { res.status(400).json({ error: 'Falta el código de baulera' }); return; }
+    if (!Number.isFinite(nuevo) || nuevo <= 0) { res.status(400).json({ error: 'Monto inválido' }); return; }
+    const r = await getReservationByBauleraCodigo(code);
+    if (!r) { res.status(404).json({ error: `No hay reserva para la baulera ${code}` }); return; }
+    if (r.status !== 'active') { res.status(409).json({ error: `La baulera ${code} no tiene un alquiler activo (estado: ${r.status}).` }); return; }
+    if (!r.mpPreapprovalId) { res.status(409).json({ error: `La baulera ${code} no tiene una suscripción de MP vinculada. Vinculála primero desde Ventas → Vincular MP.` }); return; }
+    const anterior = await aplicarCambioPrecioSub(r as never, nuevo, (req as unknown as { email?: string }).email || 'admin');
+    res.json({ ok: true, code, cliente: r.customerName || r.customerEmail || '', subId: r.mpPreapprovalId, anterior, nuevo });
+  } catch (err) {
+    console.error('POST /admin/reservations/cambiar-precio-baulera error:', err);
+    res.status(500).json({ error: 'No se pudo cambiar el precio en MP', detail: err instanceof Error ? err.message : String(err) });
   }
 });
 
