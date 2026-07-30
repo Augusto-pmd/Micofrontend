@@ -27,22 +27,34 @@ import { createPlan, updatePlanBilling, FreeTrialUnit, MpPlanCreated } from './m
 // reusaba el plan de A3-046 y el cliente veía "Baulera A3-046". Con el código en la clave, A3-050
 // crea su plan y jamás reusa el de otra baulera. (Sin código, cae a la clave vieja compartida —
 // solo como fallback defensivo si una venta no trajera baulera.)
+// PLAN POR VENTA (decisión Lucas 30/07 — "cada vez que se aprieta Vender debe generar un plan
+// nuevo sí o sí"): la clave incluye además el ID DE LA VENTA → cada click de Vender/Reservar
+// estrena su propio plan y su propio link, aunque sea la MISMA baulera al MISMO precio. Motivo de
+// negocio: al cliente le decimos que el link vence en el día, así que un link viejo nunca se
+// re-entrega; y como el plan es único de esa venta, el webhook puede casar la suscripción por el
+// PLAN (= la baulera) sin depender del mail con el que el cliente termine pagando.
+// Efecto colateral aceptado: mpPlans acumula un doc por venta (los de ventas que no se concretaron
+// quedan huérfanos; no cobran nada por sí solos).
 function codeKey(c?: string): string { return String(c || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase(); }
-export function planKey(p: { m2: number; amount: number; freeQty?: number; freeUnit?: FreeTrialUnit; bauleraCodigo?: string }): string {
+export function planKey(p: { m2: number; amount: number; freeQty?: number; freeUnit?: FreeTrialUnit; bauleraCodigo?: string; ventaId?: string }): string {
   const q = Math.max(0, Number(p.freeQty) || 0);
   const unit: FreeTrialUnit = p.freeUnit === 'days' ? 'days' : 'months';
   const amt = Math.round(Number(p.amount));
   const base = q > 0 ? `m2-${String(p.m2)}-${amt}-trial${q}${unit === 'days' ? 'd' : 'm'}` : `m2-${String(p.m2)}-${amt}-alin1`;
   const ck = codeKey(p.bauleraCodigo);
-  return ck ? `${base}-${ck}` : base; // con código = plan por baulera; sin código = clave vieja compartida
+  const vk = codeKey(p.ventaId);
+  const conCodigo = ck ? `${base}-${ck}` : base; // con código = plan por baulera; sin código = clave vieja compartida
+  return vk ? `${conCodigo}-${vk}` : conCodigo;  // con venta = plan por venta (nunca se reusa entre clicks)
 }
 
 export async function getOrCreateAlignedPlan(p: {
-  m2: number; amount: number; freeQty?: number; freeUnit?: FreeTrialUnit; bauleraCodigo?: string;
+  m2: number; amount: number; freeQty?: number; freeUnit?: FreeTrialUnit; bauleraCodigo?: string; ventaId?: string;
 }): Promise<MpPlanCreated> {
   const q = Math.max(0, Number(p.freeQty) || 0);
   const unit: FreeTrialUnit = p.freeUnit === 'days' ? 'days' : 'months';
-  const key = planKey({ m2: p.m2, amount: p.amount, freeQty: q, freeUnit: unit, bauleraCodigo: p.bauleraCodigo });
+  // Con ventaId la clave es única por click de Vender → el `snap.exists` de abajo solo pega si el
+  // MISMO request se reintenta (idempotencia), nunca entre ventas distintas.
+  const key = planKey({ m2: p.m2, amount: p.amount, freeQty: q, freeUnit: unit, bauleraCodigo: p.bauleraCodigo, ventaId: p.ventaId });
   const ref = db.collection('mpPlans').doc(key);
   const snap = await ref.get();
 
@@ -63,6 +75,7 @@ export async function getOrCreateAlignedPlan(p: {
     m2: p.m2, amount: p.amount,
     freeTrialQty: q > 0 ? q : null, freeTrialUnit: q > 0 ? unit : null,
     bauleraCodigo: p.bauleraCodigo || null, // guardado para que repricePlans reconstruya la clave con el código
+    ventaId: p.ventaId || null,             // idem: sin esto el re-key perdería el aislamiento por venta
     billingDay: 1,
     planId: created.planId, initPoint: created.initPoint,
     createdAt: new Date().toISOString(),

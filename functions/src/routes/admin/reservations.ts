@@ -176,6 +176,7 @@ adminReservationsRouter.post('/sell', requireAuth, async (req, res: Response) =>
         freeQty: Number(promoMonths) || 0,
         freeUnit: 'months',
         bauleraCodigo: hold.bauleraCodigo || bauleraCodigo || undefined, // plan por baulera (30/07)
+        ventaId: id,                                                    // plan por VENTA (30/07): cada click de Vender estrena plan+link
       }));
     }
 
@@ -400,7 +401,7 @@ adminReservationsRouter.post('/sell-plan', requireAuth, async (req, res: Respons
     if (process.env.FUNCTIONS_EMULATOR === 'true') {
       planId = `emu-plan-${m2}`; planLink = `https://www.mercadopago.com.ar/subscriptions/emulator-plan?m2=${m2}`;
     } else {
-      const created = await getOrCreateAlignedPlan({ m2: Number(m2), amount: monthlyNum, freeQty: trialDays, freeUnit: 'days', bauleraCodigo: hold.bauleraCodigo || bauleraCodigo || undefined });
+      const created = await getOrCreateAlignedPlan({ m2: Number(m2), amount: monthlyNum, freeQty: trialDays, freeUnit: 'days', bauleraCodigo: hold.bauleraCodigo || bauleraCodigo || undefined, ventaId: id });
       planId = created.planId; planLink = created.initPoint;
     }
 
