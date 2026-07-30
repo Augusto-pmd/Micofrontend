@@ -365,7 +365,9 @@ async function repriceAndRekeyPlan(
   const p = docSnap.data() as Record<string, unknown>;
   const q = Number(p['freeTrialQty']) || 0;
   const unit: 'days' | 'months' = p['freeTrialUnit'] === 'days' ? 'days' : 'months';
-  const newKey = planKey({ m2: m2n, amount: newAmount, freeQty: q, freeUnit: unit });
+  // La clave nueva conserva el CÓDIGO de baulera (plan por baulera 30/07): sin esto, un plan
+  // por-baulera se re-keyearía a la clave vieja compartida y perdería el aislamiento por baulera.
+  const newKey = planKey({ m2: m2n, amount: newAmount, freeQty: q, freeUnit: unit, bauleraCodigo: p['bauleraCodigo'] ? String(p['bauleraCodigo']) : undefined });
   if (newKey === docSnap.id) {
     await docSnap.ref.set({ amount: newAmount, updatedAt: new Date().toISOString() }, { merge: true });
     return;

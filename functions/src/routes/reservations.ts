@@ -113,6 +113,7 @@ reservationsRouter.post('/', optionalAuth, async (req, res: Response) => {
         amount: monthlyNum,
         freeQty: Number(freeTrialMonths) || 0,
         freeUnit: 'months',
+        bauleraCodigo: hold.bauleraCodigo || undefined, // plan por baulera (30/07)
       }));
     }
 

@@ -295,13 +295,17 @@ export type FreeTrialUnit = 'days' | 'months';
 // billingDay (SPEC cobros-alineados §4, spike 13/07): el plan cobra ese día fijo del mes y MP
 // PRORRATEA solo el primer cobro (billing_day_proportional) — verificado con prueba real:
 // devuelve transaction_amount_proportional calculado. free_trial + billing_day conviven.
-export async function createPlan(params: { m2: number; amount: number; freeTrialQty?: number; freeTrialUnit?: FreeTrialUnit; billingDay?: number }): Promise<MpPlanCreated> {
+export async function createPlan(params: { m2: number; amount: number; freeTrialQty?: number; freeTrialUnit?: FreeTrialUnit; billingDay?: number; bauleraCodigo?: string }): Promise<MpPlanCreated> {
   const accessToken = process.env.MP_ACCESS_TOKEN;
   if (!accessToken) throw new Error('MP_ACCESS_TOKEN not configured');
   const q = Number(params.freeTrialQty) || 0;
   const unit: FreeTrialUnit = params.freeTrialUnit === 'days' ? 'days' : 'months';
   const unidad = unit === 'days' ? (q > 1 ? 'dias' : 'dia') : (q > 1 ? 'meses' : 'mes');
-  const reason = `Mi Container Baulera ${params.m2}m2` +
+  // TÍTULO con el CÓDIGO de baulera (plan por baulera, 30/07): la suscripción HEREDA este título,
+  // así el cliente ve SU baulera en el checkout. Como cada baulera tiene su propio plan, el código
+  // nunca es el de otra. Si no viene código (fallback), queda genérico por medida.
+  const cod = String(params.bauleraCodigo || '').trim();
+  const reason = `Mi Container Baulera ${cod ? `${cod} (${params.m2}m2)` : `${params.m2}m2`}` +
     (q > 0 ? ` (${q} ${unidad} gratis)` : '') +
     (params.billingDay ? ` - cierra el ${params.billingDay}` : '');
   const autoRecurring: Record<string, unknown> = {

@@ -175,6 +175,7 @@ adminReservationsRouter.post('/sell', requireAuth, async (req, res: Response) =>
         amount: monthlyNum,
         freeQty: Number(promoMonths) || 0,
         freeUnit: 'months',
+        bauleraCodigo: hold.bauleraCodigo || bauleraCodigo || undefined, // plan por baulera (30/07)
       }));
     }
 
@@ -382,23 +383,25 @@ adminReservationsRouter.post('/sell-plan', requireAuth, async (req, res: Respons
     if (primerDebito.getTime() < finGratis.getTime()) primerDebito.setMonth(primerDebito.getMonth() + 1);
     const iso = (d: Date) => d.toISOString().slice(0, 10);
 
-    // Plan por (medida × monto × trial EN DÍAS — depende del día de venta). proportional=false.
-    let planId: string; let planLink: string;
-    if (process.env.FUNCTIONS_EMULATOR === 'true') {
-      planId = `emu-plan-${m2}`; planLink = `https://www.mercadopago.com.ar/subscriptions/emulator-plan?m2=${m2}`;
-    } else {
-      const created = await getOrCreateAlignedPlan({ m2: Number(m2), amount: monthlyNum, freeQty: trialDays, freeUnit: 'days' });
-      planId = created.planId; planLink = created.initPoint;
-    }
-
     const id = generateReservationId();
     // MACHEO REFORZADO: reusa la identidad del cliente si ya existe (DNI→email→tel); si no, fallback por mail.
     const uid = await resolveSaleUid({ dni, email, phone });
 
+    // HOLD ANTES del plan (30/07): necesitamos saber la baulera para crear el plan POR BAULERA.
     const hold = await holdRoomForReservation({ reservationId: id, branchId: sucursalId, m2: Number(m2), targetRoomId: storageRoomId || undefined });
     if (!hold.ok) {
       res.status(409).json({ error: hold.reason === 'sin_stock' ? `Sin stock de ${m2}m2. Ofrece otra medida.` : 'No se pudo reservar la baulera', code: hold.reason, alternativasByM2: hold.alternativasByM2 || {} });
       return;
+    }
+
+    // Plan POR BAULERA (medida × monto × trial EN DÍAS × CÓDIGO). proportional=false. El título lleva
+    // el código de la baulera del hold → la suscripción lo hereda y el cliente ve SU baulera.
+    let planId: string; let planLink: string;
+    if (process.env.FUNCTIONS_EMULATOR === 'true') {
+      planId = `emu-plan-${m2}`; planLink = `https://www.mercadopago.com.ar/subscriptions/emulator-plan?m2=${m2}`;
+    } else {
+      const created = await getOrCreateAlignedPlan({ m2: Number(m2), amount: monthlyNum, freeQty: trialDays, freeUnit: 'days', bauleraCodigo: hold.bauleraCodigo || bauleraCodigo || undefined });
+      planId = created.planId; planLink = created.initPoint;
     }
 
     // LINK 2 (pago único del proporcional de ENTRADA — los días del mes actual, calculados arriba).

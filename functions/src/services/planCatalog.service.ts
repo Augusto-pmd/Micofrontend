@@ -21,19 +21,28 @@ import { createPlan, updatePlanBilling, FreeTrialUnit, MpPlanCreated } from './m
 // precio = su plan. INVARIANTE: el plan del doc en la clave K SIEMPRE cobra el monto embebido en K.
 // repricePlans (admin/pricing.ts) mantiene el invariante RE-KEYEANDO el doc al cambiarle el monto;
 // getOrCreateAlignedPlan confía en la clave sin re-chequear el monto contra MP.
-export function planKey(p: { m2: number; amount: number; freeQty?: number; freeUnit?: FreeTrialUnit }): string {
+// PLAN POR BAULERA (decisión Lucas 30/07 — "nada de reutilizar"): la clave incluye el CÓDIGO de
+// baulera → cada baulera tiene su PROPIO plan, con su código en el título. Antes el plan se
+// compartía por (m2×monto×trial) y la suscripción HEREDA el título del plan → una venta a A3-050
+// reusaba el plan de A3-046 y el cliente veía "Baulera A3-046". Con el código en la clave, A3-050
+// crea su plan y jamás reusa el de otra baulera. (Sin código, cae a la clave vieja compartida —
+// solo como fallback defensivo si una venta no trajera baulera.)
+function codeKey(c?: string): string { return String(c || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase(); }
+export function planKey(p: { m2: number; amount: number; freeQty?: number; freeUnit?: FreeTrialUnit; bauleraCodigo?: string }): string {
   const q = Math.max(0, Number(p.freeQty) || 0);
   const unit: FreeTrialUnit = p.freeUnit === 'days' ? 'days' : 'months';
   const amt = Math.round(Number(p.amount));
-  return q > 0 ? `m2-${String(p.m2)}-${amt}-trial${q}${unit === 'days' ? 'd' : 'm'}` : `m2-${String(p.m2)}-${amt}-alin1`;
+  const base = q > 0 ? `m2-${String(p.m2)}-${amt}-trial${q}${unit === 'days' ? 'd' : 'm'}` : `m2-${String(p.m2)}-${amt}-alin1`;
+  const ck = codeKey(p.bauleraCodigo);
+  return ck ? `${base}-${ck}` : base; // con código = plan por baulera; sin código = clave vieja compartida
 }
 
 export async function getOrCreateAlignedPlan(p: {
-  m2: number; amount: number; freeQty?: number; freeUnit?: FreeTrialUnit;
+  m2: number; amount: number; freeQty?: number; freeUnit?: FreeTrialUnit; bauleraCodigo?: string;
 }): Promise<MpPlanCreated> {
   const q = Math.max(0, Number(p.freeQty) || 0);
   const unit: FreeTrialUnit = p.freeUnit === 'days' ? 'days' : 'months';
-  const key = planKey({ m2: p.m2, amount: p.amount, freeQty: q, freeUnit: unit });
+  const key = planKey({ m2: p.m2, amount: p.amount, freeQty: q, freeUnit: unit, bauleraCodigo: p.bauleraCodigo });
   const ref = db.collection('mpPlans').doc(key);
   const snap = await ref.get();
 
@@ -49,10 +58,11 @@ export async function getOrCreateAlignedPlan(p: {
     return { planId, initPoint };
   }
 
-  const created = await createPlan({ m2: p.m2, amount: p.amount, freeTrialQty: q, freeTrialUnit: unit, billingDay: 1 });
+  const created = await createPlan({ m2: p.m2, amount: p.amount, freeTrialQty: q, freeTrialUnit: unit, billingDay: 1, bauleraCodigo: p.bauleraCodigo });
   await ref.set({
     m2: p.m2, amount: p.amount,
     freeTrialQty: q > 0 ? q : null, freeTrialUnit: q > 0 ? unit : null,
+    bauleraCodigo: p.bauleraCodigo || null, // guardado para que repricePlans reconstruya la clave con el código
     billingDay: 1,
     planId: created.planId, initPoint: created.initPoint,
     createdAt: new Date().toISOString(),
