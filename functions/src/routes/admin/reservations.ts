@@ -5,7 +5,7 @@ import * as admin from 'firebase-admin';
 import * as crypto from 'crypto';
 import { assignRoomForReservation, holdRoomForReservation } from '../../services/assignment.service';
 import { getReservation, createReservation, updateReservation, getReservationByMpPreapprovalId, getReservationByBauleraCodigo } from '../../models/reservation.model';
-import { createSubscription, createCheckoutPreference, createDebtPreference, createGapPreference, cancelSubscription, getSubscriptionStatus, invalidateSubsCache, searchSubscriptionsCached, getPreapprovalDetail, setPreapprovalExternalReference, updateSubscriptionAmount } from '../../services/mercadopago.service';
+import { createSubscription, createCheckoutPreference, createDebtPreference, cancelSubscription, getSubscriptionStatus, invalidateSubsCache, searchSubscriptionsCached, getPreapprovalDetail, setPreapprovalExternalReference, updateSubscriptionAmount } from '../../services/mercadopago.service';
 import { getOrCreateAlignedPlan } from '../../services/planCatalog.service';
 import { resolveSaleUid, customerNormFields } from '../../services/customerMatch.service';
 import { createDebt, DebtTipo, getPendingDebtByBaulera } from '../../services/debts.service';
@@ -338,51 +338,40 @@ adminReservationsRouter.post('/sell-plan', requireAuth, async (req, res: Respons
     const disc = Number(discountPct) || 0;
     if (disc > 0) monthlyNum = Math.round(monthlyNum * (1 - disc / 100));
 
-    // MODELO DEL MES GRATIS (corrección Lucas 14/07 — el proporcional va al PRINCIPIO, no al final):
-    //   1) El cliente paga por PAGO ÚNICO (link 2, ahora o después) los días del MES ACTUAL
-    //      (hoy → 1° próximo). Esos días NO se regalan.
-    //   2) El período GRATIS arranca el 1° próximo (N meses calendario, o N días).
-    //   3) El TRIAL del plan en MP = días al 1° + período gratis → termina JUSTO en un 1° (si la
-    //      promo es en meses) → el primer débito completo cae ese 1° y de ahí SIEMPRE el 1°.
-    //   Ej: venta 14/07, 1 mes gratis → link 2 por 18 días de julio; agosto gratis; trial 49 días;
-    //   primer débito completo 1/09. (proportional=false en el plan: la fracción la cobra el link 2.)
+    // MODELO DEL MES GRATIS (cambio Lucas 31/07 — el proporcional lo cobra MP, no un segundo link):
+    //   1) El período GRATIS arranca HOY MISMO y dura lo elegido (N días o N meses).
+    //   2) Al terminar el trial, MP cobra SOLO EL PROPORCIONAL de los días que faltan hasta el 1°.
+    //      Es el comportamiento NATIVO de MP con billing_day=1 + billing_day_proportional=true.
+    //   3) Del 1° siguiente en adelante, mes completo SIEMPRE el 1°.
+    //   Ej: venta 31/07 con 15 días gratis → gratis 31/07→15/08 → MP cobra el proporcional del
+    //   15/08 al 1/09 → 1/09 y todos los 1°, mes completo.
+    //   ANTES (modelo 14/07) los días de entrada se cobraban con un SEGUNDO LINK de pago único
+    //   ("gap") y el plan iba con proportional=false para no cobrar dos veces lo mismo. Ese segundo
+    //   link YA NO SE GENERA. Los gaps pendientes de ventas ANTERIORES se siguen cobrando con el
+    //   botón Proporcional de Inventario: esa plata no se pierde.
     const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
-    // Si HOY ya es un 1°, no hay proporcional (entra alineado): gratis desde hoy mismo.
-    const prox1 = hoy.getDate() === 1 ? new Date(hoy) : new Date(hoy.getFullYear(), hoy.getMonth() + 1, 1);
 
-    // MODO DEL GAP (Lucas 15/07): 'cobrar' (default) = los días de entrada se DEBEN (link 2, ahora
-    // o después) y la promo corre desde el 1°. 'regalar' = REGALO LIMPIO: la promo corre DESDE HOY,
-    // los días de entrada van gratis, y NO existe link 2 ni proporcional ni recordatorio, nunca.
-    // Ej regalado: venta 17/07 + "15 días gratis" → gratis 17/07→01/08 (justo 15) → primer débito
-    // completo el 1/08. Si el fin no cae en un 1°, MP corre el débito al 1° siguiente (yapa gratis).
-    const regalarGap = req.body?.gapModo === 'regalar';
-    let gapDays = 0, gapAmount = 0;
-    let finGratis: Date;
-    if (regalarGap) {
-      finGratis = new Date(hoy);
-      if (freeUnit === 'days') {
-        finGratis.setDate(finGratis.getDate() + freeQty);
-      } else {
-        // sumar meses desde HOY con clamp de fin de mes (31/07 + 1 mes → 31/08, no 01/09 corrido)
-        const d0 = finGratis.getDate();
-        finGratis.setDate(1);
-        finGratis.setMonth(finGratis.getMonth() + freeQty);
-        const ult = new Date(finGratis.getFullYear(), finGratis.getMonth() + 1, 0).getDate();
-        finGratis.setDate(Math.min(d0, ult));
-      }
+    // El período gratis arranca HOY MISMO. En meses, con clamp de fin de mes (31/07 + 1 mes →
+    // 31/08, no 01/09 corrido).
+    const finGratis = new Date(hoy);
+    if (freeUnit === 'days') {
+      finGratis.setDate(finGratis.getDate() + freeQty);
     } else {
-      gapDays = Math.round((prox1.getTime() - hoy.getTime()) / 86400000);
-      gapAmount = gapDays > 0 ? Math.round(monthlyNum * gapDays / 30) : 0;
-      finGratis = new Date(prox1);
-      if (freeUnit === 'days') finGratis.setDate(finGratis.getDate() + freeQty);
-      else finGratis.setMonth(finGratis.getMonth() + freeQty); // desde un día 1 nunca desborda
+      const d0 = finGratis.getDate();
+      finGratis.setDate(1);
+      finGratis.setMonth(finGratis.getMonth() + freeQty);
+      const ult = new Date(finGratis.getFullYear(), finGratis.getMonth() + 1, 0).getDate();
+      finGratis.setDate(Math.min(d0, ult));
     }
     const trialDays = Math.round((finGratis.getTime() - hoy.getTime()) / 86400000);
-    // Primer débito real = el 1° >= finGratis. Si finGratis ES un 1°, cobra ese mismo día;
-    // si cae a mitad de mes, MP corre el débito al 1° siguiente (en modo regalado la yapa va
-    // gratis; en modo cobrar esos días se cobran aparte con el botón Proporcional de Inventario).
+    // Primer débito COMPLETO = el 1° siguiente al fin del trial. Si el trial termina justo un 1°,
+    // ese día se cobra el mes completo y NO hay proporcional.
     const primerDebito = new Date(finGratis.getFullYear(), finGratis.getMonth(), 1);
     if (primerDebito.getTime() < finGratis.getTime()) primerDebito.setMonth(primerDebito.getMonth() + 1);
+    // Estimación del proporcional que MP va a cobrar al terminar el trial. Es INFORMATIVA (para que
+    // Vender se lo pueda decir al cliente): el monto real lo calcula MP con su propia cuenta de días.
+    const propDias = Math.round((primerDebito.getTime() - finGratis.getTime()) / 86400000);
+    const propMonto = propDias > 0 ? Math.round(monthlyNum * propDias / 30) : 0;
     const iso = (d: Date) => d.toISOString().slice(0, 10);
 
     const id = generateReservationId();
@@ -406,19 +395,7 @@ adminReservationsRouter.post('/sell-plan', requireAuth, async (req, res: Respons
       planId = created.planId; planLink = created.initPoint;
     }
 
-    // LINK 2 (pago único del proporcional de ENTRADA — los días del mes actual, calculados arriba).
-    // OPCIONAL/diferible (decisión Lucas): AHORA (generarGapAhora) o DESPUÉS desde Inventario con
-    // el botón Proporcional (mismo /deuda tipo='proporcional' — queda pre-cargado con gapDays/monto).
-    // La cuenta del cliente queda anexada a la SUSCRIPCIÓN (link 1), no a este pago único.
-    let gapInitPoint: string | null = null, gapPreferenceId: string | null = null;
-    if (gapAmount > 0 && req.body?.generarGapAhora === true && process.env.FUNCTIONS_EMULATOR !== 'true') {
-      const gp = await createGapPreference({
-        reservationId: id,
-        title: `Mi Container ${hold.bauleraCodigo || String(m2) + 'm2'} — proporcional ${gapDays} días (${iso(hoy).split('-').reverse().join('/')} al ${iso(prox1).split('-').reverse().join('/')})`,
-        amount: gapAmount, email: String(email), backUrl: 'https://micontainer.com/#/portal',
-      });
-      gapInitPoint = gp.initPoint; gapPreferenceId = gp.preferenceId;
-    }
+    // (Ya no hay LINK 2: el proporcional de entrada lo cobra MP solo al terminar el trial.)
 
     await createReservation({
       id, userUid: uid, sucursalId, category, m2: Number(m2),
@@ -437,13 +414,9 @@ adminReservationsRouter.post('/sell-plan', requireAuth, async (req, res: Respons
       promoMonths: freeUnit === 'months' ? freeQty : 0,
       promoQty: freeQty, promoUnit: freeUnit,
       paymentMode: 'plan', mpPlanId: planId,
-      gapPreferenceId, gapAmount, gapInitPoint, gapDays,
-      // 'regalado' = la entrada va gratis: NO hay proporcional que cobrar (ni ahora ni nunca).
-      gapModo: regalarGap ? 'regalado' : 'a_cobrar',
-      gapDesde: regalarGap ? null : iso(hoy), gapHasta: regalarGap ? null : iso(prox1),
-      // Recordatorio del gap diferido: Inventario lo marca "sin cobrar" recién desde esta fecha
-      // (si no viene, se marca de una — la plata del proporcional no debe depender de la memoria).
-      gapRecordarDesde: !regalarGap && req.body?.recordarGapDesde ? String(req.body.recordarGapDesde) : null,
+      // SIN GAP: el proporcional lo cobra MP al terminar el trial. gapAmount en 0 es lo que hace
+      // que Inventario NO la liste como "proporcional sin cobrar" (esa vista filtra por gapAmount>0).
+      gapAmount: 0, gapDays: 0,
       trialDays, // días totales del cupón/trial en MP
       discountPct: disc,
       source: 'manual_admin',
@@ -454,16 +427,15 @@ adminReservationsRouter.post('/sell-plan', requireAuth, async (req, res: Respons
       via: (req.body?.via as string) || 'admin',
       action: 'link_generado_plan_mes_gratis',
       entity: 'reservation', entityId: id, branchId: sucursalId,
-      detail: { cliente: name, email, baulera: hold.bauleraCodigo || null, m2: Number(m2), mensual: monthlyNum, gratis: `${freeQty} ${freeUnit === 'days' ? 'día(s)' : 'mes(es)'}`, planId, gapDias: gapDays, gapMonto: gapAmount },
+      detail: { cliente: name, email, baulera: hold.bauleraCodigo || null, m2: Number(m2), mensual: monthlyNum, gratis: `${freeQty} ${freeUnit === 'days' ? 'día(s)' : 'mes(es)'}`, planId, finGratis: iso(finGratis), proporcionalDias: propDias, proporcionalEstimado: propMonto, primerDebito: iso(primerDebito) },
     });
-    // 2 LINKS: la suscripción (cuenta anexada acá) + el pago único del proporcional de entrada.
+    // UN SOLO LINK: la suscripción. El proporcional lo cobra MP al terminar el trial.
     // Devuelve las FECHAS del ciclo para que Vender lo muestre sin recalcular nada.
     res.status(201).json({
       reservationId: id,
       initPoint: planLink, suscripcionLink: planLink,
-      gapLink: gapInitPoint, gapAmount, gapDays,
-      gapModo: regalarGap ? 'regalado' : 'a_cobrar',
-      gapDesde: regalarGap ? null : iso(hoy), gapHasta: regalarGap ? null : iso(prox1),
+      // Estimación informativa de lo que MP va a cobrar al terminar el período gratis.
+      proporcionalDias: propDias, proporcionalEstimado: propMonto, proporcionalFecha: iso(finGratis),
       finGratis: iso(finGratis), primerDebito: iso(primerDebito), trialDays,
       monthly: monthlyNum, duration: Number(durationMonths) || 1, paymentMode: 'plan', planId,
       gratis: `${freeQty} ${freeUnit === 'days' ? 'día(s)' : 'mes(es)'}`,

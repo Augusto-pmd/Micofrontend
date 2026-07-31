@@ -326,12 +326,17 @@ export async function createPlan(params: { m2: number; amount: number; freeTrial
   if (q > 0) autoRecurring['free_trial'] = { frequency: q, frequency_type: unit };
   if (params.billingDay) {
     autoRecurring['billing_day'] = params.billingDay;
-    // PROPORCIONAL solo en ENTRADA PAGA (sin trial): cobra los días hasta el 1° al entrar.
-    // Con MES GRATIS va FALSE EXPLÍCITO — no alcanza con omitirlo: verificado en PROD (14/07,
-    // plan d45bbc07...) que MP lo AUTO-SETEA true por default cuando mandás billing_day. Si
-    // quedara true, MP prorratearía el primer cobro tras el trial Y nuestro link 2 (gap)
-    // cobraría esos mismos días = gap POR DUPLICADO al cliente.
-    autoRecurring['billing_day_proportional'] = q === 0;
+    // PROPORCIONAL SIEMPRE (decisión Lucas 31/07). MP prorratea el PRIMER cobro para alinearlo al
+    // billing_day y de ahí en más cobra el mes completo ese día:
+    //  - Entrada paga (sin trial): cobra los días desde hoy hasta el 1° al autorizar.
+    //  - Mes gratis (con trial): al terminar el trial cobra SOLO los días que faltan hasta el 1°.
+    //    Ej: venta 31/07 + 15 días gratis → gratis hasta el 15/08 → proporcional 15/08→1/09 → 1/09
+    //    y todos los 1°, mes completo.
+    // Iba en FALSE con trial hasta el 31/07 porque esos mismos días los cobraba un SEGUNDO LINK de
+    // pago único (el "gap") y salía cobrado dos veces. Ese segundo link ya no se genera, así que el
+    // proporcional nativo de MP es ahora el único que cobra la entrada. Verificado en PROD el 14/07
+    // (plan d45bbc07) que MP además lo AUTO-SETEA en true cuando mandás billing_day.
+    autoRecurring['billing_day_proportional'] = true;
   }
   const body = {
     reason,

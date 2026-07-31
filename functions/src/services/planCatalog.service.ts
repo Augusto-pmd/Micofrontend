@@ -64,7 +64,7 @@ export async function getOrCreateAlignedPlan(p: {
     const initPoint = String(doc['initPoint']);
     // El monto ya está fijado por la clave; solo puede faltar el upgrade de alineación (plan viejo).
     if (Number(doc['billingDay']) !== 1) {
-      await updatePlanBilling(planId, p.amount, 1, q === 0); // proporcional SOLO sin trial
+      await updatePlanBilling(planId, p.amount, 1, true); // proporcional SIEMPRE (31/07: MP cobra la entrada, ya no hay link 2)
       await ref.set({ billingDay: 1, updatedAt: new Date().toISOString() }, { merge: true });
     }
     return { planId, initPoint };
