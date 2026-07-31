@@ -372,25 +372,55 @@ async function repriceAndRekeyPlan(
     return;
   }
   const dst = db.collection('mpPlans').doc(newKey);
-  // Si ya hay un doc en la clave nueva (otro plan del MISMO monto), lo dejamos: ese queda como
-  // canónico y este queda huérfano (sigue cobrando bien, solo no se reusa para ventas nuevas).
-  if (!(await dst.get()).exists) await dst.set({ ...p, amount: newAmount, updatedAt: new Date().toISOString() });
+  if ((await dst.get()).exists) {
+    // La clave nueva YA está ocupada por otro plan del mismo monto. Antes se borraba este doc igual
+    // (el delete era incondicional): el plan seguía vivo en MP pero FUERA del catálogo, así que
+    // ningún cambio de tarifa futuro lo volvía a tocar y su link quedaba vendiendo al precio viejo
+    // para siempre. Ahora se queda donde está, con el monto nuevo ya aplicado en MP. Su clave no va
+    // a matchear ninguna venta nueva (cada venta estrena su plan desde el 30/07), pero sigue siendo
+    // alcanzable por el reprice, que barre por el campo m2 y no por la clave.
+    await docSnap.ref.set({ amount: newAmount, updatedAt: new Date().toISOString() }, { merge: true });
+    return;
+  }
+  await dst.set({ ...p, amount: newAmount, updatedAt: new Date().toISOString() });
   await docSnap.ref.delete();
 }
 
-async function repricePlans(m2n: number, newAmount: number): Promise<{ planesActualizados: number; planesErrores: Array<{ id: string; error: string }> }> {
-  const snap = await db.collection('mpPlans').where('m2', '==', m2n).get();
-  let planesActualizados = 0;
+// Planes cuyo LINK todavía se puede usar = los que tiene apuntados alguna venta que sigue esperando
+// el pago. Repreciar un plan sirve para UNA sola cosa: que su link no siga vendiendo al precio
+// viejo. Al que ya está suscrito NO lo afecta (a ese le cambia el precio el reprice de
+// suscripciones, que es otra cosa). Desde el plan-por-venta (30/07) cada click de Vender estrena su
+// plan, así que los planes de ventas ya concretadas o abandonadas son links muertos: nadie los va a
+// volver a abrir y repreciarlos era una llamada a MP al pedo por cada venta histórica de esa medida
+// — trabajo sin techo dentro de una función que corta a los 60 segundos.
+async function planIdsVendibles(): Promise<Set<string>> {
+  const snap = await db.collection('reservations')
+    .where('paymentMode', '==', 'plan')
+    .where('status', '==', 'pending_payment')
+    .get();
+  const ids = new Set<string>();
+  snap.docs.forEach((d) => { const pid = String((d.data() as Record<string, unknown>)['mpPlanId'] || ''); if (pid) ids.add(pid); });
+  return ids;
+}
+
+async function repricePlans(m2n: number, newAmount: number): Promise<{ planesActualizados: number; planesErrores: Array<{ id: string; error: string }>; planesSalteados: number }> {
+  const [snap, vendibles] = await Promise.all([
+    db.collection('mpPlans').where('m2', '==', m2n).get(),
+    planIdsVendibles(),
+  ]);
+  let planesActualizados = 0, planesSalteados = 0;
   const planesErrores: Array<{ id: string; error: string }> = [];
   for (const d of snap.docs) {
     const p = d.data() as Record<string, unknown>;
     if (Number(p['amount']) === newAmount) continue; // ya está en el precio nuevo
+    // NADA DE RECORTES SILENCIOSOS: los salteados se cuentan y se devuelven.
+    if (!vendibles.has(String(p['planId']))) { planesSalteados++; continue; }
     try {
       await repriceAndRekeyPlan(String(p['planId']), d, m2n, newAmount);
       planesActualizados++;
     } catch (e) { planesErrores.push({ id: String(p['planId']), error: String(e).slice(0, 200) }); }
   }
-  return { planesActualizados, planesErrores };
+  return { planesActualizados, planesErrores, planesSalteados };
 }
 
 // POST /pricing-engine/reprice/:branchId  (una medida)
@@ -634,14 +664,14 @@ pricingRouter.post('/planes/:planId/cancel', verifyToken, requireStaff, async (r
 pricingRouter.post('/planes/:branchId/sync', verifyToken, requireStaff, async (req: Request, res: Response) => {
   try {
     const branchId = req.params['branchId'];
-    const [mpPlans, localSnap, byM2] = await Promise.all([
-      searchPlans(), db.collection('mpPlans').get(), getPricingByM2(branchId),
+    const [mpPlans, localSnap, byM2, vendibles] = await Promise.all([
+      searchPlans(), db.collection('mpPlans').get(), getPricingByM2(branchId), planIdsVendibles(),
     ]);
     const localDocByPlanId = new Map<string, FirebaseFirestore.QueryDocumentSnapshot>();
     localSnap.forEach((d) => { const p = d.data() as Record<string, unknown>; if (p['planId']) localDocByPlanId.set(String(p['planId']), d); });
     const actualizados: Array<{ planId: string; nombre: string; de: number; a: number }> = [];
     const errores: Array<{ planId: string; error: string }> = [];
-    let sinMedida = 0, yaEnPrecio = 0;
+    let sinMedida = 0, yaEnPrecio = 0, salteados = 0;
     for (const p of mpPlans) {
       if (p.status !== 'active') continue;
       const localDoc = localDocByPlanId.get(p.id) || null;
@@ -650,6 +680,11 @@ pricingRouter.post('/planes/:branchId/sync', verifyToken, requireStaff, async (r
       const tarifa = recurringFor(byM2, m2, 1);
       if (tarifa == null || !(tarifa > 0)) { sinMedida++; continue; }
       if (p.amount === tarifa) { yaEnPrecio++; continue; }
+      // Mismo criterio que repricePlans: solo los planes cuyo LINK todavía se puede usar. Sin esto,
+      // ahora que searchPlans PAGINA (y ve la cuenta entera, no los primeros 100), el sync haría un
+      // PUT a MP por cada plan histórico y se comería los 60s de la función. Los salteados se
+      // cuentan y se devuelven — nada de recortes silenciosos.
+      if (!vendibles.has(p.id)) { salteados++; continue; }
       try {
         // Re-keyea el doc igual que repricePlans: mantiene el invariante clave↔monto para el reuso.
         await repriceAndRekeyPlan(p.id, localDoc, m2, tarifa);
@@ -659,9 +694,9 @@ pricingRouter.post('/planes/:branchId/sync', verifyToken, requireStaff, async (r
     await logAudit({
       actor: (req as unknown as { email?: string }).email || 'admin',
       action: 'sync_planes_mp', entity: 'pricing', entityId: branchId,
-      detail: { actualizados: actualizados.length, yaEnPrecio, sinMedida, errores: errores.length },
+      detail: { actualizados: actualizados.length, yaEnPrecio, sinMedida, salteados, errores: errores.length },
     });
-    res.json({ actualizados, yaEnPrecio, sinMedida, errores });
+    res.json({ actualizados, yaEnPrecio, sinMedida, salteados, errores });
   } catch (err) {
     console.error('POST /pricing-engine/planes/sync error:', err);
     res.status(500).json({ error: 'No se pudieron sincronizar los planes' });

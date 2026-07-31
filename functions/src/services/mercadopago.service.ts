@@ -381,11 +381,14 @@ export async function updatePlanBilling(planId: string, amount: number, billingD
 export async function updatePlanAmount(planId: string, amount: number): Promise<void> {
   const accessToken = process.env.MP_ACCESS_TOKEN;
   if (!accessToken) throw new Error('MP_ACCESS_TOKEN not configured');
-  const res = await fetch(`${MP_API_BASE}/preapproval_plan/${encodeURIComponent(planId)}`, {
+  // Con TIMEOUT (31/07): el reprice llama a esta función en serie, una vez por plan, dentro de una
+  // función que corta a los 60s. Con `fetch` pelado, UNA conexión colgada con MP se comía el
+  // presupuesto entero y el cambio de tarifa moría a mitad de camino.
+  const res = await fetchWithTimeout(`${MP_API_BASE}/preapproval_plan/${encodeURIComponent(planId)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
     body: JSON.stringify({ auto_recurring: { transaction_amount: amount, currency_id: 'ARS' } }),
-  });
+  }, 10000);
   if (!res.ok) { const t = await res.text(); throw new Error(`MP plan update ${res.status}: ${t.slice(0, 200)}`); }
 }
 
