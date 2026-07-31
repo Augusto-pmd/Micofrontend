@@ -8,6 +8,7 @@ import { updateSubscriptionAmount, updatePlanAmount, searchSubscriptions, search
 import { debtsByBaulera } from '../../services/debts.service';
 import { planKey } from '../../services/planCatalog.service';
 import { logAudit } from '../../services/audit.service';
+import { canon, codeOf } from '../../utils/bauleraCode'; // criterio ÚNICO de igualdad de código (unificación 30/07)
 
 export const pricingRouter = Router();
 
@@ -268,14 +269,7 @@ function computeMeasure(
   // Canonicaliza el codigo de baulera para matchear todos los formatos por igual:
   // "A2-025" = "A2-25" = "A2025" = "A0013" -> normaliza fila + unidad SIN ceros a la izquierda.
   // (MP guarda "A2-25" pero el inventario "A2-025"; sin esto no matcheaban.)
-  const canon = (c: string): string => {
-    const s = String(c || '').toUpperCase();
-    const m = s.match(/([A-Z]\d)\D*0*(\d+)/); // fila (A2) + unidad sin ceros izq
-    return m ? m[1] + m[2] : s.replace(/[^A-Z0-9]/g, '');
-  };
-  // Extrae el codigo del external_reference ("MiContainer Baulera A2-010" -> "A2-010"; o "...A0013" -> "A0013").
-  // Requiere guion, o 3+ digitos si no hay guion (evita falsos como "m2").
-  const codeOf = (ext: string): string => { const m = String(ext || '').match(/[A-Za-z]\d+-\d+|[A-Za-z]\d{3,}/); return m ? canon(m[0]) : ''; };
+  // canon/codeOf vienen de utils/bauleraCode (fuente única desde el 30/07; eran una copia local acá).
   const byCode = new Map<string, MpSubscription[]>();
   const byEmail = new Map<string, MpSubscription[]>();
   for (const s of subs) {
@@ -546,12 +540,7 @@ pricingRouter.get('/planes/:branchId', verifyToken, requireStaff, async (req: Re
       };
     });
     // Suscriptos VÍA PLAN: nombre/baulera por el mismo matcheo por código que roster/reprice.
-    const canon = (c: string): string => {
-      const s = String(c || '').toUpperCase();
-      const m = s.match(/([A-Z]\d)\D*0*(\d+)/);
-      return m ? m[1] + m[2] : s.replace(/[^A-Z0-9]/g, '');
-    };
-    const codeOf = (ext: string): string => { const m = String(ext || '').match(/[A-Za-z]\d+-\d+|[A-Za-z]\d{3,}/); return m ? canon(m[0]) : ''; };
+    // canon/codeOf: import de utils/bauleraCode (fuente única desde el 30/07; era una copia local).
     const unitByCode = new Map<string, { code: string; name: string; email: string }>();
     for (const u of units) unitByCode.set(canon(u.code), { code: u.code, name: u.name || '', email: u.email || '' });
     const nombrePlan = new Map(planes.map((p) => [p.planId, p.nombre]));
@@ -710,12 +699,7 @@ pricingRouter.get('/roster/:branchId', verifyToken, requireStaff, async (_req: R
     ]);
     const subs = allSubs.filter((s) => s.status === 'authorized' || s.status === 'pending');
     // Mismo canon/codeOf que computeMeasure (robusto a formatos y ceros a la izquierda).
-    const canon = (c: string): string => {
-      const s = String(c || '').toUpperCase();
-      const m = s.match(/([A-Z]\d)\D*0*(\d+)/);
-      return m ? m[1] + m[2] : s.replace(/[^A-Z0-9]/g, '');
-    };
-    const codeOf = (ext: string): string => { const m = String(ext || '').match(/[A-Za-z]\d+-\d+|[A-Za-z]\d{3,}/); return m ? canon(m[0]) : ''; };
+    // canon/codeOf: import de utils/bauleraCode (fuente única desde el 30/07; era una copia local).
     const byCode = new Map<string, MpSubscription[]>();
     const byEmail = new Map<string, MpSubscription[]>();
     for (const s of subs) {
@@ -831,12 +815,7 @@ pricingRouter.get('/cobros-rechazados/:branchId', verifyToken, requireStaff, asy
     // del radar de rechazados justo cuando más importaban (hallazgo Lucas 13/07, baulera A1-007).
     const subs = allSubs.filter((s) => s.status === 'authorized' || s.status === 'pending' || s.status === 'paused');
     // Mismo canon/codeOf del reprice (robusto a formatos y ceros a la izquierda).
-    const canon = (c: string): string => {
-      const s = String(c || '').toUpperCase();
-      const m = s.match(/([A-Z]\d)\D*0*(\d+)/);
-      return m ? m[1] + m[2] : s.replace(/[^A-Z0-9]/g, '');
-    };
-    const codeOf = (ext: string): string => { const m = String(ext || '').match(/[A-Za-z]\d+-\d+|[A-Za-z]\d{3,}/); return m ? canon(m[0]) : ''; };
+    // canon/codeOf: import de utils/bauleraCode (fuente única desde el 30/07; era una copia local).
     const byCode = new Map<string, MpSubscription[]>();
     const byEmail = new Map<string, MpSubscription[]>();
     for (const s of subs) {

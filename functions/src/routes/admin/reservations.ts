@@ -13,6 +13,7 @@ import { invalidateRechazadosCache } from './pricing';
 import { getPricingByM2, recurringFor } from '../../services/pricing.service';
 import { generateReservationId } from '../../utils/generateId';
 import { logAudit } from '../../services/audit.service';
+import { canon, codeOf, codigoDeRef } from '../../utils/bauleraCode'; // criterio ÚNICO de igualdad de código (unificación 30/07)
 import { sendActivationEmail, sendRebillEmail } from '../../services/customerAuth.service';
 
 export const adminReservationsRouter = Router();
@@ -754,7 +755,6 @@ adminReservationsRouter.post('/liberar-baulera', requireAuth, async (req, res: R
     if (!roomSnap.exists) { res.status(404).json({ error: 'Baulera no encontrada' }); return; }
     const room = roomSnap.data() as Record<string, unknown>;
     const code = String(room['space'] || room['name'] || '');
-    const canon = (s: string) => s.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
 
     // Reserva vinculada (si la baulera es de la web/Vender). Legacy puede no tener.
     let reserva: { id: string; mpPreapprovalId?: string } | null = null;
@@ -772,7 +772,12 @@ adminReservationsRouter.post('/liberar-baulera', requireAuth, async (req, res: R
     if (!subId && code) {
       try {
         const subs = await searchSubscriptionsCached();
-        const hit = subs.find((s) => (s.status === 'authorized' || s.status === 'pending') && canon(s.externalReference).includes(canon(code)));
+        // IGUALDAD EXACTA sobre el código canonizado, NO includes(). El includes() viejo fallaba de
+        // las dos formas: no encontraba la sub si en MP figuraba "A2-25" y el inventario dice
+        // "A2-025" (la baulera quedaba liberada pero el cliente seguía pagando), y podía enganchar
+        // una referencia ajena cuyo código empezara igual. codigoDeRef además descarta las
+        // referencias que no son una baulera (ids de reserva MC-, deudas, proporcionales).
+        const hit = subs.find((s) => (s.status === 'authorized' || s.status === 'pending') && codigoDeRef(s.externalReference) === canon(code));
         if (hit) subId = hit.id;
       } catch (e) { console.warn('[liberar] no se pudo buscar la sub por código', e); }
     }
@@ -936,8 +941,7 @@ adminReservationsRouter.post('/rebill', requireAuth, async (req, res: Response) 
     let oldSubId = String(subId || reservation?.mpPreapprovalId || '');
     if (!oldSubId) {
       try {
-        const canon = (c: string): string => { const s = String(c || '').toUpperCase(); const m = s.match(/([A-Z]\d)\D*0*(\d+)/); return m ? m[1] + m[2] : s.replace(/[^A-Z0-9]/g, ''); };
-        const codeOf = (ext: string): string => { const m = String(ext || '').match(/[A-Za-z]\d+-\d+|[A-Za-z]\d{3,}/); return m ? canon(m[0]) : ''; };
+        // canon/codeOf: import de utils/bauleraCode (fuente única desde el 30/07; era una copia local).
         const subs = (await searchSubscriptionsCached()).filter((s) => s.status === 'authorized' || s.status === 'pending' || s.status === 'paused');
         const target = canon(code);
         let hit = target ? subs.find((s) => codeOf(s.externalReference) === target) : undefined;
