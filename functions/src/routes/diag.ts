@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { db } from '../config/firebase';
+import { canon } from '../utils/bauleraCode';
 
 // DIAGNÓSTICO — SOLO LECTURA. Reemplazo SEGURO de la vieja ruta /debug-cobros (que era sin auth y
 // además ESCRIBÍA). Diferencias clave:
@@ -30,17 +31,34 @@ async function mpGet(path: string): Promise<unknown> {
   return r.json();
 }
 
+// Traduce lo que se escribe en la URL al código EXACTO del inventario, usando el criterio único
+// (utils/bauleraCode). Así ?code=A2-25 o a2025 encuentran igual la baulera A2-025: las consultas de
+// abajo son por igualdad exacta contra lo guardado, y sin esto una consulta con otro formato
+// devolvía vacío y parecía que la baulera no tenía nada. Si no matchea ninguna, se usa tal cual.
+async function codigoReal(input: string): Promise<string> {
+  const q = canon(input);
+  if (!q) return input;
+  const rooms = await db.collection('storageRooms').get();
+  for (const d of rooms.docs) {
+    const r = d.data() as Record<string, unknown>;
+    const real = String(r['space'] || r['name'] || '');
+    if (real && canon(real) === q) return real;
+  }
+  return input;
+}
+
 diagRouter.get('/', async (req: Request, res: Response) => {
   const what = String(req.query['what'] || '');
   try {
     // ── Firestore (lectura) ──────────────────────────────────────────────
     if (what === 'baulera') {
-      const code = String(req.query['code'] || '');
+      const code = await codigoReal(String(req.query['code'] || ''));
       const [reservas, deudas] = await Promise.all([
         db.collection('reservations').where('bauleraCodigo', '==', code).get(),
         db.collection('debts').where('bauleraCodigo', '==', code.toUpperCase()).get(),
       ]);
       res.json({
+        codigo: code, // el código real del inventario con el que se consultó
         reservas: reservas.docs.map((x) => { const r = x.data() as Record<string, unknown>; return { id: x.id, status: r['status'], mpSub: r['mpSubscriptionStatus'], preapproval: r['mpPreapprovalId'], plan: r['mpPlanId'], mode: r['paymentMode'], email: r['customerEmail'], cliente: r['customerName'], monthly: r['monthly'], storageRoomId: r['storageRoomId'] }; }),
         deudas: deudas.docs.map((x) => ({ id: x.id, ...x.data() })),
       });
@@ -53,7 +71,7 @@ diagRouter.get('/', async (req: Request, res: Response) => {
     }
     if (what === 'customer') {
       // clientes que apuntan a un código de baulera (para detectar contaminación de datos)
-      const snap = await db.collection('customers').where('bauleraCodigo', '==', String(req.query['code'] || '')).get();
+      const snap = await db.collection('customers').where('bauleraCodigo', '==', await codigoReal(String(req.query['code'] || ''))).get();
       res.json({ customers: snap.docs.map((x) => { const c = x.data() as Record<string, unknown>; return { id: x.id, fullName: c['fullName'], email: c['email'], phone: c['phone'], dni: c['dni'], isActive: c['isActive'], storageRoomId: c['storageRoomId'] }; }) });
       return;
     }

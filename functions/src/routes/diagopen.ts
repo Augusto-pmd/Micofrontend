@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { db } from '../config/firebase';
 import { getPreapprovalDetail, searchSubscriptions } from '../services/mercadopago.service';
 import { getPricingByM2 } from '../services/pricing.service';
+import { canon, codigoDeRef } from '../utils/bauleraCode';
 
 // CONSOLA DE DIAGNÓSTICO — ABIERTA, SOLO LECTURA (pedido Lucas 17/07, mientras la web está en obra).
 // CERO escritura: solo GET/consultas a Firestore y a MP. Path poco conocido. Se cierra cuando Lucas
@@ -9,7 +10,9 @@ import { getPricingByM2 } from '../services/pricing.service';
 export const diagOpenRouter = Router();
 
 const MP = 'https://api.mercadopago.com';
-const canon = (c: unknown) => String(c || '').trim().toUpperCase();
+// canon/codigoDeRef: criterio ÚNICO de igualdad de código (utils/bauleraCode). Antes esta consola
+// solo hacía trim+mayúsculas, así que una sub escrita "A2-25" no encontraba la baulera "A2-025" del
+// inventario y salía listada como "suelta" o sin medida.
 
 async function mpGet(path: string): Promise<unknown> {
   const tok = process.env['MP_ACCESS_TOKEN'];
@@ -51,13 +54,11 @@ diagOpenRouter.get('/', async (req: Request, res: Response) => {
       ]);
       const subs = [...auth, ...pend];
       const m2ByCode = new Map<string, number>();
-      roomsSnap.forEach((x) => { const rr = x.data() as Record<string, unknown>; const c = canon(rr['space'] || rr['name']); if (c) m2ByCode.set(c, Number(rr['areaM2']) || 0); });
-      const bauleraRe = /([A-Za-z]\d+-?\d+)/;
+      roomsSnap.forEach((x) => { const rr = x.data() as Record<string, unknown>; const c = canon(String(rr['space'] || rr['name'] || '')); if (c) m2ByCode.set(c, Number(rr['areaM2']) || 0); });
       const sueltasList: unknown[] = [];
       const precioList: unknown[] = [];
       for (const s of subs) {
-        const m = String(s.externalReference || '').match(bauleraRe);
-        const code = m ? canon(m[1]) : '';
+        const code = codigoDeRef(String(s.externalReference || ''));
         if (!code) { sueltasList.push({ id: s.id, amount: s.amount, email: s.payerEmail, status: s.status, reason: s.reason }); continue; }
         const m2 = m2ByCode.get(code);
         const tar = m2 != null ? tarifa[String(m2)] : undefined;
