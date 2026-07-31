@@ -593,26 +593,52 @@ export interface MpPlan { id: string; reason: string; status: string; amount: nu
 
 // Lista los planes de suscripcion (preapproval_plan) de la cuenta, con su MONTO REAL
 // (auto_recurring.transaction_amount) para poder compararlo contra la tarifa vigente.
-export async function searchPlans(): Promise<MpPlan[]> {
+//
+// PAGINA (31/07). Antes pedía UNA sola página de 100 y devolvía eso: los planes que quedaban afuera
+// NO se sincronizaban y el endpoint respondía OK igual, así que un plan de un cliente activo podía
+// quedarse con el precio viejo sin que nadie se enterara. Con un plan por venta (decisión 30/07) la
+// cuenta de MP suma un plan por cada click de Vender, así que pasar de 100 es cuestión de tiempo.
+// Ahora recorre las páginas que hagan falta y CACHEA el resultado, para no pegarle a MP de nuevo en
+// cada pantalla que lo use.
+const MAX_PAGINAS_PLANES = 20; // 2000 planes; tope de seguridad para que un bug no cicle para siempre
+let _plansCache: { at: number; data: MpPlan[] } | null = null;
+export function invalidatePlansCache(): void { _plansCache = null; }
+
+export async function searchPlans(ttlMs = 120000): Promise<MpPlan[]> {
   const accessToken = process.env.MP_ACCESS_TOKEN;
   if (!accessToken) throw new Error('MP_ACCESS_TOKEN not configured');
+  const now = Date.now();
+  if (_plansCache && (now - _plansCache.at) < ttlMs) return _plansCache.data;
+  const out: MpPlan[] = [];
+  const vistos = new Set<string>();
   try {
-    const res = await fetch(`${MP_API_BASE}/preapproval_plan/search?limit=100`, {
-      headers: { 'Authorization': `Bearer ${accessToken}` },
-    });
-    if (!res.ok) return [];
-    const data = await res.json() as { results?: Array<Record<string, unknown>> };
-    return (data.results || []).map((r) => {
-      const ar = (r['auto_recurring'] as Record<string, unknown>) || {};
-      const ft = ar['free_trial'] as Record<string, unknown> | undefined;
-      return {
-        id: String(r['id'] ?? ''),
-        reason: String(r['reason'] ?? ''),
-        status: String(r['status'] ?? ''),
-        amount: Number(ar['transaction_amount']) || 0,
-        trial: ft ? `${Number(ft['frequency']) || ''} ${String(ft['frequency_type'] || '')}`.trim() : '',
-        initPoint: String(r['init_point'] ?? ''),
-      };
-    });
-  } catch { return []; }
+    for (let pagina = 0; pagina < MAX_PAGINAS_PLANES; pagina++) {
+      const res = await fetch(`${MP_API_BASE}/preapproval_plan/search?limit=100&offset=${pagina * 100}`, {
+        headers: { 'Authorization': `Bearer ${accessToken}` },
+      });
+      // Si una página falla, devolvemos lo que ya juntamos en vez de perder todo: es mejor un
+      // resultado parcial que un [] silencioso (que es lo que hacía antes con cualquier error).
+      if (!res.ok) break;
+      const data = await res.json() as { results?: Array<Record<string, unknown>> };
+      const rows = data.results || [];
+      for (const r of rows) {
+        const ar = (r['auto_recurring'] as Record<string, unknown>) || {};
+        const ft = ar['free_trial'] as Record<string, unknown> | undefined;
+        const id = String(r['id'] ?? '');
+        if (!id || vistos.has(id)) continue; // dedup por si una página se solapa
+        vistos.add(id);
+        out.push({
+          id,
+          reason: String(r['reason'] ?? ''),
+          status: String(r['status'] ?? ''),
+          amount: Number(ar['transaction_amount']) || 0,
+          trial: ft ? `${Number(ft['frequency']) || ''} ${String(ft['frequency_type'] || '')}`.trim() : '',
+          initPoint: String(r['init_point'] ?? ''),
+        });
+      }
+      if (rows.length < 100) break; // última página
+    }
+  } catch { /* nos quedamos con lo juntado hasta acá */ }
+  _plansCache = { at: now, data: out };
+  return out;
 }

@@ -4,7 +4,7 @@ import { verifyToken } from '../../middleware/verifyToken';
 import { requireStaff } from '../../middleware/requireStaff';
 import { getPricingByM2, recurringFor } from '../../services/pricing.service';
 import { FieldValue } from 'firebase-admin/firestore';
-import { updateSubscriptionAmount, updatePlanAmount, searchSubscriptions, searchSubscriptionsCached, invalidateSubsCache, getLastChargedMap, getLastChargeAttempt, searchPlans, cancelSubscription, cancelPlan, MpSubscription } from '../../services/mercadopago.service';
+import { updateSubscriptionAmount, updatePlanAmount, searchSubscriptions, searchSubscriptionsCached, invalidateSubsCache, getLastChargedMap, getLastChargeAttempt, searchPlans, invalidatePlansCache, cancelSubscription, cancelPlan, MpSubscription } from '../../services/mercadopago.service';
 import { debtsByBaulera } from '../../services/debts.service';
 import { planKey } from '../../services/planCatalog.service';
 import { logAudit } from '../../services/audit.service';
@@ -355,6 +355,7 @@ async function repriceAndRekeyPlan(
   planId: string, docSnap: FirebaseFirestore.QueryDocumentSnapshot | null, m2n: number, newAmount: number,
 ): Promise<void> {
   await updatePlanAmount(planId, newAmount);
+  invalidatePlansCache(); // el snapshot cacheado de planes quedó con el monto viejo
   if (!docSnap) return;
   const p = docSnap.data() as Record<string, unknown>;
   const q = Number(p['freeTrialQty']) || 0;
