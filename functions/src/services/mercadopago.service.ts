@@ -304,10 +304,19 @@ export async function createPlan(params: { m2: number; amount: number; freeTrial
   // TÍTULO con el CÓDIGO de baulera (plan por baulera, 30/07): la suscripción HEREDA este título,
   // así el cliente ve SU baulera en el checkout. Como cada baulera tiene su propio plan, el código
   // nunca es el de otra. Si no viene código (fallback), queda genérico por medida.
+  //
+  // ⚠️ MP LIMITA `reason` A 60 CARACTERES (spike 29/07: 400 "Reason has more than 60 characters").
+  // El formato largo "Mi Container Baulera A3-050 (1.5m2) (33 dias gratis) - cierra el 1" daba 66 y
+  // MP rechazaba TODA venta con mes/días gratis (las sin trial daban 49 y pasaban). FORMATO
+  // DECIDIDO POR LUCAS (29/07): se saca "Mi Container" (redundante: la cuenta ya es la nuestra) y el
+  // sufijo " - cierra el 1". Queda CÓDIGO + METRAJE ADELANTE, que es lo que el cliente necesita ver
+  // y lo que sobrevive al recorte visual del panel de MP:
+  //   "Baulera A3-050 1.5m2 (33 dias gratis)" = 37 caracteres.
+  // El METRAJE se conserva sí o sí porque planM2 (admin/pricing.ts) lo deduce del reason cuando el
+  // plan no tiene doc local — sin eso, Tarifas queda ciega para esos planes.
   const cod = String(params.bauleraCodigo || '').trim();
-  const reason = `Mi Container Baulera ${cod ? `${cod} (${params.m2}m2)` : `${params.m2}m2`}` +
-    (q > 0 ? ` (${q} ${unidad} gratis)` : '') +
-    (params.billingDay ? ` - cierra el ${params.billingDay}` : '');
+  const reason = (`Baulera ${cod ? `${cod} ${params.m2}m2` : `${params.m2}m2`}` +
+    (q > 0 ? ` (${q} ${unidad} gratis)` : '')).slice(0, 60); // el slice es el cinturón: MP nunca 400 por largo
   const autoRecurring: Record<string, unknown> = {
     frequency: 1,
     frequency_type: 'months',
