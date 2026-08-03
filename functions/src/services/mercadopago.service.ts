@@ -171,6 +171,25 @@ export async function createCheckoutPreference(
   return { preferenceId: d.id, initPoint: d.init_point };
 }
 
+// EXPIRA una preferencia de Checkout Pro: el link de pago único muere para quien lo abra después.
+// Es el equivalente de cancelPlan para los pagos únicos (una preference no se puede "cancelar",
+// pero sí vencer). Se usa al Dar de baja una venta de pago único que nunca se pagó (31/07: un solo
+// link vivo por baulera, nunca dos cobrables a la vez).
+export async function expirePreference(preferenceId: string): Promise<void> {
+  const accessToken = process.env.MP_ACCESS_TOKEN;
+  if (!accessToken) throw new Error('MP_ACCESS_TOKEN not configured');
+  // Vencida hace 1 min, en el formato con offset que pide MP (-03:00 Argentina).
+  const t = new Date(Date.now() - 60_000 - 3 * 3600_000); // hora local ART
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const hasta = `${t.getUTCFullYear()}-${pad(t.getUTCMonth() + 1)}-${pad(t.getUTCDate())}T${pad(t.getUTCHours())}:${pad(t.getUTCMinutes())}:${pad(t.getUTCSeconds())}.000-03:00`;
+  const res = await fetchWithTimeout(`${MP_API_BASE}/checkout/preferences/${encodeURIComponent(preferenceId)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
+    body: JSON.stringify({ expires: true, expiration_date_to: hasta }),
+  }, 10000);
+  if (!res.ok) { const txt = await res.text(); throw new Error(`MP preference expire ${res.status}: ${txt.slice(0, 200)}`); }
+}
+
 // PAGO ÚNICO de DEUDA (SPEC cobros-alineados §5). Checkout Pro por el monto adeudado, con
 // external_reference "DEUDA <debtId>" para que el webhook sepa qué deuda marcar pagada. NO crea
 // suscripción (la suscripción del cliente sigue viva sola, MP la recobra el mes siguiente).

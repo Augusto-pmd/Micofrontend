@@ -5,7 +5,7 @@ import * as admin from 'firebase-admin';
 import * as crypto from 'crypto';
 import { assignRoomForReservation, holdRoomForReservation } from '../../services/assignment.service';
 import { getReservation, createReservation, updateReservation, getReservationByMpPreapprovalId, getReservationByBauleraCodigo } from '../../models/reservation.model';
-import { createSubscription, createCheckoutPreference, createDebtPreference, cancelSubscription, getSubscriptionStatus, invalidateSubsCache, searchSubscriptionsCached, getPreapprovalDetail, setPreapprovalExternalReference, updateSubscriptionAmount } from '../../services/mercadopago.service';
+import { createSubscription, createCheckoutPreference, createDebtPreference, cancelSubscription, cancelPlan, expirePreference, getSubscriptionStatus, invalidateSubsCache, searchSubscriptionsCached, getPreapprovalDetail, setPreapprovalExternalReference, updateSubscriptionAmount } from '../../services/mercadopago.service';
 import { getOrCreateAlignedPlan } from '../../services/planCatalog.service';
 import { resolveSaleUid, customerNormFields } from '../../services/customerMatch.service';
 import { createDebt, DebtTipo, getPendingDebtByBaulera } from '../../services/debts.service';
@@ -156,7 +156,9 @@ adminReservationsRouter.post('/sell', requireAuth, async (req, res: Response) =>
     const uid = await resolveSaleUid({ dni, email, phone });
 
     // Reservar (hold) la baulera 20 min antes de cobrar (evita doble venta y asegura la correcta)
-    const hold = await holdRoomForReservation({ reservationId: id, branchId: sucursalId, m2: Number(m2), targetRoomId: storageRoomId || undefined });
+    // Venta MANUAL → hold INDEFINIDO (31/07): la baulera queda tomada hasta el "Dar de baja" de
+    // Ventas en curso. Nunca dos links vivos de la misma baulera.
+    const hold = await holdRoomForReservation({ reservationId: id, branchId: sucursalId, m2: Number(m2), targetRoomId: storageRoomId || undefined, indefinido: true });
     if (!hold.ok) {
       res.status(409).json({ error: hold.reason === 'sin_stock' ? `Sin stock de ${m2}m2. Ofrece otra medida.` : 'No se pudo reservar la baulera', code: hold.reason, alternativasByM2: hold.alternativasByM2 || {} });
       return;
@@ -257,7 +259,9 @@ adminReservationsRouter.post('/sell-onetime', requireAuth, async (req, res: Resp
     // MACHEO REFORZADO: reusa la identidad del cliente si ya existe (DNI→email→tel); si no, fallback por mail.
     const uid = await resolveSaleUid({ dni, email, phone });
 
-    const hold = await holdRoomForReservation({ reservationId: id, branchId: sucursalId, m2: Number(m2), targetRoomId: storageRoomId || undefined });
+    // Venta MANUAL → hold INDEFINIDO (31/07): la baulera queda tomada hasta el "Dar de baja" de
+    // Ventas en curso. Nunca dos links vivos de la misma baulera.
+    const hold = await holdRoomForReservation({ reservationId: id, branchId: sucursalId, m2: Number(m2), targetRoomId: storageRoomId || undefined, indefinido: true });
     if (!hold.ok) {
       res.status(409).json({ error: hold.reason === 'sin_stock' ? `Sin stock de ${m2}m2. Ofrece otra medida.` : 'No se pudo reservar la baulera', code: hold.reason, alternativasByM2: hold.alternativasByM2 || {} });
       return;
@@ -379,7 +383,9 @@ adminReservationsRouter.post('/sell-plan', requireAuth, async (req, res: Respons
     const uid = await resolveSaleUid({ dni, email, phone });
 
     // HOLD ANTES del plan (30/07): necesitamos saber la baulera para crear el plan POR BAULERA.
-    const hold = await holdRoomForReservation({ reservationId: id, branchId: sucursalId, m2: Number(m2), targetRoomId: storageRoomId || undefined });
+    // Venta MANUAL → hold INDEFINIDO (31/07): la baulera queda tomada hasta el "Dar de baja" de
+    // Ventas en curso. Nunca dos links vivos de la misma baulera.
+    const hold = await holdRoomForReservation({ reservationId: id, branchId: sucursalId, m2: Number(m2), targetRoomId: storageRoomId || undefined, indefinido: true });
     if (!hold.ok) {
       res.status(409).json({ error: hold.reason === 'sin_stock' ? `Sin stock de ${m2}m2. Ofrece otra medida.` : 'No se pudo reservar la baulera', code: hold.reason, alternativasByM2: hold.alternativasByM2 || {} });
       return;
@@ -661,6 +667,24 @@ adminReservationsRouter.post('/:id/cancel', requireAuth, async (req, res: Respon
       }
     }
 
+    // 1.b) MATAR EL LINK (31/07 — regla de Lucas: un solo link vivo por baulera; al dar de baja,
+    // el link de esa venta muere y recién ahí la baulera se vuelve a ofrecer).
+    //  - Venta por PLAN: cancelar el plan en MP. Desde plan-por-venta (aa214dc) el plan es de ESTA
+    //    venta y de nadie más, así que matarlo no afecta a ningún otro cliente. Se hace SIEMPRE que
+    //    haya mpPlanId (aunque ya se haya autorizado: el link del plan seguiría aceptando
+    //    suscriptores nuevos si quedara vivo).
+    //  - PAGO ÚNICO sin pagar: VENCER la preferencia (una preference no se cancela, se vence).
+    // Best-effort: si MP falla acá NO se frena la baja (lo importante —cortar el cobro— ya pasó en
+    // el paso 1); queda asentado en la auditoría qué se pudo matar y qué no.
+    let linkMuerto: string | null = null;
+    if (r.mpPlanId && !String(r.mpPlanId).startsWith('emu-')) {
+      try { await cancelPlan(String(r.mpPlanId)); linkMuerto = 'plan'; }
+      catch (e) { linkMuerto = 'plan_fallo'; console.warn('[cancel] no se pudo cancelar el plan en MP', e); }
+    } else if (r.paymentMode === 'onetime' && r.mpPreferenceId && r.status === 'pending_payment' && !String(r.mpPreferenceId).startsWith('emu-')) {
+      try { await expirePreference(String(r.mpPreferenceId)); linkMuerto = 'pago_unico'; }
+      catch (e) { linkMuerto = 'pago_unico_fallo'; console.warn('[cancel] no se pudo vencer la preferencia en MP', e); }
+    }
+
     // 2) Marcar la reserva de baja (mismo shape que la baja vía webhook)
     await db.collection('reservations').doc(req.params.id).update({
       status: 'cancelled',
@@ -685,7 +709,7 @@ adminReservationsRouter.post('/:id/cancel', requireAuth, async (req, res: Respon
       } catch (e) { console.warn('[cancel] no se pudo desanexar el customer de la baulera', e); }
       await roomRef.set({
         status: 'available', customerId: null, currentTenant: null, contractNumber: null,
-        reservationId: null, heldUntil: null, heldByReservationId: null,
+        reservationId: null, heldUntil: null, heldByReservationId: null, holdIndefinido: null,
         updatedAt: new Date().toISOString(),
       }, { merge: true });
     }
@@ -696,7 +720,7 @@ adminReservationsRouter.post('/:id/cancel', requireAuth, async (req, res: Respon
       role: 'admin',
       action: 'baja_suscripcion',
       entity: 'reservation', entityId: req.params.id, branchId: r.sucursalId,
-      detail: { cliente: r.customerName || '', baulera: r.bauleraCodigo || r.storageRoomId || null, dadaDeBajaPor: 'admin', teniaSubMP: !!r.mpPreapprovalId, paymentMode: r.paymentMode || 'subscription' },
+      detail: { cliente: r.customerName || '', baulera: r.bauleraCodigo || r.storageRoomId || null, dadaDeBajaPor: 'admin', teniaSubMP: !!r.mpPreapprovalId, paymentMode: r.paymentMode || 'subscription', linkMuerto },
     });
 
     // Invalidar cachés (auditoría ventas 16/07 — C2): sin esto, la sub recién cancelada seguía
@@ -779,7 +803,7 @@ adminReservationsRouter.post('/liberar-baulera', requireAuth, async (req, res: R
     // Liberar la baulera.
     await roomRef.set({
       status: 'available', customerId: null, currentTenant: null, contractNumber: null,
-      reservationId: null, heldUntil: null, heldByReservationId: null, updatedAt: new Date().toISOString(),
+      reservationId: null, heldUntil: null, heldByReservationId: null, holdIndefinido: null, updatedAt: new Date().toISOString(),
     }, { merge: true });
 
     await logAudit({

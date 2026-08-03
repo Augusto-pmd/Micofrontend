@@ -4,20 +4,25 @@ import { Reservation } from '../models/reservation.model';
 const HOLD_MINUTES = 20;
 
 // Libera las bauleras "reserved" cuyo hold ya vencio (vuelven a 'available').
+// EXCEPTO las de hold INDEFINIDO (ventas manuales, 31/07): esas no vencen nunca — la baulera queda
+// tomada hasta que el staff aprieta "Dar de baja" en Ventas en curso (proceso de Lucas: una baulera
+// con link mandado no se vuelve a ofrecer hasta saber si el cliente contrata o no).
 export async function releaseExpiredHolds(branchId?: string): Promise<number> {
   const nowIso = new Date().toISOString();
   let q: FirebaseFirestore.Query = db.collection('storageRooms').where('status', '==', 'reserved');
   if (branchId) q = q.where('branchId', '==', branchId);
   const snap = await q.get();
   const expired = snap.docs.filter((d) => {
-    const h = (d.data() as Record<string, unknown>).heldUntil;
+    const r = d.data() as Record<string, unknown>;
+    if (r.holdIndefinido === true) return false; // venta manual: solo la libera Dar de baja
+    const h = r.heldUntil;
     return !h || String(h) <= nowIso;
   });
   let n = 0;
   for (let i = 0; i < expired.length; i += 400) {
     const b = db.batch();
     expired.slice(i, i + 400).forEach((d) => {
-      b.update(d.ref, { status: 'available', heldUntil: null, heldByReservationId: null, updatedAt: nowIso });
+      b.update(d.ref, { status: 'available', heldUntil: null, heldByReservationId: null, holdIndefinido: null, updatedAt: nowIso });
       n++;
     });
     await b.commit();
@@ -48,15 +53,19 @@ export interface HoldResult {
   alternativasByM2?: Record<string, number>;
 }
 
-// Bloquea (hold) una baulera por HOLD_MINUTES al generar el link de pago.
+// Bloquea (hold) una baulera al generar el link de pago.
+// - Web (default): por HOLD_MINUTES; si nadie paga, la baulera vuelve sola al pool.
+// - Venta MANUAL (indefinido: true, 31/07): SIN vencimiento — queda tomada hasta el "Dar de baja"
+//   manual. Así ni el panel ni la web pueden re-vender una baulera con un link vivo dando vueltas,
+//   y nunca existen dos links cobrables de la misma baulera.
 // Si targetRoomId esta libre y es de la medida, usa esa; si no, otra libre de la misma
 // medida. Si no hay stock de esa medida, devuelve ok:false + alternativas.
 export async function holdRoomForReservation(opts: {
-  reservationId: string; branchId: string; m2: number; targetRoomId?: string; minutes?: number;
+  reservationId: string; branchId: string; m2: number; targetRoomId?: string; minutes?: number; indefinido?: boolean;
 }): Promise<HoldResult> {
   await releaseExpiredHolds(opts.branchId).catch(() => {});
   const minutes = opts.minutes ?? HOLD_MINUTES;
-  const heldUntil = new Date(Date.now() + minutes * 60_000).toISOString();
+  const heldUntil = opts.indefinido ? null : new Date(Date.now() + minutes * 60_000).toISOString();
   const now = new Date().toISOString();
   const m2 = Number(opts.m2);
 
@@ -87,9 +96,11 @@ export async function holdRoomForReservation(opts: {
 
       const r = (pick.data() || {}) as Record<string, unknown>;
       tx.update(pick.ref, {
-        status: 'reserved', heldUntil, heldByReservationId: opts.reservationId, updatedAt: now,
+        status: 'reserved', heldUntil, heldByReservationId: opts.reservationId,
+        holdIndefinido: opts.indefinido === true ? true : null,
+        updatedAt: now,
       });
-      return { ok: true, roomId: pick.id, bauleraCodigo: (r.space as string) || null, heldUntil };
+      return { ok: true, roomId: pick.id, bauleraCodigo: (r.space as string) || null, heldUntil: heldUntil || undefined };
     });
 
     if (!res.ok && res.reason === 'sin_stock') {
@@ -164,6 +175,7 @@ export async function assignRoomForReservation(reservation: Reservation, targetR
         reservationId: reservation.id,
         heldUntil: null,
         heldByReservationId: null,
+        holdIndefinido: null,
         updatedAt: now,
       });
 

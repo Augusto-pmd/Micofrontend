@@ -373,6 +373,7 @@ async function processWebhook(body: Record<string, unknown>): Promise<void> {
         reservationId: null,
         heldUntil: null,
         heldByReservationId: null,
+        holdIndefinido: null,
         updatedAt: new Date().toISOString(),
       }, { merge: true });
     }

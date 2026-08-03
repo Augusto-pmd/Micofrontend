@@ -48,7 +48,7 @@ export async function limpiarPendientesVencidos(): Promise<{ reservasCanceladas:
         const rs = await roomRef.get();
         const room = rs.exists ? (rs.data() as Record<string, unknown>) : null;
         if (room && room['status'] !== 'occupied' && (room['heldByReservationId'] === d.id || room['reservationId'] === d.id)) {
-          await roomRef.set({ status: 'available', heldUntil: null, heldByReservationId: null, reservationId: null, updatedAt: new Date().toISOString() }, { merge: true });
+          await roomRef.set({ status: 'available', heldUntil: null, heldByReservationId: null, holdIndefinido: null, reservationId: null, updatedAt: new Date().toISOString() }, { merge: true });
         }
       } catch { /* la baulera queda como esté; el hold vence solo igual */ }
     }
