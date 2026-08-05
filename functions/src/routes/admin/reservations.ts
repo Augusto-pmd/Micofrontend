@@ -5,7 +5,7 @@ import * as admin from 'firebase-admin';
 import * as crypto from 'crypto';
 import { assignRoomForReservation, holdRoomForReservation } from '../../services/assignment.service';
 import { getReservation, createReservation, updateReservation, getReservationByMpPreapprovalId, getReservationByBauleraCodigo } from '../../models/reservation.model';
-import { createSubscription, createCheckoutPreference, createDebtPreference, cancelSubscription, cancelPlan, expirePreference, getSubscriptionStatus, invalidateSubsCache, searchSubscriptionsCached, getPreapprovalDetail, setPreapprovalExternalReference, updateSubscriptionAmount } from '../../services/mercadopago.service';
+import { createSubscription, createCheckoutPreference, createDebtPreference, cancelSubscription, cancelPlan, expirePreference, getSubscriptionStatus, invalidateSubsCache, searchSubscriptionsCached, searchPlans, invalidatePlansCache, getPreapprovalDetail, setPreapprovalExternalReference, updateSubscriptionAmount } from '../../services/mercadopago.service';
 import { getOrCreateAlignedPlan } from '../../services/planCatalog.service';
 import { resolveSaleUid, customerNormFields } from '../../services/customerMatch.service';
 import { createDebt, DebtTipo, getPendingDebtByBaulera } from '../../services/debts.service';
@@ -737,14 +737,25 @@ adminReservationsRouter.post('/:id/cancel', requireAuth, async (req, res: Respon
 });
 
 // POST /admin/reservations/liberar-baulera — LIBERAR una baulera OCUPADA desde Inventario, incluso
-// las LEGACY (vendidas antes de la web, sin reserva → no aparecen en Ventas). Body: { roomId,
-// cortarSub? }. SIEMPRE: marca la baulera disponible, desanexa al cliente y cancela la reserva si
-// hay. cortarSub=true: además busca la suscripción viva de esa baulera en MP (por preapprovalId de
-// la reserva, o por código de baulera en el external_reference) y la CANCELA (corta el cobro).
+// las LEGACY (vendidas antes de la web, sin reserva → no aparecen en Ventas). Body: { roomId }.
+//
+// LIBERAR = DEJAR LA BAULERA COMO NUEVA (orden Lucas 05/08). Hace SIEMPRE las cuatro cosas:
+//   1. CORTA EL COBRO: cancela la suscripción anexada a esa baulera en MP. Ya no es opcional
+//      (antes dependía de `cortarSub`, y liberar sin cortar dejaba al cliente pagando una baulera
+//      que ya se había revendido).
+//   2. MATA EL/LOS LINK(S): cancela en MP todo plan que nombre a esta baulera. Con plan por baulera
+//      y por venta (30/07) una baulera puede tener varios planes vivos (uno por click de Vender);
+//      si quedara alguno, ese link seguiría aceptando suscriptores NUEVOS sobre una baulera ya
+//      revendida. Es la misma regla que "Dar de baja" (un solo link vivo por baulera, 31/07).
+//   3. Cancela la reserva si existe.
+//   4. Desanexa al cliente y marca la baulera disponible.
+//
+// El corte del cobro es BLOQUEANTE (si MP no acepta, se aborta y no se libera: la plata manda).
+// Matar los links es best-effort: si MP falla ahí, la baja ya ocurrió y queda en la auditoría qué
+// link no se pudo matar, para cancelarlo a mano desde Tarifas → Planes de MP.
 adminReservationsRouter.post('/liberar-baulera', requireAuth, async (req, res: Response) => {
   try {
     const roomId = String(req.body?.roomId || '');
-    const cortarSub = req.body?.cortarSub === true;
     if (!roomId) { res.status(400).json({ error: 'Falta roomId' }); return; }
     const roomRef = db.collection('storageRooms').doc(roomId);
     const roomSnap = await roomRef.get();
@@ -753,14 +764,20 @@ adminReservationsRouter.post('/liberar-baulera', requireAuth, async (req, res: R
     const code = String(room['space'] || room['name'] || '');
 
     // Reserva vinculada (si la baulera es de la web/Vender). Legacy puede no tener.
-    let reserva: { id: string; mpPreapprovalId?: string } | null = null;
+    // Se trae también el mpPlanId: es el link de ESA venta, el primero que hay que matar.
+    let reserva: { id: string; mpPreapprovalId?: string; mpPlanId?: string } | null = null;
+    const leerReserva = (id: string, d: Record<string, unknown>) => ({
+      id,
+      mpPreapprovalId: d['mpPreapprovalId'] ? String(d['mpPreapprovalId']) : undefined,
+      mpPlanId: d['mpPlanId'] ? String(d['mpPlanId']) : undefined,
+    });
     if (room['reservationId']) {
       const rs = await db.collection('reservations').doc(String(room['reservationId'])).get();
-      if (rs.exists) { const d = rs.data() as Record<string, unknown>; reserva = { id: rs.id, mpPreapprovalId: d['mpPreapprovalId'] ? String(d['mpPreapprovalId']) : undefined }; }
+      if (rs.exists) reserva = leerReserva(rs.id, rs.data() as Record<string, unknown>);
     }
     if (!reserva) {
       const rs = await db.collection('reservations').where('storageRoomId', '==', roomId).where('status', '==', 'active').limit(1).get();
-      if (!rs.empty) { const d = rs.docs[0].data() as Record<string, unknown>; reserva = { id: rs.docs[0].id, mpPreapprovalId: d['mpPreapprovalId'] ? String(d['mpPreapprovalId']) : undefined }; }
+      if (!rs.empty) reserva = leerReserva(rs.docs[0].id, rs.docs[0].data() as Record<string, unknown>);
     }
 
     // Determinar la sub a cancelar (para el aviso y/o el corte).
@@ -778,8 +795,10 @@ adminReservationsRouter.post('/liberar-baulera', requireAuth, async (req, res: R
       } catch (e) { console.warn('[liberar] no se pudo buscar la sub por código', e); }
     }
 
+    // 1) CORTAR EL COBRO — SIEMPRE (ya no depende de un check). BLOQUEANTE: si MP no acepta, se
+    //    aborta ANTES de liberar; si no, quedaría una baulera libre con un cliente pagándola.
     let subCancelada = false;
-    if (cortarSub && subId) {
+    if (subId) {
       try { await cancelSubscription(subId); subCancelada = true; }
       catch (e) {
         const st = await getSubscriptionStatus(subId);
@@ -788,7 +807,30 @@ adminReservationsRouter.post('/liberar-baulera', requireAuth, async (req, res: R
       }
     }
 
-    // Cancelar la reserva si existe (para que no quede activa colgando).
+    // 2) MATAR EL/LOS LINK(S) DE PLAN de esta baulera (best-effort, no frena la liberación).
+    //    (a) el plan de la reserva; (b) TODO plan activo de MP cuyo título nombre esta baulera —
+    //    cubre las LEGACY (sin reserva) y los planes de ventas anteriores de la misma baulera, que
+    //    con plan-por-venta (30/07) pueden ser varios. Comparación por canon(), nunca includes().
+    const planesMuertos: string[] = [];
+    const planesFallados: string[] = [];
+    const matarPlan = async (planId: string) => {
+      if (!planId || planId.startsWith('emu-') || planesMuertos.includes(planId) || planesFallados.includes(planId)) return;
+      try { await cancelPlan(planId); planesMuertos.push(planId); }
+      catch (e) { planesFallados.push(planId); console.warn(`[liberar] no se pudo cancelar el plan ${planId} en MP`, e); }
+    };
+    if (reserva?.mpPlanId) await matarPlan(reserva.mpPlanId);
+    if (code) {
+      try {
+        const planes = await searchPlans();
+        for (const p of planes) {
+          if (p.status !== 'active') continue;
+          if (codigoDeRef(p.reason) !== canon(code)) continue; // solo los que nombran ESTA baulera
+          await matarPlan(p.id);
+        }
+      } catch (e) { console.warn('[liberar] no se pudieron listar los planes de MP', e); }
+    }
+
+    // 3) Cancelar la reserva si existe (para que no quede activa colgando).
     if (reserva) {
       await db.collection('reservations').doc(reserva.id).update({
         status: 'cancelled', mpSubscriptionStatus: 'cancelled',
@@ -809,12 +851,23 @@ adminReservationsRouter.post('/liberar-baulera', requireAuth, async (req, res: R
     await logAudit({
       actor: (req as unknown as { email?: string }).email || 'admin', via: 'admin', action: 'liberar_baulera',
       entity: 'storageRoom', entityId: roomId,
-      detail: { baulera: code, cortarSub, subId: subId || null, subCancelada, teniaReserva: !!reserva, ocupanteAnterior: room['currentTenant'] || null },
+      detail: {
+        baulera: code, subId: subId || null, subCancelada, teniaReserva: !!reserva,
+        ocupanteAnterior: room['currentTenant'] || null,
+        // Queda asentado qué links se mataron y cuáles NO (esos hay que cancelarlos a mano
+        // desde Tarifas → Planes de MP, o seguirían aceptando suscriptores nuevos).
+        planesMuertos, planesFallados,
+      },
     });
     invalidateSubsCache();
     invalidateRechazadosCache();
+    invalidatePlansCache(); // el snapshot cacheado tenía los planes recién cancelados como activos
 
-    res.json({ liberada: true, baulera: code, subEncontrada: !!subId, subCancelada, subId: subId || null });
+    res.json({
+      liberada: true, baulera: code,
+      subEncontrada: !!subId, subCancelada, subId: subId || null,
+      linksMuertos: planesMuertos.length, linksFallados: planesFallados,
+    });
   } catch (err) {
     console.error('POST /admin/reservations/liberar-baulera error:', err);
     res.status(500).json({ error: 'No se pudo liberar la baulera' });
