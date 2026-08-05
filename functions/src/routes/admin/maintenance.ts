@@ -1,4 +1,4 @@
-import { Router, Response } from 'express';
+import { Router, Request, Response } from 'express';
 import { requireAuth } from '../../middleware/requireAuth';
 import { db } from '../../config/firebase';
 import { logAudit } from '../../services/audit.service';
@@ -92,6 +92,109 @@ adminMaintenanceRouter.post('/rooms-cleanup', requireAuth, async (req, res: Resp
     res.json({ backed, deleted, restantes: snap.size - deleted, backupStamp: stamp });
   } catch (err) {
     console.error('POST /admin/maintenance/rooms-cleanup error:', err);
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// ── INQUILINOS HUÉRFANOS EN BAULERAS LIBRES ─────────────────────────────────────────────────
+// Barrido de una sola vez por el bug del 05/08: al liberar/dar de baja quedaban punteros del
+// inquilino anterior vivos, y la ficha volvía a mostrarlo. El bug ya está arreglado (liberar limpia
+// por customerId + bauleraCodigo + storageRoomId, y borra tenantEmail/tenantDni), pero las bauleras
+// liberadas ANTES del fix arrastran la basura. Esto la limpia.
+//
+// Qué se considera huérfano en una baulera DISPONIBLE:
+//   - customers con bauleraCodigo o storageRoomId apuntando a ella
+//   - la propia baulera con tenantEmail / tenantDni / currentTenant / contractNumber / customerId
+// NO toca bauleras ocupadas ni borra ningún cliente: solo despega punteros.
+
+interface HuerfanoRoom { roomId: string; baulera: string; enBaulera: string[]; customers: string[]; }
+
+async function detectarInquilinosHuerfanos(): Promise<HuerfanoRoom[]> {
+  const [rooms, customers] = await Promise.all([
+    db.collection('storageRooms').get(),
+    db.collection('customers').get(),
+  ]);
+  // Índices de clientes por sus punteros a baulera.
+  const custPorCodigo = new Map<string, string[]>();
+  const custPorRoom = new Map<string, string[]>();
+  customers.forEach((c) => {
+    const d = c.data() as Record<string, unknown>;
+    const cod = String(d['bauleraCodigo'] || '').trim();
+    const rid = String(d['storageRoomId'] || '').trim();
+    if (cod) { if (!custPorCodigo.has(cod)) custPorCodigo.set(cod, []); custPorCodigo.get(cod)!.push(c.id); }
+    if (rid) { if (!custPorRoom.has(rid)) custPorRoom.set(rid, []); custPorRoom.get(rid)!.push(c.id); }
+  });
+
+  const out: HuerfanoRoom[] = [];
+  rooms.forEach((r) => {
+    const d = r.data() as Record<string, unknown>;
+    if (String(d['status'] || '') !== 'available') return; // SOLO bauleras libres
+    const code = String(d['space'] || d['name'] || '').trim();
+    const enBaulera = ['tenantEmail', 'tenantDni', 'currentTenant', 'contractNumber', 'customerId']
+      .filter((k) => d[k] !== undefined && d[k] !== null && String(d[k]).trim() !== '');
+    const ids = new Set<string>([...(custPorCodigo.get(code) || []), ...(custPorRoom.get(r.id) || [])]);
+    if (enBaulera.length === 0 && ids.size === 0) return;
+    out.push({ roomId: r.id, baulera: code || r.id, enBaulera, customers: [...ids] });
+  });
+  return out.sort((a, b) => a.baulera.localeCompare(b.baulera));
+}
+
+// GET /admin/maintenance/inquilinos-huerfanos — REPORTE (no toca nada).
+adminMaintenanceRouter.get('/inquilinos-huerfanos', requireAuth, async (_req, res: Response) => {
+  try {
+    const items = await detectarInquilinosHuerfanos();
+    res.json({
+      bauleras: items.length,
+      customersAfectados: new Set(items.flatMap((i) => i.customers)).size,
+      detalle: items.slice(0, 200),
+    });
+  } catch (err) {
+    console.error('GET /admin/maintenance/inquilinos-huerfanos error:', err);
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// POST /admin/maintenance/inquilinos-huerfanos { confirm:true } — LIMPIA.
+// Respalda cada baulera en 'storageRooms_backup' antes de tocarla (reversible), igual que rooms-cleanup.
+adminMaintenanceRouter.post('/inquilinos-huerfanos', requireAuth, async (req: Request, res: Response) => {
+  try {
+    if (req.body?.confirm !== true) { res.status(400).json({ error: 'Falta confirm:true' }); return; }
+    const items = await detectarInquilinosHuerfanos();
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const custLimpiados = new Set<string>();
+    let bauleras = 0;
+
+    for (const it of items) {
+      const roomRef = db.collection('storageRooms').doc(it.roomId);
+      // Backup antes de tocar (100% reversible).
+      const snap = await roomRef.get();
+      if (snap.exists) {
+        await db.collection('storageRooms_backup').doc(`${stamp}__${it.roomId}`)
+          .set({ ...(snap.data() as Record<string, unknown>), _backupOf: it.roomId, _backupAt: stamp, _motivo: 'inquilinos-huerfanos' });
+      }
+      if (it.enBaulera.length) {
+        await roomRef.set({
+          customerId: null, currentTenant: null, contractNumber: null,
+          tenantEmail: null, tenantDni: null, updatedAt: new Date().toISOString(),
+        }, { merge: true });
+      }
+      for (const cid of it.customers) {
+        if (custLimpiados.has(cid)) continue;
+        await db.collection('customers').doc(cid).set(
+          { bauleraCodigo: null, storageRoomId: null, updatedAt: new Date().toISOString() }, { merge: true });
+        custLimpiados.add(cid);
+      }
+      bauleras++;
+    }
+
+    await logAudit({
+      actor: (req as unknown as { email?: string }).email || 'admin', via: 'admin',
+      action: 'limpieza_inquilinos_huerfanos', entity: 'storageRooms',
+      detail: { bauleras, customersDesanexados: custLimpiados.size, backupStamp: stamp },
+    });
+    res.json({ bauleras, customersDesanexados: custLimpiados.size, backupStamp: stamp });
+  } catch (err) {
+    console.error('POST /admin/maintenance/inquilinos-huerfanos error:', err);
     res.status(500).json({ error: String(err) });
   }
 });
