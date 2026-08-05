@@ -694,24 +694,15 @@ adminReservationsRouter.post('/:id/cancel', requireAuth, async (req, res: Respon
       bajaGestionada: true,
     });
 
-    // 3) Liberar la baulera — y DESANEXAR el puntero del cliente (auditoría integridad 16/07:
-    // customers.bauleraCodigo quedaba vivo tras la baja → el fallback de la ficha podía traer los
-    // datos del inquilino anterior al revender).
+    // 3) Liberar la baulera — y DESANEXAR al inquilino por todas las vías (auditoría integridad
+    // 16/07 + fix 05/08): si queda un puntero vivo, el fallback de la ficha trae los datos del
+    // inquilino anterior. Ver desanexarInquilinoDeBaulera.
     if (r.storageRoomId) {
       const roomRef = db.collection('storageRooms').doc(String(r.storageRoomId));
       try {
         const rs = await roomRef.get();
-        const custId = rs.exists ? String((rs.data() as Record<string, unknown>)['customerId'] || '') : '';
-        if (custId) {
-          await db.collection('customers').doc(custId).set(
-            { bauleraCodigo: null, storageRoomId: null, updatedAt: new Date().toISOString() }, { merge: true });
-        }
-      } catch (e) { console.warn('[cancel] no se pudo desanexar el customer de la baulera', e); }
-      await roomRef.set({
-        status: 'available', customerId: null, currentTenant: null, contractNumber: null,
-        reservationId: null, heldUntil: null, heldByReservationId: null, holdIndefinido: null,
-        updatedAt: new Date().toISOString(),
-      }, { merge: true });
+        await desanexarInquilinoDeBaulera(roomRef, rs.exists ? (rs.data() as Record<string, unknown>) : {});
+      } catch (e) { console.warn('[cancel] no se pudo desanexar el inquilino de la baulera', e); }
     }
 
     await logAudit({
@@ -735,6 +726,50 @@ adminReservationsRouter.post('/:id/cancel', requireAuth, async (req, res: Respon
     res.status(500).json({ error: 'No se pudo dar de baja' });
   }
 });
+
+// DESANEXAR EL INQUILINO DE UNA BAULERA — deja la baulera SIN rastro del cliente anterior.
+// (Bug real 05/08: tras liberar, la ficha seguía mostrando al cliente viejo.) Antes se limpiaba
+// SOLO el customer apuntado por room.customerId, y quedaban tres fugas:
+//   1. Bauleras LEGACY sin customerId → no se limpiaba NINGÚN customer, y el customer seguía con
+//      su bauleraCodigo apuntando acá → el fallback de la ficha lo volvía a traer.
+//   2. Podía haber MÁS de un customer apuntando a la misma baulera (inquilinos anteriores que
+//      nunca se desanexaron) → alcanzaba con que quedara uno.
+//   3. tenantEmail / tenantDni viven en la BAULERA (los escribe el import de la planilla, sync.ts:41-42)
+//      y no los borraba nadie → el mailing (leads.ts:31) le seguía escribiendo al inquilino viejo.
+// Ahora se limpian los customers por las TRES vías (customerId, bauleraCodigo, storageRoomId) y se
+// borran los datos de inquilino de la propia baulera.
+async function desanexarInquilinoDeBaulera(
+  roomRef: FirebaseFirestore.DocumentReference, room: Record<string, unknown>,
+): Promise<number> {
+  const code = String(room['space'] || room['name'] || '').trim();
+  const custIds = new Set<string>();
+  const custId = String(room['customerId'] || '').trim();
+  if (custId) custIds.add(custId);
+  try {
+    const [porCodigo, porRoom] = await Promise.all([
+      code ? db.collection('customers').where('bauleraCodigo', '==', code).limit(20).get() : null,
+      db.collection('customers').where('storageRoomId', '==', roomRef.id).limit(20).get(),
+    ]);
+    porCodigo?.forEach((d) => custIds.add(d.id));
+    porRoom.forEach((d) => custIds.add(d.id));
+  } catch (e) { console.warn('[desanexar] no se pudieron buscar customers de la baulera', e); }
+
+  for (const id of custIds) {
+    try {
+      await db.collection('customers').doc(id).set(
+        { bauleraCodigo: null, storageRoomId: null, updatedAt: new Date().toISOString() }, { merge: true });
+    } catch (e) { console.warn(`[desanexar] no se pudo desanexar el customer ${id}`, e); }
+  }
+
+  // Datos del inquilino que viven en la baulera: se borran junto con la ocupación.
+  await roomRef.set({
+    status: 'available', customerId: null, currentTenant: null, contractNumber: null,
+    tenantEmail: null, tenantDni: null,
+    reservationId: null, heldUntil: null, heldByReservationId: null, holdIndefinido: null,
+    updatedAt: new Date().toISOString(),
+  }, { merge: true });
+  return custIds.size;
+}
 
 // POST /admin/reservations/liberar-baulera — LIBERAR una baulera OCUPADA desde Inventario, incluso
 // las LEGACY (vendidas antes de la web, sin reserva → no aparecen en Ventas). Body: { roomId }.
@@ -837,23 +872,16 @@ adminReservationsRouter.post('/liberar-baulera', requireAuth, async (req, res: R
         cancelledAt: admin.firestore.Timestamp.now(), cancelledBy: 'admin', bajaGestionada: true,
       });
     }
-    // Desanexar al cliente pegado (adiós fichas fantasma).
-    const custId = String(room['customerId'] || '');
-    if (custId) {
-      await db.collection('customers').doc(custId).set({ bauleraCodigo: null, storageRoomId: null, updatedAt: new Date().toISOString() }, { merge: true });
-    }
-    // Liberar la baulera.
-    await roomRef.set({
-      status: 'available', customerId: null, currentTenant: null, contractNumber: null,
-      reservationId: null, heldUntil: null, heldByReservationId: null, holdIndefinido: null, updatedAt: new Date().toISOString(),
-    }, { merge: true });
+    // 4) Desanexar al inquilino (por customerId, por bauleraCodigo y por storageRoomId) + borrar
+    //    los datos de inquilino de la baulera + marcarla disponible. Adiós fichas fantasma.
+    const customersDesanexados = await desanexarInquilinoDeBaulera(roomRef, room);
 
     await logAudit({
       actor: (req as unknown as { email?: string }).email || 'admin', via: 'admin', action: 'liberar_baulera',
       entity: 'storageRoom', entityId: roomId,
       detail: {
         baulera: code, subId: subId || null, subCancelada, teniaReserva: !!reserva,
-        ocupanteAnterior: room['currentTenant'] || null,
+        ocupanteAnterior: room['currentTenant'] || null, customersDesanexados,
         // Queda asentado qué links se mataron y cuáles NO (esos hay que cancelarlos a mano
         // desde Tarifas → Planes de MP, o seguirían aceptando suscriptores nuevos).
         planesMuertos, planesFallados,

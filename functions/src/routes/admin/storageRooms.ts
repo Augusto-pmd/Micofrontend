@@ -152,6 +152,15 @@ storageRoomsRouter.get('/:id', verifyToken, async (req: Request, res: Response) 
     // el cobro de deuda se bloquea porque exige email): si el contrato/customer no aparecen o vienen
     // SIN email, completar desde (1) la reserva de la baulera y (2) el customer por código de baulera.
     // Nunca pisa datos que ya están: solo llena los huecos.
+    // GUARD BAULERA LIBRE (fix 05/08): los fallbacks de abajo son para completar los datos de una
+    // baulera OCUPADA a la que le faltan (caso Débora A3-012). Si la baulera está DISPONIBLE no hay
+    // inquilino, punto: buscarlo igual traía al anterior. El agujero estaba en el guard anti-inquilino-
+    // viejo (`if (!actual) return true`): al liberar, currentTenant queda null → sin nombre contra el
+    // cual comparar, el guard aceptaba a cualquier customer que todavía apuntara a la baulera.
+    if (raw.status === 'available') {
+      res.json({ ...raw, building: buildings[raw.buildingId] || null, tenant: null });
+      return;
+    }
     if (!tenant || !tenant.email) {
       try {
         let r: any = null;
