@@ -1,15 +1,29 @@
 import { Router, Request, Response } from 'express';
 import { db } from '../config/firebase';
+import { getPricingByM2 } from '../services/pricing.service';
 
 // Asesor virtual de Mi Container, potenciado por la API de Claude (Anthropic).
 // Lee la disponibilidad real de stock y responde como experto del sistema.
 export const chatRouter = Router();
 
-const PRICES: Record<string, number> = {
-  '1.5': 53550, '2': 71400, '3': 88200, '5': 139230, '5.1': 139230,
-  '6': 151200, '8': 204120, '8.1': 204120, '9': 207900,
-  '11.25': 259875, '13.5': 283500, '15': 441000,
-};
+// PRECIOS EN VIVO (fix 05/08): antes la tabla estaba HARDCODEADA acá y nunca se actualizó al
+// cambiar las tarifas → Yamila le cotizaba precios viejos a clientes reales (1.5m² $53.550 cuando
+// ya valía $60.000; 9m² $207.900 cuando valía $233.000). Ahora sale de la MISMA fuente que la web,
+// Tarifas y las ventas (`pricing/<branchId>.byM2`, con los cambios programados ya aplicados).
+// Si la lectura falla se devuelve vacío A PROPÓSITO: es preferible que Yamila diga "te paso el
+// precio por WhatsApp" a que invente un número viejo y el cliente lo tome por válido.
+async function preciosText(branchId = 'nordelta'): Promise<string> {
+  try {
+    const byM2 = await getPricingByM2(branchId);
+    return Object.entries(byM2)
+      .filter(([m2, p]) => Number(m2) > 0 && Number(p) > 0)
+      .sort((a, b) => Number(a[0]) - Number(b[0]))
+      .map(([m2, p]) => `${m2} m2 = $${Number(p).toLocaleString('es-AR')}/mes`)
+      .join(' | ');
+  } catch {
+    return '';
+  }
+}
 
 async function availabilityText(): Promise<string> {
   try {
@@ -27,10 +41,7 @@ async function availabilityText(): Promise<string> {
   }
 }
 
-function systemPrompt(avail: string): string {
-  const tabla = Object.entries(PRICES)
-    .map(([m2, p]) => `${m2} m2 = $${p.toLocaleString('es-AR')}/mes`)
-    .join(' | ');
+function systemPrompt(avail: string, tabla: string): string {
   return [
     'Sos Yamila, la secretaria de Mi Container (self-storage en Nordelta, Tigre, GBA Norte, Argentina). Atendes a los clientes por chat como una persona real del equipo.',
     'Hablas en español rioplatense (de "vos"), calida, cercana y natural, como una secretaria de verdad: saludas, te interesas por lo que necesita la persona, usas su nombre si te lo dice, y haces mensajes cortos y humanos. Podes usar algun emoji con moderacion.',
@@ -40,7 +51,9 @@ function systemPrompt(avail: string): string {
     '',
     'CÓMO FUNCIONA: el cliente reserva online en 5 minutos, paga con Mercado Pago (tarjeta), sube una selfie desde el portal y entra con reconocimiento facial las 24 hs, sin turno. Sin depósito, sin permanencia. Beneficios: 1° mes gratis y 20% off pagando anual.',
     'SUCURSALES: Nordelta (Av. de los Lagos 7250; Lun-Vie 8-17 hs, Sáb 9-13 hs). Vicente López (Av. Maipú 2840) abre próximamente.',
-    'MEDIDAS Y PRECIOS (con IVA, mensual): ' + tabla + '.',
+    tabla
+      ? 'MEDIDAS Y PRECIOS (con IVA, mensual): ' + tabla + '.'
+      : 'PRECIOS: no los tenés a mano en este momento. NO inventes ni estimes ningún precio: decí que se los pasás por WhatsApp o que los vea en la web.',
     'DISPONIBILIDAD ACTUAL (en vivo): ' + avail,
     '',
     'QUÉ HACÉS:',
@@ -66,7 +79,7 @@ chatRouter.post('/', async (req: Request, res: Response) => {
       res.status(503).json({ reply: 'El asistente todavía no está configurado. Escribinos por WhatsApp y te ayudamos.' });
       return;
     }
-    const avail = await availabilityText();
+    const [avail, tabla] = await Promise.all([availabilityText(), preciosText()]);
     const clean = messages
       .filter((m: any) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
       .slice(-12)
@@ -82,7 +95,7 @@ chatRouter.post('/', async (req: Request, res: Response) => {
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001', // configurable: cambiar por sonnet para más calidad
         max_tokens: 600,
-        system: systemPrompt(avail),
+        system: systemPrompt(avail, tabla),
         messages: clean,
       }),
     });
