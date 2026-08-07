@@ -19,6 +19,14 @@ import { sendActivationEmail, sendRebillEmail } from '../../services/customerAut
 export const adminReservationsRouter = Router();
 
 // GET /admin/reservations — lista todas las reservas (MP + manuales)
+//
+// BUSCADOR SOBRE TODO EL PADRÓN (fix 06/08): el filtro de búsqueda es en memoria (substring: no es
+// indexable en Firestore), pero antes se aplicaba SOBRE LA PÁGINA YA RECORTADA — o sea, buscaba solo
+// dentro de las `limit` más nuevas. Caso real: la reserva de A2-042 (Marcelo Rivas, 16/07, activa y
+// sin sub vinculada) no aparecía ni listada ni buscándola por nombre, así que no había forma de
+// llegar al botón "Vincular MP". Ahora, CUANDO HAY BÚSQUEDA, se escanea todo el padrón (tope de
+// seguridad) y recién después se recorta. Sin búsqueda, se mantiene la paginación de siempre.
+const SEARCH_SCAN_CAP = 3000;
 adminReservationsRouter.get('/', requireAuth, async (req, res: Response) => {
   try {
     const limit  = parseInt(req.query['limit']  as string) || 50;
@@ -30,7 +38,7 @@ adminReservationsRouter.get('/', requireAuth, async (req, res: Response) => {
 
     if (status) query = query.where('status', '==', status);
 
-    const snap = await query.limit(limit).get();
+    const snap = await query.limit(search ? SEARCH_SCAN_CAP : limit).get();
 
     let docs = snap.docs.map(d => {
       const data = d.data();
@@ -69,16 +77,21 @@ adminReservationsRouter.get('/', requireAuth, async (req, res: Response) => {
       };
     });
 
-    // Filtro de búsqueda en memoria (nombre, email, id, DNI, teléfono). El DNI/teléfono se comparan
-    // también SOLO por dígitos → "12345678" encuentra "12.345.678" y un teléfono con/sin prefijo.
+    // Filtro de búsqueda en memoria (nombre, email, id, DNI, teléfono, CÓDIGO DE BAULERA). El
+    // DNI/teléfono se comparan también SOLO por dígitos → "12345678" encuentra "12.345.678" y un
+    // teléfono con/sin prefijo. El código de baulera se compara canonizado (criterio único), así que
+    // "A2-42", "A2-042" y "a2042" encuentran la misma baulera — es como el operador la busca.
     if (search) {
       const searchDigits = search.replace(/\D/g, '');
+      const searchCode = canon(search);
       docs = docs.filter(r =>
         r.id.toLowerCase().includes(search) ||
         r.customerName.toLowerCase().includes(search) ||
         r.customerEmail.toLowerCase().includes(search) ||
         r.customerDni.toLowerCase().includes(search) ||
         r.customerPhone.toLowerCase().includes(search) ||
+        String(r.bauleraCodigo || '').toLowerCase().includes(search) ||
+        (!!searchCode && !!r.bauleraCodigo && canon(String(r.bauleraCodigo)) === searchCode) ||
         (searchDigits.length >= 3 && (
           String(r.customerDni).replace(/\D/g, '').includes(searchDigits) ||
           String(r.customerPhone).replace(/\D/g, '').includes(searchDigits)
@@ -86,9 +99,13 @@ adminReservationsRouter.get('/', requireAuth, async (req, res: Response) => {
       );
     }
 
+    // El recorte va DESPUÉS del filtro: si se recortara antes, buscar sería buscar solo en la 1ª página.
+    const total = docs.length;
+    if (search && docs.length > limit) docs = docs.slice(0, limit);
+
     res.json({
       data:  docs,
-      total: docs.length,
+      total,
     });
   } catch (err) {
     console.error('Error listing reservations:', err);
