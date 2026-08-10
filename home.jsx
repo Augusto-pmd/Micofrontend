@@ -102,26 +102,30 @@ const CATEGORIES = [
       { m2: 3.00, monthly: 88200 },
     ],
   },
+  // AGRUPADO ALINEADO AL FLYER (06/08, corrección de Lucas): las de 8 y 9 m² estaban dentro de
+  // "Mediano", que además decía "5 – 9 m²". En el material comercial las medianas llegan hasta 6 m²
+  // y las de 8 y 9 van en "Grandes y XL". Corregir SOLO la etiqueta habría dejado a las de 8 y 9
+  // sin categoría (el cliente no las encontraba en ninguna caja), así que se mueven a Grande.
   {
     key: 'mediano',
     label: 'Mediano',
-    range: '5 – 9 m²',
+    range: '5 – 6 m²',
     blurb: 'Para el contenido completo de un monoambiente.',
     fits: ['Muebles de 1 habitación', '~60 cajas', 'Electros y línea blanca'],
     options: [
       { m2: 5.00, monthly: 139230 },
       { m2: 6.00, monthly: 151200 },
-      { m2: 8.00, monthly: 204120 },
-      { m2: 9.00, monthly: 207900 },
     ],
   },
   {
     key: 'grande',
     label: 'Grande',
-    range: '11 – 13,5 m²',
+    range: '8 – 13,5 m²',
     blurb: 'Para un departamento de 2 ambientes o stock de negocio.',
     fits: ['Muebles de 2 ambientes', '3–5 pallets', 'Stock e-commerce'],
     options: [
+      { m2: 8.00, monthly: 204120 },
+      { m2: 9.00, monthly: 207900 },
       { m2: 11.25, monthly: 259875 },
       { m2: 13.50, monthly: 283500 },
     ],
