@@ -5,10 +5,10 @@ import * as admin from 'firebase-admin';
 import * as crypto from 'crypto';
 import { assignRoomForReservation, holdRoomForReservation } from '../../services/assignment.service';
 import { getReservation, createReservation, updateReservation, getReservationByMpPreapprovalId, getReservationByBauleraCodigo } from '../../models/reservation.model';
-import { createSubscription, createCheckoutPreference, createDebtPreference, cancelSubscription, cancelPlan, expirePreference, getSubscriptionStatus, invalidateSubsCache, searchSubscriptionsCached, searchPlans, invalidatePlansCache, getPreapprovalDetail, setPreapprovalExternalReference, updateSubscriptionAmount } from '../../services/mercadopago.service';
+import { createSubscription, createCheckoutPreference, createDebtPreference, cancelSubscription, cancelPlan, expirePreference, getSubscriptionStatus, invalidateSubsCache, searchSubscriptionsCached, searchPlans, invalidatePlansCache, getPreapprovalDetail, setPreapprovalExternalReference, updateSubscriptionAmount, getChargeHistory } from '../../services/mercadopago.service';
 import { getOrCreateAlignedPlan } from '../../services/planCatalog.service';
 import { resolveSaleUid, customerNormFields } from '../../services/customerMatch.service';
-import { createDebt, DebtTipo, getPendingDebtByBaulera } from '../../services/debts.service';
+import { createDebt, DebtTipo, getPendingDebtByBaulera, getDebt, anularDebt } from '../../services/debts.service';
 import { invalidateRechazadosCache } from './pricing';
 import { getPricingByM2, recurringFor } from '../../services/pricing.service';
 import { generateReservationId } from '../../utils/generateId';
@@ -948,6 +948,28 @@ adminReservationsRouter.post('/deuda', requireAuth, async (req, res: Response) =
 
     const t: DebtTipo = tipo === 'proporcional' ? 'proporcional' : 'mes_adeudado';
     const per = String(periodo || new Date().toISOString().slice(0, 7));
+
+    // AVISO "ESTE MES YA SE COBRÓ" (13/08, caso A1-029): el débito rebotó el 5, MP reintentó y
+    // cobró solo el 8, y el 11 igual se generó un link de deuda por ese mes → deuda que nadie iba
+    // a pagar, titilando violeta para siempre (y si la pagaban, DOBLE COBRO). Antes de crear el
+    // link se mira el historial REAL de cobros de la suscripción de esta baulera: si el período ya
+    // tiene un cobro APROBADO, 409 con el detalle. `forzar:true` lo saltea (casos raros a criterio
+    // del operador). Best-effort: si MP no responde, el link se genera igual (no frenar la cobranza).
+    if (t === 'mes_adeudado' && (req.body || {}).forzar !== true) {
+      try {
+        const subs = await searchSubscriptionsCached();
+        const sub = subs.find((s) => (s.status === 'authorized' || s.status === 'pending') && codigoDeRef(s.externalReference) === canon(code));
+        const cobro = sub ? (await getChargeHistory(sub.id)).find((c) => c.period === per && c.status === 'approved') : undefined;
+        if (cobro) {
+          res.status(409).json({
+            error: `OJO: MP ya cobró ${per} de ${code} — $${cobro.amount.toLocaleString('es-AR')} aprobado el ${String(cobro.date).slice(0, 10)}. Si generás el link igual y el cliente lo paga, paga ese mes DOS VECES.`,
+            yaCobrado: true, cobro: { fecha: cobro.date, monto: cobro.amount, periodo: cobro.period },
+          });
+          return;
+        }
+      } catch (e) { console.warn('[deuda] no se pudo verificar el historial de cobros (sigo):', e); }
+    }
+
     const debtId = `deuda-${code}-${per}-${crypto.randomBytes(4).toString('hex')}`;
     const rango = `${desde ? String(desde) : ''}${hasta ? ' al ' + String(hasta) : ''}`.trim();
     const titulo = t === 'proporcional'
@@ -977,6 +999,43 @@ adminReservationsRouter.post('/deuda', requireAuth, async (req, res: Response) =
   } catch (err) {
     console.error('POST /admin/reservations/deuda error:', err);
     res.status(500).json({ error: 'No se pudo generar el link de deuda', detail: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// POST /admin/reservations/anular-deuda { debtId } — ANULA una deuda enviada POR ERROR (13/08,
+// caso A1-029: el mes ya lo había cobrado MP con su reintento y el link del 11/08 sobraba; nadie
+// lo iba a pagar → violeta eterno). Qué hace:
+//   1. VENCE la preference en MP (el link muerto deja de ser pagable — si el cliente lo pagara
+//      después, sería un DOBLE cobro). Best-effort: si MP falla, se anula igual y queda avisado.
+//   2. Marca la deuda 'anulada' (nunca se borra: queda el rastro de quién la envió y quién la anuló).
+//   3. La baulera deja de titilar violeta y se libera el guard anti-doble-link (se puede generar
+//      un link nuevo si algún día hace falta de verdad).
+// Una deuda PAGADA no se puede anular (eso sería reescribir historia: usá la auditoría).
+adminReservationsRouter.post('/anular-deuda', requireAuth, async (req, res: Response) => {
+  try {
+    const debtId = String((req.body || {}).debtId || '').trim();
+    if (!debtId) { res.status(400).json({ error: 'Falta debtId' }); return; }
+    const d = await getDebt(debtId);
+    if (!d) { res.status(404).json({ error: 'Esa deuda no existe' }); return; }
+    if (d.status === 'paid') { res.status(409).json({ error: `Esa deuda ya está PAGADA (${String(d.paidAt).slice(0, 10)}) — no se puede anular.` }); return; }
+    if (d.status === 'anulada') { res.json({ ok: true, debtId, baulera: d.bauleraCodigo, yaEstaba: true, linkVencido: false }); return; }
+
+    let linkVencido = false;
+    if (d.mpPreferenceId && !String(d.mpPreferenceId).startsWith('emu-')) {
+      try { await expirePreference(String(d.mpPreferenceId)); linkVencido = true; }
+      catch (e) { console.warn(`[anular-deuda] MP no venció la preference ${d.mpPreferenceId} (anulo igual):`, e); }
+    }
+    const actor = String((req as unknown as { email?: string }).email || 'admin');
+    await anularDebt(debtId, actor);
+    await logAudit({
+      actor, via: 'admin', action: 'deuda_anulada', entity: 'debt', entityId: debtId,
+      detail: { baulera: d.bauleraCodigo, periodo: d.periodo, tipo: d.tipo, monto: d.monto, sentAt: d.sentAt, sentBy: d.sentBy || null, linkVencido, motivo: 'anulada por operador (no corresponde el cobro)' },
+    });
+    invalidateRechazadosCache(); // el violeta se apaga al toque
+    res.json({ ok: true, debtId, baulera: d.bauleraCodigo, linkVencido });
+  } catch (err) {
+    console.error('POST /admin/reservations/anular-deuda error:', err);
+    res.status(500).json({ error: 'No se pudo anular la deuda', detail: err instanceof Error ? err.message : String(err) });
   }
 });
 

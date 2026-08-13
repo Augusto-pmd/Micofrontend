@@ -806,7 +806,8 @@ async function responderRechazadosConDeudas(res: Response, rechazadosRaw: Array<
   const deudasPagadas: Array<Record<string, unknown>> = [];
   deudas.forEach((estado, baulera) => {
     const p = estado.pendiente;
-    if (p) deudasPendientes.push({ baulera, monto: p.monto, periodo: p.periodo, tipo: p.tipo, desde: p.desde, hasta: p.hasta, sentAt: p.sentAt, sentBy: p.sentBy, initPoint: p.initPoint, cliente: p.cliente, email: p.email });
+    // id: lo necesita el botón "Anular deuda" del Inventario (13/08) para apagar un violeta que no corresponde.
+    if (p) deudasPendientes.push({ id: p.id, baulera, monto: p.monto, periodo: p.periodo, tipo: p.tipo, desde: p.desde, hasta: p.hasta, sentAt: p.sentAt, sentBy: p.sentBy, initPoint: p.initPoint, cliente: p.cliente, email: p.email });
     // Deudas PAGADAS: quedan ASENTADAS en la ficha ("✓ Pagó deuda") — antes no había rastro visible.
     for (const d of estado.pagadasDetalle) {
       deudasPagadas.push({ baulera, monto: d.monto, periodo: d.periodo, tipo: d.tipo, desde: d.desde, hasta: d.hasta, paidAt: d.paidAt, cliente: d.cliente });

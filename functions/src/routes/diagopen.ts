@@ -126,6 +126,48 @@ diagOpenRouter.get('/', async (req: Request, res: Response) => {
       res.json({ code, reservas });
       return;
     }
+    // DEUDAS de una baulera — es lo que dispara el TITILEO VIOLETA en Inventario (una deuda con
+    // status 'pending'). Si el cliente pagó el link y la baulera sigue violeta, acá se ve si la
+    // deuda quedó sin marcar como pagada, y con qué id habría que buscar el pago en MP
+    // (el pago llega con external_reference "DEUDA <id>").
+    // ?what=deudas&code=A1-029
+    if (what === 'deudas') {
+      const code = String(req.query['code'] || '');
+      const snap = await db.collection('debts').get();
+      const c = canon(code);
+      const filas = snap.docs
+        .filter((d) => !c || canon(String((d.data() as Record<string, unknown>)['bauleraCodigo'] || '')) === c)
+        .map((d) => { const x = d.data() as Record<string, unknown>; return { id: d.id, baulera: x['bauleraCodigo'], status: x['status'], tipo: x['tipo'], monto: x['monto'], periodo: x['periodo'], desde: x['desde'], hasta: x['hasta'], sentAt: x['sentAt'], sentBy: x['sentBy'], paidAt: x['paidAt'] || null, mpPaymentId: x['mpPaymentId'] || null, cliente: x['cliente'], email: x['email'], reservationId: x['reservationId'] || null }; })
+        .sort((a, b) => String(b.sentAt || '').localeCompare(String(a.sentAt || '')));
+      res.json({ code, canon: c, total: filas.length, pendientes: filas.filter((f) => f.status === 'pending').length, deudas: filas });
+      return;
+    }
+    // ¿LLEGÓ EL PAGO DE ESTE LINK? — busca en MP por referencia externa. Es el chequeo decisivo
+    // cuando una baulera sigue titilando: si el pago está en MP y la deuda sigue 'pending', el
+    // problema es del webhook (no procesó el aviso); si no está, el link nunca se pagó.
+    // ?what=pago&ref=DEUDA deuda-A1-029-2026-08-adb8ebc8
+    if (what === 'pago') {
+      const ref = String(req.query['ref'] || '').trim();
+      if (!ref) { res.status(400).json({ error: 'falta ?ref=<external_reference>' }); return; }
+      const d = await mpGet(`/v1/payments/search?external_reference=${encodeURIComponent(ref)}&sort=date_created&criteria=desc&limit=20`) as { results?: Array<Record<string, unknown>> };
+      res.json({
+        ref,
+        encontrados: (d.results || []).length,
+        pagos: (d.results || []).map((p) => ({
+          id: p['id'], monto: p['transaction_amount'], estado: p['status'], detalle: p['status_detail'],
+          fecha: p['date_created'], acreditado: p['date_approved'] || null,
+          email: (p['payer'] as Record<string, unknown> | undefined)?.['email'] || null,
+          ext: p['external_reference'],
+          // CÓMO se pagó: 'recurring_payment' = cobro automático de la suscripción;
+          // 'regular_payment' = el cliente pagó un LINK (checkout). Es lo que distingue un débito
+          // automático de un pago manual cuando los dos quedan con la misma referencia.
+          tipo: p['operation_type'], metodo: p['payment_method_id'],
+          preferenceId: p['preference_id'] || null,
+          descripcion: p['description'] || null,
+        })),
+      });
+      return;
+    }
     // Reserva por id.
     if (what === 'reserva') {
       const snap = await db.collection('reservations').doc(String(req.query['id'] || '')).get();

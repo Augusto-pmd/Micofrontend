@@ -13,7 +13,11 @@ export interface Debt {
   hasta?: string | null;
   tipo: DebtTipo;
   monto: number;
-  status: 'pending' | 'paid';
+  // 'anulada' (13/08, caso A1-029): deuda generada POR ERROR (el mes ya lo había cobrado MP solo).
+  // Nadie la iba a pagar nunca → la baulera titilaba violeta para siempre. Anular la saca del
+  // titileo y del guard anti-doble-link, y vence la preference en MP para que el link muerto no
+  // se pueda pagar después (sería un doble cobro).
+  status: 'pending' | 'paid' | 'anulada';
   sentAt: string;
   sentBy?: string | null;
   mpPreferenceId?: string | null;
@@ -22,6 +26,8 @@ export interface Debt {
   mpPaymentId?: string | null;
   email?: string | null;
   cliente?: string | null;
+  anuladaAt?: string | null;
+  anuladaBy?: string | null;
 }
 
 const col = () => db.collection('debts');
@@ -38,6 +44,12 @@ export async function getDebt(id: string): Promise<Debt | null> {
 
 export async function markDebtPaid(id: string, mpPaymentId: string): Promise<void> {
   await col().doc(id).set({ status: 'paid', paidAt: new Date().toISOString(), mpPaymentId }, { merge: true });
+}
+
+// ANULAR una deuda enviada por error (nunca borra el doc: queda el rastro de que se envió y se
+// anuló, con quién y cuándo). Solo tiene sentido sobre una 'pending'.
+export async function anularDebt(id: string, by: string): Promise<void> {
+  await col().doc(id).set({ status: 'anulada', anuladaAt: new Date().toISOString(), anuladaBy: by || 'admin' }, { merge: true });
 }
 
 // Estado de deuda por baulera (para cruzar con el titileo de Inventario):
