@@ -4,7 +4,7 @@ import { verifyToken } from '../../middleware/verifyToken';
 import { requireStaff } from '../../middleware/requireStaff';
 import { getPricingByM2, recurringFor } from '../../services/pricing.service';
 import { FieldValue } from 'firebase-admin/firestore';
-import { updateSubscriptionAmount, updatePlanAmount, searchSubscriptions, searchSubscriptionsCached, invalidateSubsCache, getLastChargedMap, getLastChargeAttempt, searchPlans, invalidatePlansCache, cancelSubscription, cancelPlan, MpSubscription } from '../../services/mercadopago.service';
+import { updateSubscriptionAmount, updatePlanAmount, searchSubscriptions, searchSubscriptionsCached, invalidateSubsCache, getLastChargedMap, getLastChargeAttempt, findApprovedPaymentForPeriod, searchPlans, invalidatePlansCache, cancelSubscription, cancelPlan, MpSubscription } from '../../services/mercadopago.service';
 import { debtsByBaulera } from '../../services/debts.service';
 import { planKey } from '../../services/planCatalog.service';
 import { logAudit } from '../../services/audit.service';
@@ -879,7 +879,19 @@ pricingRouter.get('/cobros-rechazados/:branchId', verifyToken, requireStaff, asy
       await Promise.all(matched.slice(i, i + CONC).map(async ({ u, sub }) => {
         const att = await getLastChargeAttempt(sub.id);
         if (!att) { sinDato++; return; }
-        const rechazado = att.payStatus === 'rejected' || att.status === 'recycling';
+        // El estado del INVOICE (authorized_payments) NO alcanza para decidir — se cruza SIEMPRE con
+        // los PAGOS reales del período (/v1/payments). Dos casos reales de agosto/2026:
+        //  - A1-029: invoice 'rejected' pero el reintento de MP entró el 8 → titilaba ROJO al día.
+        //  - A2-010: MP agotó los 4 reintentos (todos rechazados) y dejó el invoice en 'processed'
+        //    (= "terminé de intentar", NO "cobré") → el detector lo leía como cobrado y la deudora
+        //    NO titilaba. Justo el caso peor (deuda firme) era el invisible.
+        // Regla: si el período del último intento tiene un pago APROBADO → al día. Si no lo tiene y
+        // el invoice está rechazado/reciclando/procesado → RECHAZADO. Un 'processed' con pago
+        // aprobado es el caso normal (cobró bien) y no entra.
+        const perAtt = att.date ? String(att.date).slice(0, 7) : '';
+        const cobrado = perAtt ? await findApprovedPaymentForPeriod(sub.externalReference, perAtt) : null;
+        if (cobrado) return;
+        const rechazado = att.payStatus === 'rejected' || att.status === 'recycling' || att.status === 'processed';
         if (!rechazado) return;
         const t = att.date ? Date.parse(att.date) : NaN;
         const dias = Number.isFinite(t) ? Math.floor((Date.now() - t) / 86400000) : null;

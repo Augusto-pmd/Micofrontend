@@ -168,6 +168,36 @@ diagOpenRouter.get('/', async (req: Request, res: Response) => {
       });
       return;
     }
+    // ¿QUIÉN / CUÁNDO cancelaron una suscripción? Cruza (a) last_modified de MP (cuándo cambió por
+    // última vez = fecha de la cancelación si está cancelled), (b) la AUDITORÍA del sistema
+    // (baja_suscripcion / liberar_baulera / sub_cancelada con ese subId o esa baulera → fue el
+    // panel y dice quién) y (c) los intentos de cobro (cancelled/by_collector). Si en la auditoría
+    // no hay nada, la cancelación NO salió del sistema: fue a mano en el panel de MP, o MP solo.
+    // ?what=baja&sub=<preapprovalId>&code=<baulera>
+    if (what === 'baja') {
+      const subId = String(req.query['sub'] || '').trim();
+      const code = String(req.query['code'] || '').trim();
+      const out: Record<string, unknown> = {};
+      if (subId) {
+        const d = await mpGet(`/preapproval/${encodeURIComponent(subId)}`) as Record<string, unknown>;
+        out['mp'] = { status: d['status'], creada: d['date_created'], ultimaModificacion: d['last_modified'], proximoDebito: d['next_payment_date'] || null, payerId: d['payer_id'] || null };
+      }
+      const snap = await db.collection('audit_log').get();
+      const c = canon(code);
+      const hits = snap.docs
+        .map((x) => x.data() as Record<string, unknown>)
+        .filter((a) => {
+          const det = (a['detail'] as Record<string, unknown>) || {};
+          const bySub = subId && (String(det['subId'] || '') === subId || String(det['mpPreapprovalId'] || '') === subId);
+          const byCode = c && canon(String(det['baulera'] || '')) === c;
+          return (bySub || byCode) && /baja|liberar|cancel|sub_/i.test(String(a['action'] || ''));
+        })
+        .map((a) => ({ ts: (a['ts'] as { toDate?: () => Date })?.toDate?.()?.toISOString?.() || a['ts'], actor: a['actor'], via: a['via'], action: a['action'], detail: a['detail'] }))
+        .sort((x, y) => String(y.ts).localeCompare(String(x.ts)));
+      out['auditoriaSistema'] = hits.length ? hits : '(NADA: la cancelación no salió del panel/sistema → fue a mano en MP, o MP solo)';
+      res.json(out);
+      return;
+    }
     // Reserva por id.
     if (what === 'reserva') {
       const snap = await db.collection('reservations').doc(String(req.query['id'] || '')).get();

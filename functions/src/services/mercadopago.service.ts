@@ -306,6 +306,29 @@ export async function getLastChargeAttempt(preapprovalId: string): Promise<MpCha
   } catch { return null; }
 }
 
+// ¿El período 'YYYY-MM' de esta suscripción tiene un PAGO APROBADO en MP? Fuente: /v1/payments
+// (los pagos REALES), no el invoice de authorized_payments — tras un rechazo con reintento
+// exitoso, el invoice puede seguir mostrando el intento rechazado (caso A1-029, 13/08: el débito
+// rebotó el 5, MP reintentó y cobró solo el 8, y el detector seguía titilando la baulera como
+// rechazada). Se busca por el external_reference de la sub y se compara el MES del pago aprobado.
+export async function findApprovedPaymentForPeriod(extRef: string, period: string): Promise<{ amount: number; date: string } | null> {
+  const accessToken = process.env.MP_ACCESS_TOKEN;
+  if (!accessToken || !extRef || !period) return null;
+  try {
+    const res = await fetchWithTimeout(`${MP_API_BASE}/v1/payments/search?external_reference=${encodeURIComponent(extRef)}&sort=date_created&criteria=desc&limit=30`, {
+      headers: { 'Authorization': `Bearer ${accessToken}` },
+    });
+    if (!res.ok) return null;
+    const d = await res.json() as { results?: Array<Record<string, unknown>> };
+    for (const p of (d.results || [])) {
+      if (String(p['status']) !== 'approved') continue;
+      const f = String(p['date_approved'] || p['date_created'] || '');
+      if (f.slice(0, 7) === period) return { amount: Number(p['transaction_amount']) || 0, date: f };
+    }
+    return null;
+  } catch { return null; }
+}
+
 // PLAN de suscripcion (preapproval_plan) con MES GRATIS (free_trial). Se crea 1 vez por medida
 // y su init_point es el LINK DEL PLAN que se comparte al cliente (paga en la pagina de MP,
 // sin tokenizacion). Ver docs/referencia/mercadopago-planes.md §1.5.

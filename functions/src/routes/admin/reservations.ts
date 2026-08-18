@@ -5,7 +5,7 @@ import * as admin from 'firebase-admin';
 import * as crypto from 'crypto';
 import { assignRoomForReservation, holdRoomForReservation } from '../../services/assignment.service';
 import { getReservation, createReservation, updateReservation, getReservationByMpPreapprovalId, getReservationByBauleraCodigo } from '../../models/reservation.model';
-import { createSubscription, createCheckoutPreference, createDebtPreference, cancelSubscription, cancelPlan, expirePreference, getSubscriptionStatus, invalidateSubsCache, searchSubscriptionsCached, searchPlans, invalidatePlansCache, getPreapprovalDetail, setPreapprovalExternalReference, updateSubscriptionAmount, getChargeHistory } from '../../services/mercadopago.service';
+import { createSubscription, createCheckoutPreference, createDebtPreference, cancelSubscription, cancelPlan, expirePreference, getSubscriptionStatus, invalidateSubsCache, searchSubscriptionsCached, searchPlans, invalidatePlansCache, getPreapprovalDetail, setPreapprovalExternalReference, updateSubscriptionAmount, findApprovedPaymentForPeriod } from '../../services/mercadopago.service';
 import { getOrCreateAlignedPlan } from '../../services/planCatalog.service';
 import { resolveSaleUid, customerNormFields } from '../../services/customerMatch.service';
 import { createDebt, DebtTipo, getPendingDebtByBaulera, getDebt, anularDebt } from '../../services/debts.service';
@@ -959,11 +959,13 @@ adminReservationsRouter.post('/deuda', requireAuth, async (req, res: Response) =
       try {
         const subs = await searchSubscriptionsCached();
         const sub = subs.find((s) => (s.status === 'authorized' || s.status === 'pending') && codigoDeRef(s.externalReference) === canon(code));
-        const cobro = sub ? (await getChargeHistory(sub.id)).find((c) => c.period === per && c.status === 'approved') : undefined;
+        // Fuente: los PAGOS reales (/v1/payments), no el invoice — el invoice puede seguir mostrando
+        // el intento rechazado aunque el reintento haya entrado (caso A1-029, 13/08).
+        const cobro = sub ? await findApprovedPaymentForPeriod(sub.externalReference, per) : null;
         if (cobro) {
           res.status(409).json({
             error: `OJO: MP ya cobró ${per} de ${code} — $${cobro.amount.toLocaleString('es-AR')} aprobado el ${String(cobro.date).slice(0, 10)}. Si generás el link igual y el cliente lo paga, paga ese mes DOS VECES.`,
-            yaCobrado: true, cobro: { fecha: cobro.date, monto: cobro.amount, periodo: cobro.period },
+            yaCobrado: true, cobro: { fecha: cobro.date, monto: cobro.amount, periodo: per },
           });
           return;
         }
