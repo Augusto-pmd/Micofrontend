@@ -9,6 +9,7 @@ import { debtsByBaulera } from '../../services/debts.service';
 import { planKey } from '../../services/planCatalog.service';
 import { logAudit } from '../../services/audit.service';
 import { canon, codeOf } from '../../utils/bauleraCode'; // criterio ÚNICO de igualdad de código (unificación 30/07)
+import { fetchWithTimeout } from '../../utils/http';
 
 export const pricingRouter = Router();
 
@@ -778,6 +779,107 @@ pricingRouter.get('/roster/:branchId', verifyToken, requireStaff, async (_req: R
   }
 });
 
+// ── MÉTRICAS DEL NEGOCIO (dueño/inversor) ───────────────────────────────────────────────────
+// GET /pricing-engine/metricas/:branchId — READ-ONLY. El cuadro de métricas del Dashboard
+// (pedido Lucas 26/08): m² totales/ocupados/libres, facturación mensual configurada (MP +
+// efectivo), rendimiento por m², potencial de lo libre, techo a tarifa plena y la brecha.
+// En pesos y dólares (blue/oficial vía dolarapi.com, best-effort con caché 1h — si no responde,
+// el front muestra solo pesos). Mismo matcheo sub↔baulera que roster/reprice. NO modifica nada.
+// El front lo muestra SOLO a ADMIN/PROGRAMADOR (números de plata: no es para operadores).
+let _dolarCache: { at: number; blue: number | null; oficial: number | null } | null = null;
+async function cotizacionDolar(): Promise<{ blue: number | null; oficial: number | null }> {
+  const now = Date.now();
+  if (_dolarCache && now - _dolarCache.at < 3600_000) return _dolarCache;
+  const get = async (tipo: string): Promise<number | null> => {
+    try {
+      const r = await fetchWithTimeout(`https://dolarapi.com/v1/dolares/${tipo}`, {}, 4000);
+      if (!r.ok) return null;
+      const d = await r.json() as { venta?: number };
+      return Number(d.venta) > 0 ? Number(d.venta) : null;
+    } catch { return null; }
+  };
+  const [blue, oficial] = await Promise.all([get('blue'), get('oficial')]);
+  _dolarCache = { at: now, blue, oficial };
+  return _dolarCache;
+}
+
+pricingRouter.get('/metricas/:branchId', verifyToken, requireStaff, async (req: Request, res: Response) => {
+  try {
+    const branchId = req.params['branchId'] || 'nordelta';
+    const [allSubs, units, resIdToCode, tarifa, roomsSnap, dolar] = await Promise.all([
+      searchSubscriptionsCached(), buildRentedUnits(), buildResIdToCodeMap(),
+      getPricingByM2(branchId), db.collection('storageRooms').get(), cotizacionDolar(),
+    ]);
+
+    // Padrón físico + libres + techo (todo a tarifa vigente).
+    let unidades = 0, m2Total = 0, sinMedida = 0, techo = 0;
+    let libresUnid = 0, libresM2 = 0, potencialLibres = 0;
+    let ocupUnid = 0, ocupM2 = 0, otrasUnid = 0;
+    roomsSnap.forEach((d) => {
+      const r = d.data() as Record<string, unknown>;
+      const m2 = Number(r['areaM2']) || 0;
+      unidades++;
+      if (!m2) { sinMedida++; return; }
+      m2Total += m2;
+      const tar = recurringFor(tarifa, m2, 1) || 0;
+      techo += tar;
+      const st = String(r['status'] || '');
+      if (st === 'occupied') { ocupUnid++; ocupM2 += m2; }
+      else if (st === 'available') { libresUnid++; libresM2 += m2; potencialLibres += tar; }
+      else otrasUnid++; // bloqueadas / reservadas / etc: ni cobran ni se pueden vender hoy
+    });
+
+    // Facturación configurada: TODAS las subs vivas de MP (authorized cobra; paused no cobra
+    // pero es contrato vivo) + efectivo = ocupadas SIN sub matcheada, al precio de inventario.
+    const vivas = allSubs.filter((s) => s.status === 'authorized' || s.status === 'pending' || s.status === 'paused');
+    let mpAuthorized = 0, mpPaused = 0, nAuth = 0, nPaused = 0;
+    for (const s of vivas) {
+      if (s.status === 'authorized') { mpAuthorized += s.amount; nAuth++; }
+      else if (s.status === 'paused') { mpPaused += s.amount; nPaused++; }
+    }
+    const byCode = new Map<string, MpSubscription[]>();
+    const byEmail = new Map<string, MpSubscription[]>();
+    for (const s of vivas) {
+      let c = codeOf(s.externalReference);
+      if (!c) { const raw = resIdToCode.get((s.externalReference || '').trim()); if (raw) c = canon(raw); }
+      if (c) { if (!byCode.has(c)) byCode.set(c, []); byCode.get(c)!.push(s); }
+      const e = s.payerEmail.trim().toLowerCase();
+      if (e) { if (!byEmail.has(e)) byEmail.set(e, []); byEmail.get(e)!.push(s); }
+    }
+    const used = new Set<string>();
+    let efectivo = 0, nEfectivo = 0;
+    for (const u of units) {
+      const c = canon(u.code);
+      let sub = c ? (byCode.get(c) || []).find((s) => !used.has(s.id)) : undefined;
+      if (!sub) { const e = (u.email || '').trim().toLowerCase(); if (e) sub = (byEmail.get(e) || []).find((s) => !used.has(s.id)); }
+      if (sub) { used.add(sub.id); continue; }
+      efectivo += u.monthly; nEfectivo++;
+    }
+    const facturacion = mpAuthorized + mpPaused + efectivo;
+    const brechaTotal = techo - facturacion - potencialLibres;
+
+    res.json({
+      generado: new Date().toISOString(),
+      padron: { unidades, m2: m2Total, sinMedida },
+      ocupadas: { unidades: ocupUnid, m2: ocupM2 },
+      libres: { unidades: libresUnid, m2: libresM2 },
+      otras: otrasUnid,
+      facturacion: { mpAuthorized, mpPaused, efectivo, total: facturacion, subsActivas: nAuth, subsPausadas: nPaused, baulerasEfectivo: nEfectivo },
+      porM2: {
+        realOcupado: ocupM2 > 0 ? Math.round(facturacion / ocupM2) : null,
+        tarifaPromedio: m2Total > 0 ? Math.round(techo / m2Total) : null,
+        potencialLibre: libresM2 > 0 ? Math.round(potencialLibres / libresM2) : null,
+      },
+      potencialLibres, techo,
+      brecha: { total: techo - facturacion, porLibres: potencialLibres, porPrecios: brechaTotal },
+      dolar: (dolar.blue || dolar.oficial) ? { blue: dolar.blue, oficial: dolar.oficial } : null,
+    });
+  } catch (err) {
+    console.error('GET /pricing-engine/metricas error:', err);
+    res.status(500).json({ error: 'No se pudieron calcular las métricas' });
+  }
+});
+
 // GET /pricing-engine/cobros-rechazados/:branchId — READ-ONLY. Bauleras ocupadas cuyo ULTIMO
 // intento de cobro en MP salio RECHAZADO (payment 'rejected' o intento en 'recycling' = MP
 // reintentando). Regla de negocio: 10 DIAS de plazo para regularizar desde el rechazo ->
@@ -888,6 +990,15 @@ pricingRouter.get('/cobros-rechazados/:branchId', verifyToken, requireStaff, asy
         // Regla: si el período del último intento tiene un pago APROBADO → al día. Si no lo tiene y
         // el invoice está rechazado/reciclando/procesado → RECHAZADO. Un 'processed' con pago
         // aprobado es el caso normal (cobró bien) y no entra.
+        // 1) Si el PAGO del último intento está aprobado (o devuelto): cobrado, al día. Fin.
+        //    (16/08: la versión anterior buscaba el pago aprobado en /v1/payments por referencia y,
+        //    cuando la referencia del pago no coincidía textualmente, marcaba ROJAS a 17 bauleras
+        //    AL DÍA con invoice processed/approved. El estado del pago dentro del invoice es la
+        //    fuente más directa y no depende de matchear textos.)
+        if (att.payStatus === 'approved' || att.payStatus === 'refunded') return;
+        // 2) Pago rechazado, o invoice reciclando/procesado SIN pago aprobado adentro: antes de
+        //    marcar, una última chance por los pagos reales del período (caso A1-029: el invoice
+        //    quedó en el intento rechazado pero el reintento entró después).
         const perAtt = att.date ? String(att.date).slice(0, 7) : '';
         const cobrado = perAtt ? await findApprovedPaymentForPeriod(sub.externalReference, perAtt) : null;
         if (cobrado) return;
